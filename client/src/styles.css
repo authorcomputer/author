@@ -134,19 +134,20 @@ input, textarea {
 
 .desk-rail {
   position: fixed;
-  right: 48px;
+  /* hug the centered 640px column: half viewport + half column + gutter */
+  left: calc(50% + 320px + 48px);
   top: 76px;
   width: 250px;
   z-index: 14;
 }
-@media (max-width: 1180px) {
+@media (max-width: 1240px) {
   .desk-rail { display: none; }
 }
 
 /* hover peek: a little paper card showing what the page is */
 .desk-peek {
   position: fixed;
-  right: 48px;
+  left: calc(50% + 320px + 48px);
   transform: rotate(0.4deg);
   transition: top 0.18s ease;
   width: 250px;
@@ -181,7 +182,7 @@ input, textarea {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-@media (max-width: 1180px) {
+@media (max-width: 1240px) {
   .desk-peek { display: none; }
 }
 
