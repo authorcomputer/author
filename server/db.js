@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import path from 'node:path'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
+import bcrypt from 'bcryptjs'
 
 const dataDir = path.join(process.cwd(), 'data')
 fs.mkdirSync(dataDir, { recursive: true })
@@ -63,7 +64,8 @@ CREATE TABLE IF NOT EXISTS activity (
 CREATE TABLE IF NOT EXISTS invite_codes (
   code TEXT PRIMARY KEY,
   label TEXT,
-  uses INTEGER DEFAULT 0
+  uses INTEGER DEFAULT 0,
+  max_uses INTEGER DEFAULT 25
 );
 CREATE TABLE IF NOT EXISTS ai_usage (
   user_id TEXT NOT NULL,
@@ -86,35 +88,54 @@ addColumn('users', 'show_writing INTEGER DEFAULT 1')
 addColumn('users', "links TEXT DEFAULT '[]'")
 addColumn('users', 'email TEXT')
 addColumn('docs', 'header_image TEXT')
+addColumn('invite_codes', 'max_uses INTEGER DEFAULT 25')
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL')
 
 // seed two invite codes: one personal, one to hand to friends
+// (codes are stored lowercase; signup lowercases input to match)
 const codeCount = db.prepare('SELECT COUNT(*) AS c FROM invite_codes').get()
 if (codeCount.c === 0) {
   const mk = () => 'author-' + crypto.randomBytes(4).toString('hex')
-  const ins = db.prepare('INSERT INTO invite_codes (code, label) VALUES (?, ?)')
+  const ins = db.prepare('INSERT INTO invite_codes (code, label, max_uses) VALUES (?, ?, ?)')
   const personal = mk()
   const friends = mk()
-  ins.run(personal, 'personal')
-  ins.run(friends, 'friends')
+  ins.run(personal, 'personal', 2)
+  ins.run(friends, 'friends', 25)
   console.log(`invite codes — personal: ${personal} · friends: ${friends}`)
 }
+db.exec(`UPDATE invite_codes SET max_uses = CASE label WHEN 'personal' THEN 2 ELSE 25 END WHERE max_uses IS NULL`)
 
-// Seed the two test accounts (uniform password: "author")
+// Seed the two test accounts (uniform password: "author"; hashed like all passwords)
 const count = db.prepare('SELECT COUNT(*) AS c FROM users').get()
 if (count.c === 0) {
   const ins = db.prepare('INSERT INTO users (id, username, password) VALUES (?, ?, ?)')
-  ins.run('u_ink', 'ink', 'author')
-  ins.run('u_quill', 'quill', 'author')
+  ins.run('u_ink', 'ink', bcrypt.hashSync('author', 10))
+  ins.run('u_quill', 'quill', bcrypt.hashSync('author', 10))
   console.log('seeded test accounts: ink / quill (password: "author")')
 }
+
+// migrate any plaintext passwords to bcrypt; in production, the seeded test
+// accounts' publicly-known password is rotated to a random one (existing
+// sessions stay valid — set a fresh password in settings afterwards)
+const isProd = !!process.env.FLY_APP_NAME || process.env.NODE_ENV === 'production'
+for (const u of db.prepare("SELECT id, username, password FROM users WHERE password NOT LIKE '$2%'").all()) {
+  const compromised = isProd && ['ink', 'quill'].includes(u.username) && u.password === 'author'
+  const next = compromised ? crypto.randomBytes(18).toString('hex') : u.password
+  db.prepare('UPDATE users SET password = ? WHERE id = ?').run(bcrypt.hashSync(next, 10), u.id)
+  if (compromised) console.log(`rotated known password for seeded account "${u.username}"`)
+}
+
+const SESSION_TTL = 90 * 24 * 60 * 60 * 1000 // 90 days
+db.prepare('DELETE FROM sessions WHERE created_at < ?').run(Date.now() - SESSION_TTL)
 
 export function userByToken(token) {
   if (!token) return null
   const row = db
     .prepare(
-      `SELECT u.id, u.username FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`
+      `SELECT u.id, u.username FROM sessions s JOIN users u ON u.id = s.user_id
+       WHERE s.token = ? AND s.created_at > ?`
     )
-    .get(token)
+    .get(token, Date.now() - SESSION_TTL)
   return row || null
 }
 

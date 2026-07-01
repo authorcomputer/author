@@ -51,7 +51,10 @@ function textToHtml(text: string) {
     .join('')
 }
 
-function findRange(editor: TiptapEditor, excerpt: string) {
+function findRange(
+  editor: TiptapEditor,
+  excerpt: string
+): { from: number; to: number } | null {
   const needles = [excerpt, excerpt.slice(0, 24), excerpt.slice(0, 12)].filter(
     (n) => n.trim().length >= 4
   )
@@ -532,7 +535,12 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
         to: Math.min(cmd.range.to, docSize),
       }
       const current = editor.state.doc.textBetween(r.from, r.to, '\n\n')
-      if (current !== cmd.sourceText) r = findRange(editor, cmd.sourceText)
+      if (current !== cmd.sourceText) {
+        r = findRange(editor, cmd.sourceText)
+        // a prefix match would replace only part of the old selection and
+        // leave the rest duplicated — only trust a full-length match
+        if (r && r.to - r.from < cmd.sourceText.length) r = null
+      }
       if (!r) {
         alert('the original selection has changed — inserting at the end instead')
         editor.chain().focus().insertContentAt(docSize, textToHtml(text)).run()

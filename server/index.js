@@ -5,6 +5,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
 import { WebSocketServer } from 'ws'
+import bcrypt from 'bcryptjs'
 import sanitizeHtml from 'sanitize-html'
 import { db, userByToken, docExists } from './db.js'
 import { setupCollab } from './collab.js'
@@ -41,6 +42,22 @@ function auth(req, res, next) {
   next()
 }
 
+// small in-memory per-IP throttle for the credential endpoints
+const buckets = new Map()
+function rateLimit(limit, windowMs) {
+  return (req, res, next) => {
+    const ip = req.headers['fly-client-ip'] || req.ip || '?'
+    const key = `${req.path}|${ip}`
+    const now = Date.now()
+    const hits = (buckets.get(key) || []).filter((t) => now - t < windowMs)
+    if (hits.length >= limit) return res.status(429).json({ error: 'slow down a moment' })
+    hits.push(now)
+    buckets.set(key, hits)
+    if (buckets.size > 10000) buckets.clear() // crude memory bound
+    next()
+  }
+}
+
 function startSession(res, user) {
   const token = crypto.randomBytes(24).toString('hex')
   db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)').run(
@@ -51,17 +68,20 @@ function startSession(res, user) {
   res.json({ token, username: user.username })
 }
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', rateLimit(12, 60_000), (req, res) => {
   const { username, password } = req.body || {}
   const ident = String(username || '').toLowerCase().trim()
   const user = db
-    .prepare('SELECT * FROM users WHERE (username = ? OR email = ?) AND password = ?')
-    .get(ident, ident, String(password || ''))
-  if (!user) return res.status(401).json({ error: 'wrong name or password' })
+    .prepare('SELECT * FROM users WHERE username = ? OR email = ?')
+    .get(ident, ident)
+  if (!user || !bcrypt.compareSync(String(password || ''), user.password)) {
+    // flat delay takes the speed out of online guessing
+    return setTimeout(() => res.status(401).json({ error: 'wrong name or password' }), 400)
+  }
   startSession(res, user)
 })
 
-app.post('/api/signup', (req, res) => {
+app.post('/api/signup', rateLimit(8, 60_000), (req, res) => {
   const { username, email, password, code } = req.body || {}
   const uname = String(username || '').toLowerCase().trim()
   const mail = String(email || '').toLowerCase().trim()
@@ -75,13 +95,15 @@ app.post('/api/signup', (req, res) => {
     .prepare('SELECT * FROM invite_codes WHERE code = ?')
     .get(String(code || '').trim().toLowerCase())
   if (!invite) return res.status(403).json({ error: 'that invite code doesn’t open the door' })
+  if (invite.uses >= (invite.max_uses ?? 25))
+    return res.status(403).json({ error: 'that invite code is all used up' })
   if (db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(uname, mail))
     return res.status(409).json({ error: 'that name or email already has a desk' })
   const id = uid('u')
   db.prepare('INSERT INTO users (id, username, password, email) VALUES (?, ?, ?, ?)').run(
     id,
     uname,
-    String(password),
+    bcrypt.hashSync(String(password), 10),
     mail
   )
   db.prepare('UPDATE invite_codes SET uses = uses + 1 WHERE code = ?').run(invite.code)
@@ -93,7 +115,10 @@ app.get('/api/me', auth, (req, res) => res.json(req.user))
 app.post('/api/password', auth, (req, res) => {
   const p = String((req.body || {}).password || '')
   if (p.length < 6) return res.status(400).json({ error: 'six characters at least' })
-  db.prepare('UPDATE users SET password = ? WHERE id = ?').run(p, req.user.id)
+  db.prepare('UPDATE users SET password = ? WHERE id = ?').run(bcrypt.hashSync(p, 10), req.user.id)
+  // sign out everywhere else
+  const current = (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
+  db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(req.user.id, current)
   res.json({ ok: true })
 })
 
@@ -311,8 +336,13 @@ for (const row of db
   const old = path.basename(row.header_image)
   const fresh = crypto.randomBytes(12).toString('hex') + '.' + old.split('.').pop()
   try {
-    fs.renameSync(path.join(uploadsDir, old), path.join(uploadsDir, fresh))
     db.prepare('UPDATE docs SET header_image = ? WHERE id = ?').run('/files/' + fresh, row.id)
+    try {
+      fs.renameSync(path.join(uploadsDir, old), path.join(uploadsDir, fresh))
+    } catch {
+      // file missing or rename failed — point the row back at the old name
+      db.prepare('UPDATE docs SET header_image = ? WHERE id = ?').run(row.header_image, row.id)
+    }
   } catch {}
 }
 
@@ -412,6 +442,7 @@ app.get('/api/profile/:username', (req, res) => {
 // ---------- ai ----------
 // per-user daily cap so the model bill can't be run up by one account
 const AI_DAILY_CAP = Number(process.env.AI_DAILY_CAP || 150)
+const AI_GLOBAL_DAILY_CAP = Number(process.env.AI_GLOBAL_DAILY_CAP || 1000)
 function aiLimit(req, res, next) {
   const day = new Date().toISOString().slice(0, 10)
   const row = db
@@ -419,6 +450,10 @@ function aiLimit(req, res, next) {
     .get(req.user.id, day)
   if (row && row.count >= AI_DAILY_CAP) {
     return res.status(429).json({ error: 'the pen rests — daily limit reached, back tomorrow' })
+  }
+  const global = db.prepare('SELECT COALESCE(SUM(count), 0) AS s FROM ai_usage WHERE day = ?').get(day)
+  if (global.s >= AI_GLOBAL_DAILY_CAP) {
+    return res.status(429).json({ error: 'the pen rests — the whole desk hit its daily limit' })
   }
   db.prepare(
     `INSERT INTO ai_usage (user_id, day, count) VALUES (?, ?, 1)

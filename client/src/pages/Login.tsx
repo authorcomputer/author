@@ -83,6 +83,11 @@ export default function Login() {
             />
           </div>
         )}
+        {mode === 'up' && (
+          <div className="faint" style={{ marginTop: 10, fontSize: 11 }}>
+            pick a fresh password — not one you use elsewhere.
+          </div>
+        )}
         <button className="go" type="submit">
           {mode === 'in' ? '[ enter ]' : '[ take a desk ]'}
         </button>
