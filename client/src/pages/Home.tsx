@@ -21,9 +21,12 @@ function ago(t: number) {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+const PAGE = 30
+
 export default function Home() {
   const [docs, setDocs] = useState<DocRow[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [shown, setShown] = useState(PAGE)
   const nav = useNavigate()
 
   async function load() {
@@ -55,7 +58,7 @@ export default function Home() {
         <button onClick={newDraft}>[ + new draft ]</button>
       </div>
       <div className="ascii-rule">════════════════════════════════════════════════════════════</div>
-      {docs.map((d) => (
+      {docs.slice(0, shown).map((d) => (
         <Link className="doc-row" key={d.id} to={`/d/${d.id}`}>
           {d.mine && (
             <button className="del" onClick={(e) => del(e, d.id)} title="delete">
@@ -76,27 +79,32 @@ export default function Home() {
           {d.snippet && <div className="doc-snippet">{d.snippet}</div>}
         </Link>
       ))}
+      {docs.length > shown && (
+        <div className="show-older">
+          <button className="faint" onClick={() => setShown((s) => s + 100)}>
+            · · · show {docs.length - shown} older · · ·
+          </button>
+        </div>
+      )}
       {loaded && docs.length === 0 && (
         <div className="empty-note">
           ( nothing here yet — press [ + new draft ] and begin )
         </div>
       )}
-      <div className="home-foot">
-        <div className="ascii-rule">· · · · · · · · · · · · · · · · · · · · · · · · · · · ·</div>
-        <div className="home-foot-links">
-          <Link className="faint" to="/me">
-            [ profile &amp; settings ]
-          </Link>
-          <button
-            className="faint"
-            onClick={async () => {
-              await signOut()
-              nav('/login')
-            }}
-          >
-            [ leave ]
-          </button>
-        </div>
+      <div className="corner-nav">
+        <Link className="faint" to="/me" title="profile & settings">
+          profile
+        </Link>
+        <span className="faint">·</span>
+        <button
+          className="faint"
+          onClick={async () => {
+            await signOut()
+            nav('/login')
+          }}
+        >
+          leave
+        </button>
       </div>
     </div>
   )
