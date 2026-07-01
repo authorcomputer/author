@@ -4,8 +4,7 @@ a quiet place to write — together.
 
 **author\*** is a small, open-source collaborative writing app: a calm serif page
 with live multiplayer editing, an AI writing companion, comments, versions, and
-one-click publishing. Think of it as a self-hostable take on the modern AI
-writing client.
+one-click publishing. Think of it as a self-hostable take on the modern word processor.
 
 ```
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
