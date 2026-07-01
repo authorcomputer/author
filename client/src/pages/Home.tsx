@@ -53,7 +53,10 @@ export default function Home() {
     <div className="home">
       <div className="home-head">
         <h1>
-          <Logo word size={16} /> <span className="faint">/ {username()}</span>
+          <Logo word size={16} />{' '}
+          <Link className="faint" to="/me" title="profile & settings">
+            / {username()}
+          </Link>
         </h1>
         <button onClick={newDraft}>[ + new draft ]</button>
       </div>
