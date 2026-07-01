@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { useEditor, EditorContent, Editor as TiptapEditor } from '@tiptap/react'
+import { useEditor, EditorContent, BubbleMenu, Editor as TiptapEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Collaboration from '@tiptap/extension-collaboration'
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
@@ -403,6 +403,7 @@ function EditorInner({ id }: { id: string }) {
             />
             <div className="ascii-rule">~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</div>
             <EditorContent editor={editor} />
+            {editor && <FormatBubble editor={editor} />}
           </div>
         </div>
         {panel && editor && (
@@ -420,6 +421,64 @@ function EditorInner({ id }: { id: string }) {
         <AccountModal reason={modalReason} onClose={() => setModalReason(null)} />
       )}
     </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* formatting bubble (appears over selected text)                      */
+/* ------------------------------------------------------------------ */
+
+function FormatBubble({ editor }: { editor: TiptapEditor }) {
+  function setLink() {
+    const existing = editor.getAttributes('link').href as string | undefined
+    const url = window.prompt('link to…', existing || 'https://')
+    if (url === null) return
+    if (!url.trim() || url.trim() === 'https://') {
+      editor.chain().focus().unsetLink().run()
+      return
+    }
+    const href = /^https?:\/\//i.test(url) ? url.trim() : 'https://' + url.trim()
+    editor.chain().focus().extendMarkRange('link').setLink({ href }).run()
+  }
+
+  const item = (
+    label: string,
+    active: boolean,
+    run: () => void,
+    title?: string
+  ) => (
+    <button
+      className={active ? 'on' : ''}
+      title={title}
+      onMouseDown={(e) => {
+        e.preventDefault() // keep the selection
+        run()
+      }}
+    >
+      {label}
+    </button>
+  )
+
+  return (
+    <BubbleMenu editor={editor} tippyOptions={{ duration: 120, maxWidth: 'none' }}>
+      <div className="fmt-bubble">
+        {item('b', editor.isActive('bold'), () => editor.chain().focus().toggleBold().run(), 'bold ⌘B')}
+        {item('i', editor.isActive('italic'), () => editor.chain().focus().toggleItalic().run(), 'italic ⌘I')}
+        {item('s', editor.isActive('strike'), () => editor.chain().focus().toggleStrike().run(), 'strikethrough')}
+        {item('`', editor.isActive('code'), () => editor.chain().focus().toggleCode().run(), 'code')}
+        <span className="fmt-sep">·</span>
+        {item('h1', editor.isActive('heading', { level: 1 }), () =>
+          editor.chain().focus().toggleHeading({ level: 1 }).run()
+        )}
+        {item('h2', editor.isActive('heading', { level: 2 }), () =>
+          editor.chain().focus().toggleHeading({ level: 2 }).run()
+        )}
+        {item('“', editor.isActive('blockquote'), () => editor.chain().focus().toggleBlockquote().run(), 'quote')}
+        <span className="fmt-sep">·</span>
+        {item('link', editor.isActive('link'), setLink, 'add or edit link')}
+        {item('✎ ai', false, () => window.dispatchEvent(new CustomEvent('author:open-cmdk')), 'rewrite with ⌘K')}
+      </div>
+    </BubbleMenu>
   )
 }
 
@@ -980,18 +1039,25 @@ function CommandBar({
   const selRef = useRef<{ from: number; to: number } | null>(null)
 
   useEffect(() => {
+    const openBar = () => {
+      const { from, to } = editor.state.selection
+      selRef.current = { from, to }
+      setInstruction('')
+      setOpen(true)
+    }
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
-        const { from, to } = editor.state.selection
-        selRef.current = { from, to }
-        setInstruction('')
-        setOpen(true)
+        openBar()
       }
       if (e.key === 'Escape') setOpen(false)
     }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    window.addEventListener('author:open-cmdk', openBar)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('author:open-cmdk', openBar)
+    }
   }, [editor])
 
   async function run(inst: string) {

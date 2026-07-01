@@ -274,6 +274,23 @@ input, textarea {
   cursor: pointer;
 }
 
+/* formatting bubble */
+.fmt-bubble {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  box-shadow: 3px 3px 0 rgba(28, 26, 23, 0.12);
+  padding: 6px 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.fmt-bubble button { padding: 8px 4px; margin: -8px -4px; }
+.fmt-bubble button.on { color: var(--accent); }
+.fmt-bubble .fmt-sep { color: var(--fainter); user-select: none; }
+
 /* remote cursors */
 .collaboration-cursor__caret {
   border-left: 1px solid;
