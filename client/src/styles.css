@@ -332,8 +332,54 @@ input, textarea {
 .cmdk .presets { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; color: var(--faint); font-size: 12px; }
 .cmdk .presets button:hover { color: var(--accent); }
 
+/* logo */
+.logo {
+  font-family: var(--serif);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+/* share popover */
+.share-anchor { position: relative; }
+.share-backdrop { position: fixed; inset: 0; z-index: 45; }
+.share-pop {
+  position: absolute;
+  right: 0;
+  top: 30px;
+  width: 320px;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  box-shadow: 4px 4px 0 rgba(28, 26, 23, 0.15);
+  padding: 16px 18px;
+  z-index: 50;
+  text-align: left;
+  color: var(--ink);
+  font-size: 12px;
+  cursor: default;
+}
+.share-pop .share-h { margin-bottom: 4px; }
+.share-pop .hint { color: var(--faint); margin-bottom: 8px; }
+.share-pop .share-link {
+  font-size: 11px;
+  color: var(--faint);
+  word-break: break-all;
+  margin-bottom: 8px;
+}
+
 /* published page */
-.pub-wrap { max-width: 640px; margin: 0 auto; padding: 72px 24px 120px; }
+.pub-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 20px 24px 0;
+  font-size: 12px;
+}
+.pub-head .spacer { flex: 1; }
+.pub-head .pub-pitch { font-size: 11px; }
+.pub-wrap { max-width: 640px; margin: 0 auto; padding: 56px 24px 120px; }
 .pub-title { font-family: var(--serif); font-size: 32px; font-weight: 600; margin: 0 0 4px; }
 .pub-foot { margin-top: 72px; color: var(--faint); font-size: 12px; }
 
@@ -342,6 +388,108 @@ input, textarea {
 .pub-body blockquote { margin: 0 0 1em; padding-left: 16px; border-left: 2px solid var(--fainter); }
 .pub-body pre { font-family: var(--mono); font-size: 13px; background: var(--wash); padding: 12px 14px; overflow-x: auto; }
 .pub-body span[data-comment-id] { background: none; border: none; }
+
+/* ---------- landing ---------- */
+.landing {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 28px 24px 80px;
+}
+.land-head {
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+  font-size: 12px;
+}
+.land-head .spacer { flex: 1; }
+
+.land-hero { text-align: center; padding: 96px 0 40px; }
+.land-hero h1 {
+  font-family: var(--serif);
+  font-size: 42px;
+  line-height: 1.2;
+  font-weight: 600;
+  margin: 0 0 16px;
+}
+.land-hero h1 em { font-style: italic; }
+.land-sub { color: var(--faint); margin: 0 0 36px; }
+.land-cta { font-size: 14px; }
+.land-cta:hover { color: var(--accent); }
+
+.land-rule { text-align: center; margin-bottom: 48px; }
+
+.land-mock {
+  border: 1px solid var(--ink);
+  box-shadow: 6px 6px 0 var(--wash);
+  margin-bottom: 72px;
+}
+.mock-bar {
+  display: flex;
+  gap: 12px;
+  padding: 10px 16px;
+  font-size: 11px;
+  color: var(--faint);
+  border-bottom: 1px solid var(--wash);
+}
+.mock-bar .spacer { flex: 1; }
+.mock-page { padding: 32px 40px 40px; }
+.mock-title { font-family: var(--serif); font-size: 24px; font-weight: 600; margin-bottom: 4px; }
+.mock-page .ascii-rule { margin-bottom: 18px; }
+.mock-page p {
+  font-family: var(--serif);
+  font-size: 16px;
+  line-height: 1.75;
+  margin: 0 0 1em;
+}
+.mock-caret {
+  border-left: 2px solid;
+  margin: 0 1px;
+  position: relative;
+}
+.mock-caret .mock-flag {
+  position: absolute;
+  top: -1.4em;
+  left: -2px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  color: #fff;
+  padding: 0 4px;
+  border-radius: 2px 2px 2px 0;
+  animation: flag-bob 3s ease-in-out infinite;
+}
+@keyframes flag-bob {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.land-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border-top: 1px solid var(--wash);
+  border-left: 1px solid var(--wash);
+  margin-bottom: 72px;
+}
+.land-card {
+  padding: 24px 22px 28px;
+  border-right: 1px solid var(--wash);
+  border-bottom: 1px solid var(--wash);
+}
+.land-glyph { font-size: 16px; margin-bottom: 10px; }
+.land-name { margin-bottom: 6px; }
+.land-blurb { color: var(--faint); font-size: 12px; }
+
+.land-open { text-align: center; color: var(--faint); margin-bottom: 48px; }
+.land-open .ascii-rule { margin-bottom: 20px; }
+
+.land-foot { text-align: center; }
+
+@media (max-width: 640px) {
+  .land-grid { grid-template-columns: 1fr; }
+  .land-hero h1 { font-size: 30px; }
+  .mock-page { padding: 24px 20px; }
+}
 
 @media (max-width: 900px) {
   .panel { position: fixed; right: 0; top: 0; bottom: 0; background: var(--paper); z-index: 30; box-shadow: -8px 0 24px rgba(0,0,0,0.06); }

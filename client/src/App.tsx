@@ -1,13 +1,25 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Login from './pages/Login'
 import Home from './pages/Home'
 import Editor from './pages/Editor'
 import Public from './pages/Public'
+import Landing from './pages/Landing'
 import { token } from './api'
 
 function RequireAuth({ children }: { children: JSX.Element }) {
-  if (!token()) return <Navigate to="/login" replace />
+  const location = useLocation()
+  if (!token()) {
+    const dest = location.pathname + location.search + location.hash
+    return <Navigate to={`/login?next=${encodeURIComponent(dest)}`} replace />
+  }
   return children
+}
+
+// Rendered fresh on every navigation to "/", so the auth check isn't frozen
+// at App mount (route `element`s are created once per App render).
+function RootGate() {
+  useLocation()
+  return token() ? <Home /> : <Landing />
 }
 
 export default function App() {
@@ -16,14 +28,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/p/:slug" element={<Public />} />
-        <Route
-          path="/"
-          element={
-            <RequireAuth>
-              <Home />
-            </RequireAuth>
-          }
-        />
+        <Route path="/" element={<RootGate />} />
         <Route
           path="/d/:id"
           element={
