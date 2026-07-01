@@ -453,6 +453,8 @@ input, textarea {
 .contrib-cell.lv2 { background: #e0a87e; }
 .contrib-cell.lv3 { background: #cf7b3f; }
 .contrib-cell.lv4 { background: #c2410c; }
+.contrib-cell.hovered { outline: 1px solid var(--ink); outline-offset: 0; }
+.contrib-caption { margin-top: 8px; min-height: 1.4em; }
 
 @media (max-width: 700px) {
   .profile-grid { flex-direction: column-reverse; }
