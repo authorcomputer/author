@@ -6,7 +6,13 @@ import type { Editor } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 
-export type MarkItem = { from: number; to: number; cls: string; title?: string }
+export type MarkItem = {
+  from: number
+  to: number
+  cls: string
+  title?: string
+  data?: Record<string, string>
+}
 
 const KEYS = {
   checks: new PluginKey('author-checks'),
@@ -32,6 +38,7 @@ export const Checkmarks = Extension.create({
                     Decoration.inline(i.from, i.to, {
                       class: i.cls,
                       ...(i.title ? { title: i.title } : {}),
+                      ...(i.data || {}),
                     })
                   )
                 )

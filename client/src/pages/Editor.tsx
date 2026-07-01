@@ -858,7 +858,7 @@ const CHECK_PHRASES = [
 
 function decorateIssues(editor: TiptapEditor, issues: Issue[]) {
   const items: MarkItem[] = []
-  for (const iss of issues) {
+  issues.forEach((iss, idx) => {
     const r = findRange(editor, iss.excerpt)
     if (r)
       items.push({
@@ -866,8 +866,9 @@ function decorateIssues(editor: TiptapEditor, issues: Issue[]) {
         to: r.to,
         cls: `check-mark check-${iss.kind}`,
         title: `${iss.kind} — ${iss.note}`,
+        data: { 'data-issue-idx': String(idx) },
       })
-  }
+  })
   setMarks(editor, 'checks', items)
 }
 
@@ -875,14 +876,33 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
   const [issues, setIssues] = useState<Issue[] | null>(null)
   const [running, setRunning] = useState(false)
   const [err, setErr] = useState('')
+  const [active, setActive] = useState<number | null>(null)
 
   // the pen lifts when the panel closes
   useEffect(() => () => clearMarks(editor, 'checks'), [editor])
+
+  // clicking a marked passage scrolls its note into view and lights it up
+  useEffect(() => {
+    const dom = editor.view.dom
+    const onClick = (e: Event) => {
+      const el = (e.target as HTMLElement).closest?.('[data-issue-idx]') as HTMLElement | null
+      if (!el) return
+      const idx = Number(el.getAttribute('data-issue-idx'))
+      if (Number.isNaN(idx)) return
+      setActive(idx)
+      document
+        .getElementById(`check-issue-${idx}`)
+        ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+    dom.addEventListener('click', onClick)
+    return () => dom.removeEventListener('click', onClick)
+  }, [editor])
 
   async function run() {
     setRunning(true)
     setErr('')
     setIssues(null)
+    setActive(null)
     clearMarks(editor, 'checks')
     try {
       const res = await api('/api/ai/checks', {
@@ -917,7 +937,11 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
         </div>
       )}
       {issues?.map((iss, i) => (
-        <div className="issue" key={i}>
+        <div
+          className={`issue ${active === i ? 'active' : ''}`}
+          id={`check-issue-${i}`}
+          key={i}
+        >
           <span className="kind">[{iss.kind}]</span>
           <span
             className="excerpt"
