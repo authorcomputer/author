@@ -14,9 +14,16 @@ import { api, apiStream, me, username, colorFor } from '../api'
 import { CommentMark } from '../comment-mark'
 import { track } from '../analytics'
 import AccountModal from '../AccountModal'
+import MembershipModal from '../MembershipModal'
 
 function needsAccount(e: unknown) {
   return (e as any)?.code === 'account_required'
+}
+function needsMembership(e: unknown) {
+  return (e as any)?.code === 'membership_required'
+}
+function promptMembership() {
+  window.dispatchEvent(new CustomEvent('author:membership-required'))
 }
 
 async function compressImage(f: File): Promise<Blob | null> {
@@ -130,6 +137,7 @@ function EditorInner({ id }: { id: string }) {
   const penName = username() || 'someone'
   const isGhost = !!me()?.anon
   const [modalReason, setModalReason] = useState<string | null>(null)
+  const [memberModal, setMemberModal] = useState(false)
   const [meta, setMeta] = useState<Meta | null>(null)
   const [title, setTitle] = useState('')
   const [panel, setPanel] = useState<Panel>(null)
@@ -308,7 +316,15 @@ function EditorInner({ id }: { id: string }) {
       setModalReason('that one was on the house — take a desk for more')
     }
     window.addEventListener('author:account-required', onNeed)
-    return () => window.removeEventListener('author:account-required', onNeed)
+    const onMember = () => {
+      track('membership prompt: shown')
+      setMemberModal(true)
+    }
+    window.addEventListener('author:membership-required', onMember)
+    return () => {
+      window.removeEventListener('author:account-required', onNeed)
+      window.removeEventListener('author:membership-required', onMember)
+    }
   }, [])
 
   useEffect(() => {
@@ -481,6 +497,7 @@ function EditorInner({ id }: { id: string }) {
       {modalReason && (
         <AccountModal reason={modalReason} onClose={() => setModalReason(null)} />
       )}
+      {memberModal && <MembershipModal onClose={() => setMemberModal(false)} />}
     </div>
   )
 }
@@ -708,6 +725,7 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
       )
     } catch (e: any) {
       if (needsAccount(e)) promptAccount()
+      else if (needsMembership(e)) promptMembership()
       else setOut((o) => o + `\n✗ ${e.message}`)
     } finally {
       setRunning(false)
@@ -827,6 +845,7 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
       track('ai: checks ran', { issues: (res.issues || []).length })
     } catch (e: any) {
       if (needsAccount(e)) promptAccount()
+      else if (needsMembership(e)) promptMembership()
       else setErr(e.message)
     } finally {
       setRunning(false)
@@ -884,6 +903,7 @@ function TitlesPanel({ editor, onTitle }: { editor: TiptapEditor; onTitle: (t: s
       track('ai: titles asked')
     } catch (e: any) {
       if (needsAccount(e)) promptAccount()
+      else if (needsMembership(e)) promptMembership()
       else setErr(e.message)
     } finally {
       setRunning(false)
@@ -1187,6 +1207,7 @@ function CommandBar({
       )
     } catch (e: any) {
       if (needsAccount(e)) promptAccount()
+      else if (needsMembership(e)) promptMembership()
       else current.text += `\n✗ ${e.message}`
     } finally {
       current.running = false

@@ -9,7 +9,6 @@ export default function Login() {
   const [mode, setMode] = useState<'in' | 'up'>('in')
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
-  const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
@@ -38,7 +37,7 @@ export default function Login() {
         const res = await fetch('/api/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, email, password, code }),
+          body: JSON.stringify({ email, password }),
         })
         if (!res.ok) throw new Error((await res.json()).error || 'no luck')
       }
@@ -62,22 +61,24 @@ export default function Login() {
         <div className="ascii-rule" style={{ margin: '20px 0 8px' }}>
           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         </div>
-        <div className="field">
-          <input
-            placeholder={mode === 'in' ? 'name or email' : 'pick a handle'}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoFocus
-            autoCapitalize="none"
-          />
-        </div>
-        {mode === 'up' && (
+        {mode === 'in' ? (
+          <div className="field">
+            <input
+              placeholder="name or email"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoFocus
+              autoCapitalize="none"
+            />
+          </div>
+        ) : (
           <div className="field">
             <input
               placeholder="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              autoFocus
               autoCapitalize="none"
             />
           </div>
@@ -91,18 +92,9 @@ export default function Login() {
           />
         </div>
         {mode === 'up' && (
-          <div className="field">
-            <input
-              placeholder="invite code"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              autoCapitalize="none"
-            />
-          </div>
-        )}
-        {mode === 'up' && (
           <div className="faint" style={{ marginTop: 10, fontSize: 11 }}>
-            pick a fresh password — not one you use elsewhere.
+            pick a fresh password — not one you use elsewhere. you'll get a
+            pen name you can change in settings.
           </div>
         )}
         <button className="go" type="submit" disabled={busy}>
@@ -112,7 +104,7 @@ export default function Login() {
         <div className="faint" style={{ marginTop: 40, fontSize: 11 }}>
           {mode === 'in' ? (
             <>
-              have an invite?{' '}
+              new here?{' '}
               <button
                 type="button"
                 onClick={() => {

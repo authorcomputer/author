@@ -10,10 +10,8 @@ export default function AccountModal({
   reason: string
   onClose: () => void
 }) {
-  const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [code, setCode] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -26,7 +24,7 @@ export default function AccountModal({
       const res = await fetch('/api/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, email, password, code }),
+        body: JSON.stringify({ email, password }),
       })
       if (!res.ok) throw new Error((await res.json()).error || 'no luck')
       track('user: signed up', { via: 'ghost prompt' })
@@ -51,18 +49,10 @@ export default function AccountModal({
         </div>
         <div className="field">
           <input
-            placeholder="pick a handle"
-            value={username}
-            autoFocus
-            autoCapitalize="none"
-            onChange={(e) => setUsername(e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <input
             placeholder="email"
             type="email"
             value={email}
+            autoFocus
             autoCapitalize="none"
             onChange={(e) => setEmail(e.target.value)}
           />
@@ -73,14 +63,6 @@ export default function AccountModal({
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
-        <div className="field">
-          <input
-            placeholder="invite code"
-            value={code}
-            autoCapitalize="none"
-            onChange={(e) => setCode(e.target.value)}
           />
         </div>
         <div className="ai-actions" style={{ marginTop: 18 }}>

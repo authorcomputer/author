@@ -99,36 +99,28 @@ function rateLimit(limit, windowMs) {
   }
 }
 
-// signup stays ours so invite codes gate full accounts; the actual account
-// creation is delegated to better-auth (which also links a ghost session's
-// work into the new account via the anonymous plugin)
+// open signup: email + password. a handle is generated and renameable in
+// settings. account creation is delegated to better-auth (which also links
+// a ghost session's work into the new account via the anonymous plugin)
 app.post('/api/signup', rateLimit(8, 60_000), async (req, res) => {
-  const { username, email, password, code } = req.body || {}
-  const uname = String(username || '').toLowerCase().trim()
+  const { email, password } = req.body || {}
   const mail = String(email || '').toLowerCase().trim()
-  if (!/^[a-z0-9_-]{2,24}$/.test(uname))
-    return res.status(400).json({ error: 'handle: 2–24 letters, numbers, - or _' })
   if (!/^\S+@\S+\.\S+$/.test(mail))
     return res.status(400).json({ error: 'that email looks off' })
   if (String(password || '').length < 6)
     return res.status(400).json({ error: 'password: six characters at least' })
-  const invite = db
-    .prepare('SELECT * FROM invite_codes WHERE code = ?')
-    .get(String(code || '').trim().toLowerCase())
-  if (!invite) return res.status(403).json({ error: 'that invite code doesn’t open the door' })
-  if (invite.uses >= (invite.max_uses ?? 25))
-    return res.status(403).json({ error: 'that invite code is all used up' })
-  if (db.prepare('SELECT id FROM user WHERE username = ? OR email = ?').get(uname, mail))
-    return res.status(409).json({ error: 'that name or email already has a desk' })
+  if (db.prepare('SELECT id FROM user WHERE email = ?').get(mail))
+    return res.status(409).json({ error: 'that email already has a desk' })
+  let uname
+  do {
+    uname = 'writer-' + crypto.randomBytes(2).toString('hex')
+  } while (db.prepare('SELECT id FROM user WHERE username = ?').get(uname))
   try {
     const response = await auth.api.signUpEmail({
       body: { name: uname, username: uname, email: mail, password: String(password) },
       headers: fromNodeHeaders(req.headers), // carries a ghost session for linking
       asResponse: true,
     })
-    if (response.ok) {
-      db.prepare('UPDATE invite_codes SET uses = uses + 1 WHERE code = ?').run(invite.code)
-    }
     const cookies = response.headers.getSetCookie?.() || []
     if (cookies.length) res.setHeader('Set-Cookie', cookies)
     const body = await response.text()
@@ -471,6 +463,7 @@ function profileFor(userId) {
       profile_public: 0,
       show_writing: 1,
       links: '[]',
+      member: 0,
     }
   )
 }
@@ -525,10 +518,12 @@ app.get('/api/profile/:username', (req, res) => {
 })
 
 // ---------- ai ----------
-// ghosts get one on the house; accounts get a daily allowance; the site
-// as a whole has a hard daily budget
+// ghosts get one on the house; free accounts get a monthly allowance;
+// members ($10/mo, email author@dutilh.net) get a generous daily cap; the
+// site as a whole has a hard daily budget
 const AI_DAILY_CAP = Number(process.env.AI_DAILY_CAP || 150)
 const AI_GHOST_CAP = Number(process.env.AI_GHOST_CAP || 1)
+const AI_FREE_MONTHLY = Number(process.env.AI_FREE_MONTHLY || 5)
 const AI_GLOBAL_DAILY_CAP = Number(process.env.AI_GLOBAL_DAILY_CAP || 1000)
 const AI_GHOST_IP_CAP = Number(process.env.AI_GHOST_IP_CAP || 3)
 function bumpUsage(key, day) {
@@ -546,34 +541,51 @@ function aiLimit(req, res, next) {
   if (!hasInput) return res.status(400).json({ error: 'nothing to read yet — write a little first' })
 
   const day = new Date().toISOString().slice(0, 10)
-  const accountRequired = () =>
-    res.status(403).json({
-      error: 'that one was on the house — take a desk for more',
-      code: 'account_required',
-    })
 
-  const row = db
-    .prepare('SELECT count FROM ai_usage WHERE user_id = ? AND day = ?')
-    .get(req.user.id, day)
-  const cap = req.user.anon ? AI_GHOST_CAP : AI_DAILY_CAP
-  if (row && row.count >= cap) {
-    if (req.user.anon) return accountRequired()
-    return res.status(429).json({ error: 'the pen rests — daily limit reached, back tomorrow' })
-  }
-  // fresh ghosts are free to mint — cap the IP, not just the ghost
-  const ipKey = req.user.anon ? 'ip:' + (req.headers['fly-client-ip'] || req.ip || '?') : null
-  if (ipKey) {
+  if (req.user.anon) {
+    const accountRequired = () =>
+      res.status(403).json({
+        error: 'that one was on the house — take a desk for more',
+        code: 'account_required',
+      })
+    const row = db
+      .prepare('SELECT count FROM ai_usage WHERE user_id = ? AND day = ?')
+      .get(req.user.id, day)
+    if (row && row.count >= AI_GHOST_CAP) return accountRequired()
+    // fresh ghosts are free to mint — cap the IP, not just the ghost
+    const ipKey = 'ip:' + (req.headers['fly-client-ip'] || req.ip || '?')
     const ipRow = db
       .prepare('SELECT count FROM ai_usage WHERE user_id = ? AND day = ?')
       .get(ipKey, day)
     if (ipRow && ipRow.count >= AI_GHOST_IP_CAP) return accountRequired()
+    bumpUsage(ipKey, day)
+  } else if (profileFor(req.user.id).member) {
+    const row = db
+      .prepare('SELECT count FROM ai_usage WHERE user_id = ? AND day = ?')
+      .get(req.user.id, day)
+    if (row && row.count >= AI_DAILY_CAP) {
+      return res.status(429).json({ error: 'the pen rests — daily limit reached, back tomorrow' })
+    }
+  } else {
+    const month = db
+      .prepare(
+        `SELECT COALESCE(SUM(count), 0) AS s FROM ai_usage
+         WHERE user_id = ? AND day >= date('now', 'start of month')`
+      )
+      .get(req.user.id)
+    if (month.s >= AI_FREE_MONTHLY) {
+      return res.status(403).json({
+        error: `that's the ${AI_FREE_MONTHLY} free requests this month — membership is $10/mo`,
+        code: 'membership_required',
+      })
+    }
   }
+
   const global = db.prepare('SELECT COALESCE(SUM(count), 0) AS s FROM ai_usage WHERE day = ?').get(day)
   if (global.s >= AI_GLOBAL_DAILY_CAP) {
     return res.status(429).json({ error: 'the pen rests — the whole desk hit its daily limit' })
   }
   bumpUsage(req.user.id, day)
-  if (ipKey) bumpUsage(ipKey, day)
   next()
 }
 

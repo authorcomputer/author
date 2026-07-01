@@ -22,7 +22,8 @@ Live at **[author.computer](https://author.computer)**.
 - **just start writing** — no account needed. the landing page drops you
   straight into a draft as a ghost. you get the full editor, live
   collaboration, and one model request on the house. creating an account
-  (invite-gated) carries everything you wrote with you.
+  (just an email and a password) carries everything you wrote with you —
+  five model requests a month are free, membership lifts the limit.
 - **live collaboration** — Yjs CRDTs over WebSockets; share a writing link
   and whoever opens it lands in the draft with you, named cursors and all
 - **an editor on call** — *ask* streams feedback on the draft, *checks*
@@ -50,8 +51,7 @@ npm start                  # serves everything on http://localhost:3001
 ```
 
 Two dev accounts are seeded on first run (**ink** / **quill**, password
-**author**) plus two invite codes — printed to the console — for creating
-real accounts. Open the same draft in two windows to see live editing.
+**author**). Open the same draft in two windows to see live editing.
 
 ### production notes
 
@@ -59,9 +59,11 @@ real accounts. Open the same draft in two windows to see live editing.
   mount a volume at `/app/data` so the database and images persist
 - required in production: `BETTER_AUTH_SECRET` (random 32+ bytes) and
   `BETTER_AUTH_URL` (your origin) — the server refuses to boot without them
-- model spend is capped: per-account daily (`AI_DAILY_CAP`, default 150),
-  per-site daily (`AI_GLOBAL_DAILY_CAP`, default 1000), one request per
-  ghost, per-IP ghost caps, and invite-gated signup on top
+- model spend is tiered: ghosts get one request, free accounts get
+  `AI_FREE_MONTHLY` (default 5) per month, members get `AI_DAILY_CAP`
+  (default 150) per day, and the whole site stops at
+  `AI_GLOBAL_DAILY_CAP` (default 1000) per day. flip membership with
+  `node scripts/set-member.mjs <handle> on`
 
 ## stack
 
