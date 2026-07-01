@@ -14,8 +14,26 @@ import { setupCollab } from './collab.js'
 import { aiFeedback, aiCommand, aiTitles, aiChecks } from './ai.js'
 
 const app = express()
+
+// security headers — CSP is belt-and-suspenders over the server-side
+// sanitization; websocket origins are listed explicitly for older Safari
+const WSS_ORIGINS = TRUSTED_ORIGINS.map((o) => o.replace(/^http/, 'ws')).join(' ')
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' https://cdn.seline.com",
+  "style-src 'self' 'unsafe-inline'", // react inline style attributes
+  "img-src 'self' data: blob:",
+  `connect-src 'self' https://api.seline.com ${WSS_ORIGINS}`,
+  "font-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ')
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff')
+  res.setHeader('Content-Security-Policy', CSP)
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
   next()
 })
 

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { authClient } from '../auth-client'
 import { refreshMe } from '../api'
 import { track } from '../analytics'
@@ -101,6 +101,19 @@ export default function Login() {
           {busy ? '…' : mode === 'in' ? '[ enter ]' : '[ take a desk ]'}
         </button>
         {err && <div className="err">✗ {err}</div>}
+        {mode === 'up' && (
+          <div className="faint" style={{ marginTop: 14, fontSize: 10 }}>
+            taking a desk agrees to the{' '}
+            <Link to="/terms" style={{ borderBottom: '1px dotted' }}>
+              terms
+            </Link>{' '}
+            &amp;{' '}
+            <Link to="/privacy" style={{ borderBottom: '1px dotted' }}>
+              privacy policy
+            </Link>
+            .
+          </div>
+        )}
         <div className="faint" style={{ marginTop: 40, fontSize: 11 }}>
           {mode === 'in' ? (
             <>

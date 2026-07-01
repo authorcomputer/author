@@ -600,6 +600,11 @@ input, textarea {
 
 .pub-body { font-family: var(--serif); font-size: 17px; line-height: 1.75; }
 .pub-body p { margin: 0 0 1em; }
+.pub-body h2 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 1.6em 0 0.4em;
+}
 .pub-body blockquote { margin: 0 0 1em; padding-left: 16px; border-left: 2px solid var(--fainter); }
 .pub-body pre { font-family: var(--mono); font-size: 13px; background: var(--wash); padding: 12px 14px; overflow-x: auto; }
 .pub-body span[data-comment-id] { background: none; border: none; }

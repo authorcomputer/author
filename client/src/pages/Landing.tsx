@@ -175,6 +175,14 @@ export default function Landing() {
         <Logo word size={14} /> <span className="faint">· a quiet place to write ·</span>{' '}
         <Link className="faint" to="/updates">
           updates
+        </Link>{' '}
+        <span className="faint">·</span>{' '}
+        <Link className="faint" to="/privacy">
+          privacy
+        </Link>{' '}
+        <span className="faint">·</span>{' '}
+        <Link className="faint" to="/terms">
+          terms
         </Link>
       </footer>
     </div>

@@ -8,6 +8,8 @@ import Landing from './pages/Landing'
 import Profile from './pages/Profile'
 import UserPublic from './pages/UserPublic'
 import Updates from './pages/Updates'
+import Privacy from './pages/Privacy'
+import Terms from './pages/Terms'
 import { me, refreshMe } from './api'
 
 // ghosts (anonymous sessions) may write; full pages require an account
@@ -51,6 +53,8 @@ export default function App() {
         <Route path="/p/:slug" element={<Public />} />
         <Route path="/u/:username" element={<UserPublic />} />
         <Route path="/updates" element={<Updates />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
         <Route path="/" element={<RootGate />} />
         <Route
           path="/me"
