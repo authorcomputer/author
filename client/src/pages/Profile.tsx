@@ -8,7 +8,7 @@ import { marked } from 'marked'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { prosemirrorJSONToYDoc } from 'y-prosemirror'
-import { api, token, username } from '../api'
+import { api, setAuth, token, username } from '../api'
 import { CommentMark } from '../comment-mark'
 import Logo from '../Logo'
 
@@ -165,6 +165,8 @@ function SettingsTab() {
         <div className="hint">only drafts you've explicitly published ever appear.</div>
       </div>
 
+      <HandleRow current={s.username} onRenamed={(u) => setS({ ...s, username: u })} />
+
       <PasswordRow />
 
       <div className="setting-row">
@@ -180,6 +182,51 @@ function SettingsTab() {
           <span className="hint">one per line, up to six — full https:// urls</span>
         </div>
       </div>
+    </div>
+  )
+}
+
+function HandleRow({ current, onRenamed }: { current: string; onRenamed: (u: string) => void }) {
+  const [name, setName] = useState(current)
+  const [state, setState] = useState<'idle' | 'saved' | 'error'>('idle')
+  const [msg, setMsg] = useState('')
+
+  async function rename() {
+    try {
+      const res = await api('/api/handle', {
+        method: 'POST',
+        body: JSON.stringify({ username: name }),
+      })
+      setAuth(token()!, res.username)
+      setName(res.username)
+      onRenamed(res.username)
+      setState('saved')
+      setTimeout(() => setState('idle'), 1500)
+    } catch (e: any) {
+      setMsg(e.message)
+      setState('error')
+    }
+  }
+
+  return (
+    <div className="setting-row">
+      <div style={{ marginBottom: 6 }}>handle</div>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <input
+          style={{ flex: 1, borderBottom: '1px solid var(--fainter)' }}
+          value={name}
+          autoCapitalize="none"
+          onChange={(e) => {
+            setName(e.target.value)
+            setState('idle')
+          }}
+        />
+        <button onClick={rename} disabled={!name.trim() || name.trim() === current}>
+          {state === 'saved' ? '✓ renamed' : '[ rename ]'}
+        </button>
+      </div>
+      <div className="hint">your name on cursors, comments, and your public page (/u/{current}).</div>
+      {state === 'error' && <div className="err">✗ {msg}</div>}
     </div>
   )
 }

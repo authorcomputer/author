@@ -112,6 +112,21 @@ app.post('/api/signup', rateLimit(8, 60_000), (req, res) => {
 
 app.get('/api/me', auth, (req, res) => res.json(req.user))
 
+app.post('/api/handle', auth, (req, res) => {
+  const uname = String((req.body || {}).username || '').toLowerCase().trim()
+  if (!/^[a-z0-9_-]{2,24}$/.test(uname))
+    return res.status(400).json({ error: 'handle: 2–24 letters, numbers, - or _' })
+  if (uname === req.user.username) return res.json({ username: uname })
+  if (db.prepare('SELECT id FROM users WHERE username = ?').get(uname))
+    return res.status(409).json({ error: 'that handle already has a desk' })
+  const old = req.user.username
+  db.prepare('UPDATE users SET username = ? WHERE id = ?').run(uname, req.user.id)
+  // display-name snapshots on past comments and versions follow the rename
+  db.prepare('UPDATE comments SET username = ? WHERE user_id = ?').run(uname, req.user.id)
+  db.prepare('UPDATE versions SET username = ? WHERE username = ?').run(uname, old)
+  res.json({ username: uname })
+})
+
 app.post('/api/password', auth, (req, res) => {
   const p = String((req.body || {}).password || '')
   if (p.length < 6) return res.status(400).json({ error: 'six characters at least' })
