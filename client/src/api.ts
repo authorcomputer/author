@@ -24,7 +24,10 @@ export async function api(path: string, options: RequestInit = {}) {
   })
   if (res.status === 401) {
     clearAuth()
-    if (!location.pathname.startsWith('/login')) location.href = '/login'
+    if (!location.pathname.startsWith('/login')) {
+      const dest = location.pathname + location.search
+      location.href = `/login?next=${encodeURIComponent(dest)}`
+    }
     throw new Error('signed out')
   }
   if (!res.ok) {

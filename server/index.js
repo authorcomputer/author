@@ -4,6 +4,7 @@ import http from 'node:http'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { WebSocketServer } from 'ws'
+import sanitizeHtml from 'sanitize-html'
 import { db, userByToken, docExists } from './db.js'
 import { setupCollab } from './collab.js'
 import { aiFeedback, aiCommand, aiTitles, aiChecks } from './ai.js'
@@ -12,6 +13,19 @@ const app = express()
 app.use(express.json({ limit: '5mb' }))
 
 const uid = (p) => p + '_' + crypto.randomBytes(8).toString('hex')
+
+// Doc snapshots are rendered on the public read-only page with
+// dangerouslySetInnerHTML — allow only what the editor actually produces.
+function cleanHtml(html) {
+  return sanitizeHtml(String(html || ''), {
+    allowedTags: [
+      'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'code', 'pre',
+      'blockquote', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'hr', 'span', 'a',
+    ],
+    allowedAttributes: { span: ['data-comment-id'], a: ['href'] },
+    allowedSchemes: ['http', 'https', 'mailto'],
+  })
+}
 
 // ---------- auth ----------
 function auth(req, res, next) {
@@ -111,7 +125,7 @@ app.delete('/api/docs/:id', auth, (req, res) => {
 app.post('/api/docs/:id/html', auth, (req, res) => {
   if (!docExists(req.params.id)) return res.status(404).json({ error: 'no such doc' })
   db.prepare('UPDATE docs SET html = ? WHERE id = ?').run(
-    String((req.body && req.body.html) || ''),
+    cleanHtml(req.body && req.body.html),
     req.params.id
   )
   res.json({ ok: true })
@@ -124,7 +138,7 @@ app.post('/api/docs/:id/publish', auth, (req, res) => {
   let slug = doc.slug
   if (publish && !slug) slug = crypto.randomBytes(5).toString('hex')
   if (req.body && typeof req.body.html === 'string') {
-    db.prepare('UPDATE docs SET html = ? WHERE id = ?').run(req.body.html, doc.id)
+    db.prepare('UPDATE docs SET html = ? WHERE id = ?').run(cleanHtml(req.body.html), doc.id)
   }
   db.prepare('UPDATE docs SET published = ?, slug = ? WHERE id = ?').run(
     publish ? 1 : 0,

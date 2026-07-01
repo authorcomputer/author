@@ -95,6 +95,8 @@ function EditorInner({ id }: { id: string }) {
   const [meta, setMeta] = useState<Meta | null>(null)
   const [title, setTitle] = useState('')
   const [panel, setPanel] = useState<Panel>(null)
+  const [shareOpen, setShareOpen] = useState(false)
+  const [gone, setGone] = useState(false)
   const [others, setOthers] = useState<{ name: string; color: string }[]>([])
   const [connected, setConnected] = useState(false)
 
@@ -122,19 +124,26 @@ function EditorInner({ id }: { id: string }) {
 
   // lifecycle: meta, presence, teardown
   useEffect(() => {
-    api(`/api/docs/${id}`).then((m: Meta) => {
-      setMeta(m)
-      const metaMap = ydoc.getMap('meta')
-      const applyTitle = () => setTitle((metaMap.get('title') as string) ?? '')
-      metaMap.observe(applyTitle)
-      provider.on('sync', (synced: boolean) => {
-        setConnected(synced)
-        if (synced && metaMap.get('title') === undefined && m.title && m.title !== 'untitled') {
-          metaMap.set('title', m.title)
+    api(`/api/docs/${id}`)
+      .then((m: Meta) => {
+        setMeta(m)
+        const metaMap = ydoc.getMap('meta')
+        const applyTitle = () => setTitle((metaMap.get('title') as string) ?? '')
+        metaMap.observe(applyTitle)
+        provider.on('sync', (synced: boolean) => {
+          setConnected(synced)
+          if (synced && metaMap.get('title') === undefined && m.title && m.title !== 'untitled') {
+            metaMap.set('title', m.title)
+          }
+        })
+        applyTitle()
+      })
+      .catch((e) => {
+        if (e.message !== 'signed out') {
+          setGone(true)
+          provider.destroy() // stop the websocket retry loop for a missing doc
         }
       })
-      applyTitle()
-    })
     const onAwareness = () => {
       const states = Array.from(provider.awareness.getStates().entries())
       const rest = states
@@ -190,6 +199,18 @@ function EditorInner({ id }: { id: string }) {
 
   const words = editor ? editor.storage.characterCount.words() : 0
 
+  if (gone)
+    return (
+      <div className="home">
+        <div className="empty-note">
+          ( this draft is gone — it may have been deleted )
+          <div style={{ marginTop: 16 }}>
+            <Link to="/">← back to your desk</Link>
+          </div>
+        </div>
+      </div>
+    )
+
   return (
     <div className="ed-wrap">
       <div className="ed-top">
@@ -234,20 +255,17 @@ function EditorInner({ id }: { id: string }) {
         >
           [ versions ]
         </button>
-        <button className={meta?.published ? 'on' : ''} onClick={togglePublish}>
-          {meta?.published ? '✽ published' : '[ publish ]'}
-        </button>
-        {meta?.published && meta.slug && (
+        <div className="share-anchor">
           <button
-            className="faint"
-            onClick={() => {
-              navigator.clipboard.writeText(`${location.origin}/p/${meta.slug}`)
-            }}
-            title="copy public link"
+            className={shareOpen || meta?.published ? 'on' : ''}
+            onClick={() => meta && setShareOpen(!shareOpen)}
           >
-            copy link
+            {meta?.published ? '✽ share' : '[ share ]'}
           </button>
-        )}
+          {shareOpen && meta && (
+            <SharePop meta={meta} onToggle={togglePublish} onClose={() => setShareOpen(false)} />
+          )}
+        </div>
       </div>
       <div className="ed-body">
         <div className="ed-scroll">
@@ -274,6 +292,82 @@ function EditorInner({ id }: { id: string }) {
       </div>
       {editor && <CommandBar editor={editor} setPanel={setPanel} />}
     </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* share popover                                                       */
+/* ------------------------------------------------------------------ */
+
+function SharePop({
+  meta,
+  onToggle,
+  onClose,
+}: {
+  meta: Meta
+  onToggle: () => void
+  onClose: () => void
+}) {
+  const [copied, setCopied] = useState<'write' | 'read' | null>(null)
+  const copyTimer = useRef<ReturnType<typeof setTimeout>>()
+  const writeUrl = `${location.origin}/d/${meta.id}`
+  const readUrl = meta.slug ? `${location.origin}/p/${meta.slug}` : null
+
+  useEffect(() => () => clearTimeout(copyTimer.current), [])
+
+  function copy(url: string, which: 'write' | 'read') {
+    // clipboard API is absent in non-secure contexts; the link is visible
+    // either way, so failing quietly is fine.
+    navigator.clipboard?.writeText(url).catch(() => {})
+    setCopied(which)
+    clearTimeout(copyTimer.current)
+    copyTimer.current = setTimeout(() => setCopied(null), 1600)
+  }
+
+  return (
+    <>
+      <div className="share-backdrop" onClick={onClose} />
+      <div className="share-pop">
+        <div className="share-sec">
+          <div className="share-h">✎ write together</div>
+          <div className="hint">
+            send this link. whoever opens it signs in once and lands in the draft
+            with you — live, cursors and all.
+          </div>
+          <div className="share-link">{writeUrl}</div>
+          <button onClick={() => copy(writeUrl, 'write')}>
+            {copied === 'write' ? '✓ copied' : '[ copy writing link ]'}
+          </button>
+        </div>
+        <div className="ascii-rule" style={{ margin: '12px 0' }}>
+          · · · · · · · · · · · · · · · · · · ·
+        </div>
+        <div className="share-sec">
+          <div className="share-h">✽ read only</div>
+          {meta.published && readUrl ? (
+            <>
+              <div className="hint">a quiet public page anyone can read.</div>
+              <div className="share-link">{readUrl}</div>
+              <div style={{ display: 'flex', gap: 14 }}>
+                <button onClick={() => copy(readUrl, 'read')}>
+                  {copied === 'read' ? '✓ copied' : '[ copy reading link ]'}
+                </button>
+                <button className="faint" onClick={onToggle}>
+                  unpublish
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="hint">publish a read-only page anyone can visit.</div>
+              <button onClick={onToggle}>
+                {meta.published ? '[ unpublish ]' : '[ publish ]'}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </>
   )
 }
 

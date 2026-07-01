@@ -1,12 +1,14 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { setAuth } from '../api'
+import Logo from '../Logo'
 
 export default function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [err, setErr] = useState('')
   const nav = useNavigate()
+  const [params] = useSearchParams()
 
   async function go(e: React.FormEvent) {
     e.preventDefault()
@@ -20,7 +22,9 @@ export default function Login() {
       if (!res.ok) throw new Error((await res.json()).error || 'no luck')
       const data = await res.json()
       setAuth(data.token, data.username)
-      nav('/')
+      const next = params.get('next')
+      // internal paths only — reject protocol-relative (//host) redirects
+      nav(next && next.startsWith('/') && !next.startsWith('//') ? next : '/')
     } catch (e: any) {
       setErr(e.message)
     }
@@ -30,7 +34,7 @@ export default function Login() {
     <div className="login-wrap">
       <form className="login-box" onSubmit={go}>
         <h1>
-          author<span className="accent">*</span>
+          <Logo word size={20} />
         </h1>
         <div className="faint">a quiet place to write</div>
         <div className="ascii-rule" style={{ margin: '20px 0 8px' }}>

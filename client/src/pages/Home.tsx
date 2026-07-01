@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, username, clearAuth } from '../api'
+import Logo from '../Logo'
 
 type DocRow = {
   id: string
@@ -49,8 +50,7 @@ export default function Home() {
     <div className="home">
       <div className="home-head">
         <h1>
-          author<span className="accent">*</span>{' '}
-          <span className="faint">/ {username()}</span>
+          <Logo word size={16} /> <span className="faint">/ {username()}</span>
         </h1>
         <div style={{ display: 'flex', gap: 16 }}>
           <button onClick={newDraft}>[ + new draft ]</button>
