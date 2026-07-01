@@ -356,7 +356,17 @@ function EditorInner({ id }: { id: string }) {
         )}
       </div>
       <div className="ed-body">
-        <div className="ed-scroll">
+        <div
+          className="ed-scroll"
+          onMouseDown={(e) => {
+            // clicking anywhere in the empty page focuses the pen (Notion-style)
+            const t = e.target as HTMLElement
+            if (t.classList.contains('ed-scroll') || t.classList.contains('ed-page')) {
+              e.preventDefault()
+              editor?.chain().focus('end').run()
+            }
+          }}
+        >
           <div className="ed-page">
             {headerUrl ? (
               <div className="header-wrap">

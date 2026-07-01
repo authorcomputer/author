@@ -39,6 +39,24 @@ button {
 button:hover { color: var(--accent); }
 button:disabled { color: var(--fainter); cursor: default; }
 
+/* hitslop: text buttons keep their visual size but gain a ~40px tap area
+   (padding grows the hit box, the negative margin gives the space back) */
+.ed-top button,
+.panel-tabs button,
+.ai-actions button,
+.row-actions button,
+.presets button,
+.home-head button,
+.corner-nav button,
+.corner-nav a,
+.share-pop button,
+.show-older button,
+.profile-tabs button,
+.doc-row .del {
+  padding: 10px;
+  margin: -10px;
+}
+
 input, textarea {
   font: inherit;
   color: inherit;
