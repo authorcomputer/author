@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { authClient } from '../auth-client'
 import { refreshMe } from '../api'
+import { track } from '../analytics'
 import Logo from '../Logo'
 
 export default function Login() {
@@ -41,6 +42,7 @@ export default function Login() {
         })
         if (!res.ok) throw new Error((await res.json()).error || 'no luck')
       }
+      track(mode === 'in' ? 'user: signed in' : 'user: signed up', { via: 'door' })
       await refreshMe()
       goNext()
     } catch (e: any) {

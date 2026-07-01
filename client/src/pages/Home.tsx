@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { api, username, signOut } from '../api'
 import Logo from '../Logo'
 import Chart from '../Chart'
+import { track } from '../analytics'
 
 type DocRow = {
   id: string
@@ -31,7 +32,7 @@ export default function Home() {
   const [loaded, setLoaded] = useState(false)
   const [shown, setShown] = useState(PAGE)
   const [activity, setActivity] = useState<{ day: string; count: number }[] | null>(null)
-  const [peek, setPeek] = useState<DocRow | null>(null)
+  const [peek, setPeek] = useState<{ doc: DocRow; top: number } | null>(null)
   const nav = useNavigate()
 
   async function load() {
@@ -44,6 +45,7 @@ export default function Home() {
   }, [])
 
   async function newDraft() {
+    track('doc: created', { via: 'desk' })
     const { id } = await api('/api/docs', { method: 'POST', body: '{}' })
     nav(`/d/${id}`)
   }
@@ -51,6 +53,7 @@ export default function Home() {
   async function del(e: React.MouseEvent, id: string) {
     e.preventDefault()
     if (!confirm('Toss this draft for everyone? There is no undo.')) return
+    track('doc: deleted')
     await api(`/api/docs/${id}`, { method: 'DELETE' })
     load()
   }
@@ -67,17 +70,12 @@ export default function Home() {
         <button onClick={newDraft}>[ + new draft ]</button>
       </div>
       <div className="ascii-rule">════════════════════════════════════════════════════════════</div>
-      {activity && activity.length > 0 && (
-        <div className="desk-chart">
-          <Chart activity={activity} />
-        </div>
-      )}
       {docs.slice(0, shown).map((d) => (
         <Link
           className="doc-row"
           key={d.id}
           to={`/d/${d.id}`}
-          onMouseEnter={() => setPeek(d)}
+          onMouseEnter={(e) => setPeek({ doc: d, top: e.currentTarget.getBoundingClientRect().top })}
           onMouseLeave={() => setPeek(null)}
         >
           {d.mine && (
@@ -111,12 +109,24 @@ export default function Home() {
           ( nothing here yet — press [ + new draft ] and begin )
         </div>
       )}
-      {peek && (peek.preview || peek.header_image) && (
-        <div className="desk-peek" aria-hidden>
-          {peek.header_image && <img src={peek.header_image} alt="" />}
-          <div className="peek-title">{peek.title || 'untitled'}</div>
+      <div className="desk-rail" aria-hidden>
+        {activity && activity.length > 0 && <Chart activity={activity} />}
+      </div>
+      {peek && (peek.doc.preview || peek.doc.header_image) && (
+        <div
+          className="desk-peek"
+          aria-hidden
+          style={{
+            top: Math.max(
+              activity && activity.length > 0 ? 210 : 76,
+              Math.min(peek.top - 8, window.innerHeight - 340)
+            ),
+          }}
+        >
+          {peek.doc.header_image && <img src={peek.doc.header_image} alt="" />}
+          <div className="peek-title">{peek.doc.title || 'untitled'}</div>
           <div className="ascii-rule">~~~~~~~~~~~~~~~~~~</div>
-          <div className="peek-body">{peek.preview}</div>
+          <div className="peek-body">{peek.doc.preview}</div>
         </div>
       )}
       <div className="corner-nav">

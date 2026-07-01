@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Logo from '../Logo'
 import { api, colorFor, me, refreshMe } from '../api'
+import { track } from '../analytics'
 import { authClient } from '../auth-client'
 
 const REPO_URL = 'https://github.com/authorcomputer/author'
@@ -64,11 +65,15 @@ export default function Landing() {
         const result = await authClient.signIn.anonymous()
         if (result.error) throw new Error(result.error.message)
         m = await refreshMe()
+        track('ghost: started writing')
       }
       // a returning ghost picks up their latest page instead of minting one
       if (m?.anon) {
         const docs = await api('/api/docs')
-        if (docs.length > 0) return nav(`/d/${docs[0].id}`)
+        if (docs.length > 0) {
+          track('ghost: resumed writing')
+          return nav(`/d/${docs[0].id}`)
+        }
       }
       const { id } = await api('/api/docs', { method: 'POST', body: '{}' })
       nav(`/d/${id}`)

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { refreshMe } from './api'
+import { track } from './analytics'
 
 // The one prompt a ghost sees: create an account to keep what they wrote.
 export default function AccountModal({
@@ -28,6 +29,7 @@ export default function AccountModal({
         body: JSON.stringify({ username, email, password, code }),
       })
       if (!res.ok) throw new Error((await res.json()).error || 'no luck')
+      track('user: signed up', { via: 'ghost prompt' })
       await refreshMe()
       // this browser can nag the next ghost afresh
       localStorage.removeItem('author.ghost-nagged')

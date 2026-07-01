@@ -132,21 +132,23 @@ input, textarea {
 .empty-note { color: var(--faint); margin-top: 48px; text-align: center; }
 .show-older { text-align: center; padding: 24px 0 8px; }
 
-.desk-chart {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  padding: 16px 0 6px;
-  border-bottom: 1px solid var(--wash);
+.desk-rail {
+  position: fixed;
+  right: 48px;
+  top: 76px;
+  width: 250px;
+  z-index: 14;
 }
-.desk-chart .contrib-caption { text-align: right; }
+@media (max-width: 1180px) {
+  .desk-rail { display: none; }
+}
 
 /* hover peek: a little paper card showing what the page is */
 .desk-peek {
   position: fixed;
   right: 48px;
-  top: 50%;
-  transform: translateY(-50%) rotate(0.4deg);
+  transform: rotate(0.4deg);
+  transition: top 0.18s ease;
   width: 250px;
   background: var(--paper);
   border: 1px solid var(--ink);

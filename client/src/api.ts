@@ -1,4 +1,5 @@
 import { authClient } from './auth-client'
+import { identify, track } from './analytics'
 
 // Sessions live in an httpOnly cookie (better-auth). We keep a small local
 // mirror of who's signed in so route guards can be synchronous.
@@ -31,12 +32,14 @@ export async function refreshMe(): Promise<Me | null> {
     }
     const m = await r.json()
     setMe({ username: m.username, anon: !!m.anon })
+    if (m.id) identify({ userId: m.id, username: m.username, ghost: !!m.anon })
     return me()
   } catch {
     return me()
   }
 }
 export async function signOut() {
+  track('user: signed out')
   await authClient.signOut().catch(() => {})
   setMe(null)
 }

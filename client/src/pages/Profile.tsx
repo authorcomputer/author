@@ -9,6 +9,7 @@ import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { prosemirrorJSONToYDoc } from 'y-prosemirror'
 import { api, setMe, username } from '../api'
+import { track } from '../analytics'
 import { CommentMark } from '../comment-mark'
 import Logo from '../Logo'
 
@@ -132,6 +133,10 @@ function SettingsTab() {
     const stored: Settings = await api('/api/settings')
     setS(stored)
     setLinksText(stored.links.join('\n'))
+    track('profile: settings saved', {
+      public: next.profile_public,
+      show_writing: next.show_writing,
+    })
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
   }
@@ -202,6 +207,7 @@ function ProfilePieces() {
       method: 'POST',
       body: JSON.stringify({ show: !p.on_profile }),
     })
+    track('doc: profile listing toggled', { on: res.on_profile })
     setPieces((prev) =>
       prev.map((x) => (x.id === p.id ? { ...x, on_profile: res.on_profile } : x))
     )
@@ -238,6 +244,7 @@ function HandleRow({ current, onRenamed }: { current: string; onRenamed: (u: str
         method: 'POST',
         body: JSON.stringify({ username: name }),
       })
+      track('user: handle renamed')
       setMe({ username: res.username, anon: false })
       setName(res.username)
       onRenamed(res.username)
@@ -280,6 +287,7 @@ function PasswordRow() {
   async function set() {
     try {
       await api('/api/password', { method: 'POST', body: JSON.stringify({ password: pw }) })
+      track('user: password changed')
       setPw('')
       setState('saved')
       setTimeout(() => setState('idle'), 1500)
@@ -326,6 +334,7 @@ function ImportTab() {
 
   async function run() {
     if (running || files.length === 0) return
+    track('import: ran', { files: files.length })
     setRunning(true)
     for (let i = 0; i < files.length; i++) {
       setItems((prev) => prev.map((it, j) => (j === i ? { ...it, status: 'importing' } : it)))

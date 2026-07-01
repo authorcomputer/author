@@ -8,26 +8,37 @@ versions, and one-click publishing. A modern interpretation of the word
 processor — for anyone who writes, whether that's tweets, letters to your
 landlord, or the novel.
 
+Live at **[author.computer](https://author.computer)**.
+
 ```
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  live cursors · ⌘K rewrites · checks · title ideas · comments
-  versions · read-only publishing · shared drafts by link
+  ghost writing · live cursors · ⌘K rewrites · checks · titles
+  comments · versions · publishing · profiles · .md import
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ```
 
-## features
+## how it works
 
-- **live collaboration** — Yjs CRDTs over WebSockets; share a doc link and
-  write together with named cursors, no refresh, no conflicts
-- **ask** — stream feedback on your draft, or ask it a question
-- **⌘K commands** — select text, hit ⌘K: improve, shorten, expand, fix
-  grammar, or any instruction you type; preview then replace/insert
-- **checks** — a proofread that returns clickable issues (spelling, grammar,
-  repetition, clichés, clarity)
-- **title ideas** — eight titles, one click to take one
-- **comments** — select text, leave a note; resolvable threads in the margin
-- **versions** — named snapshots, one-click restore
-- **publishing** — flip a draft public at `/p/<slug>`, read-only
+- **just start writing** — no account needed. the landing page drops you
+  straight into a draft as a ghost. you get the full editor, live
+  collaboration, and one model request on the house. creating an account
+  (invite-gated) carries everything you wrote with you.
+- **live collaboration** — Yjs CRDTs over WebSockets; share a writing link
+  and whoever opens it lands in the draft with you, named cursors and all
+- **an editor on call** — *ask* streams feedback on the draft, *checks*
+  returns clickable proofreading issues, *titles* offers eight on demand,
+  and **⌘K** rewrites any selection to instruction
+- **formatting** — select text for the floating toolbar (bold, italic,
+  underline, strike, code, headings, quotes, links), or type markdown and
+  watch it convert; the usual ⌘B/⌘I/⌘U shortcuts all work
+- **pages** — header images (any format — the browser recompresses),
+  comments in the margin, named versions with one-click restore,
+  publishing to a quiet read-only page at `/p/<slug>`
+- **profiles** — an optional public page at `/u/<handle>` with your social
+  links, a six-month writing contribution chart, and whichever published
+  pieces you choose to list (each page has its own toggle)
+- **import** — bring your writing with you: every `.md` file becomes its
+  own draft, titles from `# headings`, links and formatting intact
 
 ## running it
 
@@ -38,27 +49,43 @@ npm run build              # builds the client into dist/
 npm start                  # serves everything on http://localhost:3001
 ```
 
-Two test accounts are seeded on first run: **ink** and **quill**, password
-**author**. Open the same draft in two windows to see live editing.
+Two dev accounts are seeded on first run (**ink** / **quill**, password
+**author**) plus two invite codes — printed to the console — for creating
+real accounts. Open the same draft in two windows to see live editing.
+
+### production notes
+
+- deploys anywhere a container runs (`Dockerfile`); `fly.toml` included —
+  mount a volume at `/app/data` so the database and images persist
+- required in production: `BETTER_AUTH_SECRET` (random 32+ bytes) and
+  `BETTER_AUTH_URL` (your origin) — the server refuses to boot without them
+- model spend is capped: per-account daily (`AI_DAILY_CAP`, default 150),
+  per-site daily (`AI_GLOBAL_DAILY_CAP`, default 1000), one request per
+  ghost, per-IP ghost caps, and invite-gated signup on top
 
 ## stack
 
-| layer   | choice                                                        |
-| ------- | ------------------------------------------------------------- |
-| editor  | [Tiptap](https://tiptap.dev) (ProseMirror) + React + Vite      |
+| layer   | choice                                                            |
+| ------- | ----------------------------------------------------------------- |
+| editor  | [Tiptap](https://tiptap.dev) (ProseMirror) + React + Vite          |
 | collab  | [Yjs](https://yjs.dev) — custom y-websocket server (`server/collab.js`) |
-| server  | Express + `ws` + better-sqlite3 (single file DB in `data/`)    |
-| editor  | Anthropic API (`claude-opus-4-8`), server-side only            |
+| auth    | [Better Auth](https://better-auth.com) — cookie sessions, anonymous ghosts, username + email login |
+| server  | Express + `ws` + better-sqlite3 (single file DB in `data/`)        |
+| editor brain | Anthropic API (`claude-opus-4-8`), server-side only, never in the browser |
+| analytics | [Seline](https://seline.com) — cookie-free page views + product events; editor URLs are masked client-side |
 
 ## contributing
 
-Contributions welcome — issues, PRs, wild ideas. Some honest notes about the
-current state:
+Contributions welcome — issues, PRs, wild ideas. Useful things to know:
 
-- **auth is throwaway.** Plaintext seeded accounts, bearer tokens in
-  localStorage. Real auth (passkeys? magic links?) is the most-wanted PR.
-- `scripts/collab-test.mjs <tokenA> <tokenB> <docId>` smoke-tests two-client
-  live sync against a running server without a browser.
+- `scripts/collab-test.mjs <cookieA> <cookieB> <docId>` smoke-tests
+  two-client live sync; `scripts/import-test.mjs <cookie>` exercises the
+  markdown import pipeline; both run against any server via
+  `AUTHOR_BASE` / `AUTHOR_WS_URL`
+- security posture: bcrypt passwords, origin-checked mutations and
+  websockets, sanitized public HTML, magic-byte-validated uploads,
+  rate-limited credential endpoints — read the git history for the
+  review trail
 - keep the design quiet: whitespace over chrome, ascii accents over icons,
   serif for prose, mono for furniture.
 

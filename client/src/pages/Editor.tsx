@@ -12,6 +12,7 @@ import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { api, apiStream, me, username, colorFor } from '../api'
 import { CommentMark } from '../comment-mark'
+import { track } from '../analytics'
 import AccountModal from '../AccountModal'
 
 function needsAccount(e: unknown) {
@@ -268,10 +269,12 @@ function EditorInner({ id }: { id: string }) {
       return
     }
     const { url } = await res.json()
+    track('doc: header image set')
     ydoc.getMap('meta').set('header', url)
   }
 
   async function removeHeader() {
+    track('doc: header image removed')
     await api(`/api/docs/${id}/header`, { method: 'DELETE' }).catch(() => {})
     ydoc.getMap('meta').delete('header')
   }
@@ -283,6 +286,7 @@ function EditorInner({ id }: { id: string }) {
       method: 'POST',
       body: JSON.stringify({ publish: !meta.published, html: editor.getHTML() }),
     })
+    track(res.published ? 'doc: published' : 'doc: unpublished')
     setMeta({ ...meta, published: res.published, slug: res.slug })
   }
 
@@ -292,14 +296,17 @@ function EditorInner({ id }: { id: string }) {
       method: 'POST',
       body: JSON.stringify({ show: !meta.on_profile }),
     })
+    track('doc: profile listing toggled', { on: res.on_profile })
     setMeta({ ...meta, on_profile: res.on_profile })
   }
 
   // ghosts get exactly one nudge: on account-required errors, and once if
   // they try to leave with unsaved writing
   useEffect(() => {
-    const onNeed = () =>
+    const onNeed = () => {
+      track('account prompt: shown', { reason: 'ai limit' })
       setModalReason('that one was on the house — take a desk for more')
+    }
     window.addEventListener('author:account-required', onNeed)
     return () => window.removeEventListener('author:account-required', onNeed)
   }, [])
@@ -373,7 +380,8 @@ function EditorInner({ id }: { id: string }) {
           className={panel === 'versions' ? 'on' : ''}
           onClick={() =>
             isGhost
-              ? setModalReason('versions keep what you had — that needs a desk')
+              ? (track('account prompt: shown', { reason: 'versions' }),
+                setModalReason('versions keep what you had — that needs a desk'))
               : setPanel(panel === 'versions' ? null : 'versions')
           }
         >
@@ -382,7 +390,10 @@ function EditorInner({ id }: { id: string }) {
         {isGhost ? (
           <button
             className="accent"
-            onClick={() => setModalReason('keep this page — it only exists in this tab for now')}
+            onClick={() => {
+              track('account prompt: shown', { reason: 'save to desk' })
+              setModalReason('keep this page — it only exists in this tab for now')
+            }}
           >
             [ save to a desk ]
           </button>
@@ -556,6 +567,7 @@ function SharePop({
   useEffect(() => () => clearTimeout(copyTimer.current), [])
 
   function copy(url: string, which: 'write' | 'read') {
+    track('share: link copied', { kind: which === 'write' ? 'writing' : 'reading' })
     // clipboard API is absent in non-secure contexts; the link is visible
     // either way, so failing quietly is fine.
     navigator.clipboard?.writeText(url).catch(() => {})
@@ -685,6 +697,7 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
 
   async function run() {
     if (running) return
+    track('ai: feedback asked', { question: !!question.trim() })
     setOut('')
     setRunning(true)
     try {
@@ -703,6 +716,7 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
 
   function applyCmd(mode: 'replace' | 'insert') {
     if (!cmd) return
+    track('ai: command applied', { mode })
     const text = cmd.text.trim()
     const docSize = editor.state.doc.content.size
 
@@ -810,6 +824,7 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
         body: JSON.stringify({ text: docText(editor) }),
       })
       setIssues(res.issues || [])
+      track('ai: checks ran', { issues: (res.issues || []).length })
     } catch (e: any) {
       if (needsAccount(e)) promptAccount()
       else setErr(e.message)
@@ -866,6 +881,7 @@ function TitlesPanel({ editor, onTitle }: { editor: TiptapEditor; onTitle: (t: s
         body: JSON.stringify({ text: docText(editor) }),
       })
       setTitles(res.titles || [])
+      track('ai: titles asked')
     } catch (e: any) {
       if (needsAccount(e)) promptAccount()
       else setErr(e.message)
@@ -884,7 +900,14 @@ function TitlesPanel({ editor, onTitle }: { editor: TiptapEditor; onTitle: (t: s
       </button>
       {err && <div className="err">✗ {err}</div>}
       {titles?.map((t, i) => (
-        <div className="title-idea" key={i} onClick={() => onTitle(t)}>
+        <div
+          className="title-idea"
+          key={i}
+          onClick={() => {
+            track('ai: title taken')
+            onTitle(t)
+          }}
+        >
           {i + 1}. {t}
         </div>
       ))}
@@ -922,6 +945,7 @@ function CommentsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
       method: 'POST',
       body: JSON.stringify({ id: cid, text, quote: draft.quote }),
     })
+    track('comment: posted')
     editor.chain().setTextSelection(draft).setComment(cid).setTextSelection(draft.to).run()
     setDraft(null)
     setText('')
@@ -929,6 +953,7 @@ function CommentsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
   }
 
   async function resolve(cid: string) {
+    track('comment: resolved')
     await api(`/api/comments/${cid}/resolve`, { method: 'POST' })
     removeCommentMark(editor, cid)
     load()
@@ -1032,6 +1057,7 @@ function VersionsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
       method: 'POST',
       body: JSON.stringify({ name, content: editor.getJSON() }),
     })
+    track('version: saved')
     setName('')
     load()
   }
@@ -1039,6 +1065,7 @@ function VersionsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
   async function restore(vid: string) {
     if (!confirm('Restore this version? Current text is replaced (save a version first if unsure).'))
       return
+    track('version: restored')
     const v = await api(`/api/versions/${vid}`)
     editor.commands.setContent(v.content)
   }
@@ -1125,6 +1152,9 @@ function CommandBar({
 
   async function run(inst: string) {
     if (!inst.trim()) return
+    track('ai: command ran', {
+      preset: PRESETS.includes(inst) ? inst : 'custom',
+    })
     setOpen(false)
     setPanel('ai')
     const range = selRef.current
