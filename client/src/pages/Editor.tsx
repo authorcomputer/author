@@ -17,6 +17,26 @@ import AccountModal from '../AccountModal'
 function needsAccount(e: unknown) {
   return (e as any)?.code === 'account_required'
 }
+
+async function compressImage(f: File): Promise<Blob | null> {
+  try {
+    const bmp = await createImageBitmap(f)
+    const scale = Math.min(1, 2000 / bmp.width)
+    const w = Math.max(1, Math.round(bmp.width * scale))
+    const h = Math.max(1, Math.round(bmp.height * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')!
+    ctx.fillStyle = '#fdfcf9' // transparent pngs land on paper, not black
+    ctx.fillRect(0, 0, w, h)
+    ctx.drawImage(bmp, 0, 0, w, h)
+    bmp.close()
+    return await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.88))
+  } catch {
+    return null
+  }
+}
 function promptAccount() {
   window.dispatchEvent(new CustomEvent('author:account-required'))
 }
@@ -29,6 +49,7 @@ type Meta = {
   mine: boolean
   owner: string
   header_image?: string | null
+  on_profile?: boolean
 }
 type Comment = {
   id: string
@@ -219,18 +240,31 @@ function EditorInner({ id }: { id: string }) {
     const f = e.target.files?.[0]
     e.target.value = ''
     if (!f) return
-    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(f.type)) {
-      alert('jpeg, png, webp, or gif please')
-      return
+    const NATIVE = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+    let body: Blob = f
+    let type = f.type
+    // keep small gifs animated; everything else gets resized + recompressed
+    // in the browser so heic photos and 20mb screenshots both just work
+    if (!(type === 'image/gif' && f.size < 6_000_000)) {
+      if (!NATIVE.includes(type) || f.size > 2_500_000) {
+        const squeezed = await compressImage(f)
+        if (squeezed) {
+          body = squeezed
+          type = 'image/jpeg'
+        } else if (!NATIVE.includes(type)) {
+          alert('couldn’t read that image — jpeg, png, webp, or gif work best')
+          return
+        }
+      }
     }
     const res = await fetch(`/api/docs/${id}/header`, {
       method: 'POST',
-      headers: { 'Content-Type': f.type },
-      body: f,
+      headers: { 'Content-Type': type },
+      body,
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
-      alert((err as any).error || 'upload failed')
+      alert((err as any).error || 'upload failed — try a smaller image')
       return
     }
     const { url } = await res.json()
@@ -250,6 +284,15 @@ function EditorInner({ id }: { id: string }) {
       body: JSON.stringify({ publish: !meta.published, html: editor.getHTML() }),
     })
     setMeta({ ...meta, published: res.published, slug: res.slug })
+  }
+
+  async function toggleOnProfile() {
+    if (!meta) return
+    const res = await api(`/api/docs/${id}/profile`, {
+      method: 'POST',
+      body: JSON.stringify({ show: !meta.on_profile }),
+    })
+    setMeta({ ...meta, on_profile: res.on_profile })
   }
 
   // ghosts get exactly one nudge: on account-required errors, and once if
@@ -352,7 +395,12 @@ function EditorInner({ id }: { id: string }) {
               {meta?.published ? '✽ share' : '[ share ]'}
             </button>
             {shareOpen && meta && (
-              <SharePop meta={meta} onToggle={togglePublish} onClose={() => setShareOpen(false)} />
+              <SharePop
+                meta={meta}
+                onToggle={togglePublish}
+                onProfileToggle={toggleOnProfile}
+                onClose={() => setShareOpen(false)}
+              />
             )}
           </div>
         )}
@@ -378,7 +426,7 @@ function EditorInner({ id }: { id: string }) {
                     [ change ]
                     <input
                       type="file"
-                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      accept="image/*"
                       style={{ display: 'none' }}
                       onChange={uploadHeader}
                     />
@@ -391,7 +439,7 @@ function EditorInner({ id }: { id: string }) {
                 [ + header image ]
                 <input
                   type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  accept="image/*"
                   style={{ display: 'none' }}
                   onChange={uploadHeader}
                 />
@@ -492,10 +540,12 @@ function FormatBubble({ editor }: { editor: TiptapEditor }) {
 function SharePop({
   meta,
   onToggle,
+  onProfileToggle,
   onClose,
 }: {
   meta: Meta
   onToggle: () => void
+  onProfileToggle: () => void
   onClose: () => void
 }) {
   const [copied, setCopied] = useState<'write' | 'read' | null>(null)
@@ -546,6 +596,16 @@ function SharePop({
                   unpublish
                 </button>
               </div>
+              {meta.mine && (
+                <div style={{ marginTop: 10 }}>
+                  <button onClick={onProfileToggle}>
+                    {meta.on_profile ? '[✓]' : '[ ]'} listed on your profile
+                  </button>
+                  <div className="hint">
+                    when on, this page appears under your public profile’s writing.
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <>

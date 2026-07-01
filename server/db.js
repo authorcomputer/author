@@ -94,6 +94,7 @@ addColumn('users', 'show_writing INTEGER DEFAULT 1')
 addColumn('users', "links TEXT DEFAULT '[]'")
 addColumn('users', 'email TEXT')
 addColumn('docs', 'header_image TEXT')
+addColumn('docs', 'on_profile INTEGER DEFAULT 1')
 addColumn('invite_codes', 'max_uses INTEGER DEFAULT 25')
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL')
 

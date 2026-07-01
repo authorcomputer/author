@@ -161,6 +161,7 @@ function SettingsTab() {
           {s.show_writing ? '[✓]' : '[ ]'} list published pieces on profile
         </button>
         <div className="hint">only drafts you've explicitly published ever appear.</div>
+        {s.show_writing && <ProfilePieces />}
       </div>
 
       <HandleRow current={s.username} onRenamed={(u) => setS({ ...s, username: u })} />
@@ -180,6 +181,48 @@ function SettingsTab() {
           <span className="hint">one per line, up to six — full https:// urls</span>
         </div>
       </div>
+    </div>
+  )
+}
+
+type PieceRow = { id: string; title: string; published: boolean; mine: boolean; on_profile: boolean }
+
+// pick which published pieces appear on the public profile
+function ProfilePieces() {
+  const [pieces, setPieces] = useState<PieceRow[]>([])
+
+  useEffect(() => {
+    api('/api/docs').then((docs: PieceRow[]) =>
+      setPieces(docs.filter((d) => d.mine && d.published))
+    )
+  }, [])
+
+  async function toggle(p: PieceRow) {
+    const res = await api(`/api/docs/${p.id}/profile`, {
+      method: 'POST',
+      body: JSON.stringify({ show: !p.on_profile }),
+    })
+    setPieces((prev) =>
+      prev.map((x) => (x.id === p.id ? { ...x, on_profile: res.on_profile } : x))
+    )
+  }
+
+  if (pieces.length === 0)
+    return (
+      <div className="hint" style={{ marginTop: 10 }}>
+        ( nothing published yet — publish a page from its [ share ] menu and choose here )
+      </div>
+    )
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      {pieces.map((p) => (
+        <div key={p.id} style={{ padding: '4px 0' }}>
+          <button onClick={() => toggle(p)}>
+            {p.on_profile ? '[✓]' : '[ ]'} {p.title || 'untitled'}
+          </button>
+        </div>
+      ))}
     </div>
   )
 }

@@ -199,6 +199,7 @@ app.get('/api/docs', requireUser, (req, res) => {
         slug: r.slug,
         mine: !!r.mine,
         header_image: r.header_image || null,
+        on_profile: !!r.on_profile,
         snippet: text.slice(0, 140),
         preview: text.slice(0, 420),
       }
@@ -236,6 +237,7 @@ function docMeta(doc, userId) {
     mine: doc.owner_id === userId,
     owner: owner?.username || 'a ghost',
     header_image: doc.header_image || null,
+    on_profile: !!doc.on_profile,
   }
 }
 
@@ -286,6 +288,16 @@ app.post('/api/docs/:id/html', requireUser, (req, res) => {
      ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1`
   ).run(req.user.id, day)
   res.json({ ok: true })
+})
+
+// whether a published page is listed on the owner's public profile
+app.post('/api/docs/:id/profile', requireFullUser, (req, res) => {
+  const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
+  if (!doc) return res.status(404).json({ error: 'no such doc' })
+  if (doc.owner_id !== req.user.id) return res.status(403).json({ error: 'not yours' })
+  const show = !!(req.body && req.body.show)
+  db.prepare('UPDATE docs SET on_profile = ? WHERE id = ?').run(show ? 1 : 0, doc.id)
+  res.json({ on_profile: show })
 })
 
 // publishing is "keeping" — full accounts only
@@ -413,7 +425,7 @@ function removeHeaderFile(url) {
 app.post(
   '/api/docs/:id/header',
   requireUser,
-  express.raw({ type: Object.keys(IMG_EXT), limit: '8mb' }),
+  express.raw({ type: Object.keys(IMG_EXT), limit: '12mb' }),
   (req, res) => {
     const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
     if (!doc) return res.status(404).json({ error: 'no such doc' })
@@ -498,7 +510,8 @@ app.get('/api/profile/:username', (req, res) => {
     ? db
         .prepare(
           `SELECT title, slug, updated_at FROM docs
-           WHERE owner_id = ? AND published = 1 ORDER BY updated_at DESC`
+           WHERE owner_id = ? AND published = 1 AND on_profile = 1
+           ORDER BY updated_at DESC`
         )
         .all(u.id)
     : []
@@ -571,8 +584,11 @@ app.post('/api/ai/checks', requireUser, aiLimit, aiChecks)
 
 // ---------- static client ----------
 const dist = path.join(process.cwd(), 'dist')
-app.use(express.static(dist))
+// hashed assets cache forever; index.html must always revalidate so open
+// tabs pick up new bundles on refresh
+app.use(express.static(dist, { index: false, maxAge: '365d', immutable: true }))
 app.get(/^\/(?!api\/|ws\/).*/, (req, res) => {
+  res.set('Cache-Control', 'no-cache')
   res.sendFile(path.join(dist, 'index.html'))
 })
 
