@@ -4,7 +4,7 @@ import { WebsocketProvider } from 'y-websocket'
 import WebSocket from 'ws'
 
 const [tokenA, tokenB, docId] = process.argv.slice(2)
-const url = 'ws://localhost:3001/ws'
+const url = process.env.AUTHOR_WS_URL || 'ws://localhost:3001/ws'
 
 function makeClient(name, token) {
   const doc = new Y.Doc()

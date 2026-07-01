@@ -128,6 +128,12 @@ app.post('/api/docs/:id/html', auth, (req, res) => {
     cleanHtml(req.body && req.body.html),
     req.params.id
   )
+  // writing activity, for the profile contribution chart (UTC days)
+  const day = new Date().toISOString().slice(0, 10)
+  db.prepare(
+    `INSERT INTO activity (user_id, day, count) VALUES (?, ?, 1)
+     ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1`
+  ).run(req.user.id, day)
   res.json({ ok: true })
 })
 
@@ -210,6 +216,66 @@ app.get('/api/versions/:vid', auth, (req, res) => {
   const row = db.prepare('SELECT * FROM versions WHERE id = ?').get(req.params.vid)
   if (!row) return res.status(404).json({ error: 'no such version' })
   res.json({ id: row.id, name: row.name, content: JSON.parse(row.content) })
+})
+
+// ---------- profile & settings ----------
+function safeLinks(raw) {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((l) => typeof l === 'string')
+    .map((l) => l.trim())
+    .filter((l) => /^https?:\/\/\S+$/i.test(l) && l.length <= 200)
+    .slice(0, 6)
+}
+
+app.get('/api/settings', auth, (req, res) => {
+  const row = db
+    .prepare('SELECT profile_public, show_writing, links FROM users WHERE id = ?')
+    .get(req.user.id)
+  res.json({
+    username: req.user.username,
+    profile_public: !!row.profile_public,
+    show_writing: !!row.show_writing,
+    links: JSON.parse(row.links || '[]'),
+  })
+})
+
+app.post('/api/settings', auth, (req, res) => {
+  const { profile_public, show_writing, links } = req.body || {}
+  db.prepare('UPDATE users SET profile_public = ?, show_writing = ?, links = ? WHERE id = ?').run(
+    profile_public ? 1 : 0,
+    show_writing ? 1 : 0,
+    JSON.stringify(safeLinks(links)),
+    req.user.id
+  )
+  res.json({ ok: true })
+})
+
+app.get('/api/profile/:username', (req, res) => {
+  const u = db
+    .prepare('SELECT * FROM users WHERE username = ?')
+    .get(String(req.params.username || '').toLowerCase())
+  if (!u || !u.profile_public) return res.status(404).json({ error: 'no such profile' })
+  const activity = db
+    .prepare(
+      `SELECT day, count FROM activity WHERE user_id = ? AND day >= date('now', '-181 day')`
+    )
+    .all(u.id)
+  const articles = u.show_writing
+    ? db
+        .prepare(
+          `SELECT title, slug, updated_at FROM docs
+           WHERE owner_id = ? AND published = 1 ORDER BY updated_at DESC`
+        )
+        .all(u.id)
+    : []
+  res.json({
+    username: u.username,
+    links: JSON.parse(u.links || '[]'),
+    show_writing: !!u.show_writing,
+    activity,
+    articles,
+  })
 })
 
 // ---------- ai ----------

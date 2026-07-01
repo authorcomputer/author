@@ -1,0 +1,257 @@
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import StarterKit from '@tiptap/starter-kit'
+import TiptapLink from '@tiptap/extension-link'
+import { getSchema } from '@tiptap/core'
+import { generateJSON } from '@tiptap/html'
+import { marked } from 'marked'
+import * as Y from 'yjs'
+import { WebsocketProvider } from 'y-websocket'
+import { prosemirrorJSONToYDoc } from 'y-prosemirror'
+import { api, token, username } from '../api'
+import { CommentMark } from '../comment-mark'
+import Logo from '../Logo'
+
+type Settings = {
+  username: string
+  profile_public: boolean
+  show_writing: boolean
+  links: string[]
+}
+
+type ImportItem = {
+  name: string
+  status: 'waiting' | 'importing' | 'done' | 'failed'
+  docId?: string
+  error?: string
+}
+
+const IMPORT_EXTENSIONS = [StarterKit, TiptapLink, CommentMark]
+const importSchema = getSchema(IMPORT_EXTENSIONS)
+
+async function importMarkdownFile(file: File): Promise<string> {
+  const text = await file.text()
+  let title = file.name.replace(/\.(md|markdown|txt)$/i, '')
+  let md = text
+  // a leading "# heading" becomes the title
+  const m = md.match(/^#[ \t]+(.+)[ \t]*\r?\n+/)
+  if (m) {
+    title = m[1].trim()
+    md = md.slice(m[0].length)
+  }
+  const html = await marked.parse(md)
+
+  const { id } = await api('/api/docs', { method: 'POST', body: JSON.stringify({ title }) })
+
+  // markdown → tiptap JSON → a Yjs update, merged into the doc's live room
+  const json = generateJSON(html, IMPORT_EXTENSIONS)
+  const update = Y.encodeStateAsUpdate(prosemirrorJSONToYDoc(importSchema, json, 'default'))
+
+  const ydoc = new Y.Doc()
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const provider = new WebsocketProvider(`${proto}//${location.host}/ws`, id, ydoc, {
+    params: { token: token() || '' },
+  })
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('sync timeout')), 10000)
+      provider.once('sync', () => {
+        clearTimeout(t)
+        resolve()
+      })
+    })
+    Y.applyUpdate(ydoc, update)
+    ydoc.getMap('meta').set('title', title)
+    await api(`/api/docs/${id}/html`, { method: 'POST', body: JSON.stringify({ html }) })
+    // give the websocket a beat to flush before tearing down
+    await new Promise((r) => setTimeout(r, 400))
+  } catch (e) {
+    // don't leave an orphaned empty draft behind on a failed import
+    await api(`/api/docs/${id}`, { method: 'DELETE' }).catch(() => {})
+    throw e
+  } finally {
+    provider.destroy()
+    ydoc.destroy()
+  }
+  return id
+}
+
+export default function Profile() {
+  const [tab, setTab] = useState<'settings' | 'import'>('settings')
+  return (
+    <div className="home">
+      <div className="home-head">
+        <h1>
+          <Link to="/">
+            <Logo word size={16} />
+          </Link>{' '}
+          <span className="faint">/ {username()}</span>
+        </h1>
+        <Link to="/">← desk</Link>
+      </div>
+      <div className="ascii-rule">════════════════════════════════════════════════════════════</div>
+      <div className="profile-tabs">
+        <button className={tab === 'settings' ? 'on' : ''} onClick={() => setTab('settings')}>
+          [ settings ]
+        </button>
+        <button className={tab === 'import' ? 'on' : ''} onClick={() => setTab('import')}>
+          [ import ]
+        </button>
+      </div>
+      {tab === 'settings' ? <SettingsTab /> : <ImportTab />}
+    </div>
+  )
+}
+
+function SettingsTab() {
+  const [s, setS] = useState<Settings | null>(null)
+  const [linksText, setLinksText] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    api('/api/settings').then((res: Settings) => {
+      setS(res)
+      setLinksText(res.links.join('\n'))
+    })
+  }, [])
+
+  if (!s) return null
+
+  async function save(next: Settings) {
+    setS(next)
+    await api('/api/settings', {
+      method: 'POST',
+      body: JSON.stringify({
+        profile_public: next.profile_public,
+        show_writing: next.show_writing,
+        links: linksText
+          .split('\n')
+          .map((l) => l.trim())
+          .filter(Boolean),
+      }),
+    })
+    // resync with what the server actually kept (invalid links are filtered)
+    const stored: Settings = await api('/api/settings')
+    setS(stored)
+    setLinksText(stored.links.join('\n'))
+    setSaved(true)
+    setTimeout(() => setSaved(false), 1500)
+  }
+
+  return (
+    <div className="profile-body">
+      <div className="setting-row">
+        <button onClick={() => save({ ...s, profile_public: !s.profile_public })}>
+          {s.profile_public ? '[✓]' : '[ ]'} public profile
+        </button>
+        <div className="hint">
+          a page anyone can visit — your published writing, your links, and your writing streak.
+          {s.profile_public && (
+            <>
+              {' '}
+              yours is at{' '}
+              <Link className="accent" to={`/u/${s.username}`}>
+                /u/{s.username}
+              </Link>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="setting-row">
+        <button onClick={() => save({ ...s, show_writing: !s.show_writing })}>
+          {s.show_writing ? '[✓]' : '[ ]'} list published pieces on profile
+        </button>
+        <div className="hint">only drafts you've explicitly published ever appear.</div>
+      </div>
+
+      <div className="setting-row">
+        <div style={{ marginBottom: 6 }}>social links</div>
+        <textarea
+          className="ask-box"
+          placeholder={'https://x.com/you\nhttps://github.com/you'}
+          value={linksText}
+          onChange={(e) => setLinksText(e.target.value)}
+        />
+        <div className="ai-actions">
+          <button onClick={() => save(s)}>{saved ? '✓ saved' : '[ save links ]'}</button>
+          <span className="hint">one per line, up to six — full https:// urls</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ImportTab() {
+  const [items, setItems] = useState<ImportItem[]>([])
+  const [files, setFiles] = useState<File[]>([])
+  const [running, setRunning] = useState(false)
+
+  function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    if (running) return
+    const list = Array.from(e.target.files || [])
+    setFiles(list)
+    setItems(list.map((f) => ({ name: f.name, status: 'waiting' })))
+  }
+
+  async function run() {
+    if (running || files.length === 0) return
+    setRunning(true)
+    for (let i = 0; i < files.length; i++) {
+      setItems((prev) => prev.map((it, j) => (j === i ? { ...it, status: 'importing' } : it)))
+      try {
+        const docId = await importMarkdownFile(files[i])
+        setItems((prev) => prev.map((it, j) => (j === i ? { ...it, status: 'done', docId } : it)))
+      } catch (e: any) {
+        setItems((prev) =>
+          prev.map((it, j) => (j === i ? { ...it, status: 'failed', error: e.message } : it))
+        )
+      }
+    }
+    setRunning(false)
+  }
+
+  return (
+    <div className="profile-body">
+      <div className="hint" style={{ marginBottom: 14 }}>
+        bring your writing with you — each .md file becomes its own draft. a leading
+        “# heading” is used as the title.
+      </div>
+      <label className="file-pick">
+        [ choose .md files ]
+        <input
+          type="file"
+          multiple
+          accept=".md,.markdown,.txt"
+          style={{ display: 'none' }}
+          onChange={pick}
+        />
+      </label>
+      {items.length > 0 && (
+        <>
+          <div style={{ marginTop: 16 }}>
+            {items.map((it, i) => (
+              <div className="import-row" key={i}>
+                <span className="faint">
+                  {it.status === 'done' && '✓ '}
+                  {it.status === 'failed' && '✗ '}
+                  {it.status === 'importing' && '… '}
+                  {it.status === 'waiting' && '· '}
+                </span>
+                {it.docId ? <Link to={`/d/${it.docId}`}>{it.name}</Link> : it.name}
+                {it.error && <span className="err"> — {it.error}</span>}
+              </div>
+            ))}
+          </div>
+          <div className="ai-actions">
+            <button onClick={run} disabled={running}>
+              {running
+                ? 'importing…'
+                : `[ import ${files.length} file${files.length === 1 ? '' : 's'} ]`}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}

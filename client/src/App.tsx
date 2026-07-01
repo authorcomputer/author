@@ -4,6 +4,8 @@ import Home from './pages/Home'
 import Editor from './pages/Editor'
 import Public from './pages/Public'
 import Landing from './pages/Landing'
+import Profile from './pages/Profile'
+import UserPublic from './pages/UserPublic'
 import { token } from './api'
 
 function RequireAuth({ children }: { children: JSX.Element }) {
@@ -28,7 +30,16 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/p/:slug" element={<Public />} />
+        <Route path="/u/:username" element={<UserPublic />} />
         <Route path="/" element={<RootGate />} />
+        <Route
+          path="/me"
+          element={
+            <RequireAuth>
+              <Profile />
+            </RequireAuth>
+          }
+        />
         <Route
           path="/d/:id"
           element={

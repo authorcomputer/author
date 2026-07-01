@@ -53,7 +53,25 @@ CREATE TABLE IF NOT EXISTS versions (
   content TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS activity (
+  user_id TEXT NOT NULL,
+  day TEXT NOT NULL,
+  count INTEGER DEFAULT 0,
+  PRIMARY KEY (user_id, day)
+);
 `)
+
+// lightweight migrations for pre-existing databases
+function addColumn(table, ddl) {
+  try {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`)
+  } catch {
+    /* column already exists */
+  }
+}
+addColumn('users', 'profile_public INTEGER DEFAULT 0')
+addColumn('users', 'show_writing INTEGER DEFAULT 1')
+addColumn('users', "links TEXT DEFAULT '[]'")
 
 // Seed the two test accounts (uniform password: "author")
 const count = db.prepare('SELECT COUNT(*) AS c FROM users').get()

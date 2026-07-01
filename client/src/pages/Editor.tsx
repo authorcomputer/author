@@ -6,6 +6,7 @@ import Collaboration from '@tiptap/extension-collaboration'
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
+import TiptapLink from '@tiptap/extension-link'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { api, apiStream, token, username, colorFor } from '../api'
@@ -118,6 +119,7 @@ function EditorInner({ id }: { id: string }) {
       }),
       Placeholder.configure({ placeholder: 'begin…' }),
       CharacterCount,
+      TiptapLink.configure({ openOnClick: false, autolink: true }),
       CommentMark,
     ],
   })
