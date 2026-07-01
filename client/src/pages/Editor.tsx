@@ -7,6 +7,7 @@ import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
 import TiptapLink from '@tiptap/extension-link'
+import Underline from '@tiptap/extension-underline'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { api, apiStream, me, username, colorFor } from '../api'
@@ -134,6 +135,7 @@ function EditorInner({ id }: { id: string }) {
       Placeholder.configure({ placeholder: 'begin…' }),
       CharacterCount,
       TiptapLink.configure({ openOnClick: false, autolink: true }),
+      Underline,
       CommentMark,
     ],
   })
@@ -464,7 +466,8 @@ function FormatBubble({ editor }: { editor: TiptapEditor }) {
       <div className="fmt-bubble">
         {item('b', editor.isActive('bold'), () => editor.chain().focus().toggleBold().run(), 'bold ⌘B')}
         {item('i', editor.isActive('italic'), () => editor.chain().focus().toggleItalic().run(), 'italic ⌘I')}
-        {item('s', editor.isActive('strike'), () => editor.chain().focus().toggleStrike().run(), 'strikethrough')}
+        {item('u', editor.isActive('underline'), () => editor.chain().focus().toggleUnderline().run(), 'underline ⌘U')}
+        {item('s', editor.isActive('strike'), () => editor.chain().focus().toggleStrike().run(), 'strikethrough ⌘⇧X')}
         {item('`', editor.isActive('code'), () => editor.chain().focus().toggleCode().run(), 'code')}
         <span className="fmt-sep">·</span>
         {item('h1', editor.isActive('heading', { level: 1 }), () =>
