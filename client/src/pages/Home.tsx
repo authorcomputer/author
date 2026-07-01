@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, username, signOut } from '../api'
 import Logo from '../Logo'
+import Chart from '../Chart'
 
 type DocRow = {
   id: string
@@ -10,7 +11,9 @@ type DocRow = {
   published: boolean
   slug: string | null
   mine: boolean
+  header_image: string | null
   snippet: string
+  preview: string
 }
 
 function ago(t: number) {
@@ -27,6 +30,8 @@ export default function Home() {
   const [docs, setDocs] = useState<DocRow[]>([])
   const [loaded, setLoaded] = useState(false)
   const [shown, setShown] = useState(PAGE)
+  const [activity, setActivity] = useState<{ day: string; count: number }[] | null>(null)
+  const [peek, setPeek] = useState<DocRow | null>(null)
   const nav = useNavigate()
 
   async function load() {
@@ -35,6 +40,7 @@ export default function Home() {
   }
   useEffect(() => {
     load()
+    api('/api/activity').then(setActivity).catch(() => {})
   }, [])
 
   async function newDraft() {
@@ -61,8 +67,19 @@ export default function Home() {
         <button onClick={newDraft}>[ + new draft ]</button>
       </div>
       <div className="ascii-rule">════════════════════════════════════════════════════════════</div>
+      {activity && activity.length > 0 && (
+        <div className="desk-chart">
+          <Chart activity={activity} />
+        </div>
+      )}
       {docs.slice(0, shown).map((d) => (
-        <Link className="doc-row" key={d.id} to={`/d/${d.id}`}>
+        <Link
+          className="doc-row"
+          key={d.id}
+          to={`/d/${d.id}`}
+          onMouseEnter={() => setPeek(d)}
+          onMouseLeave={() => setPeek(null)}
+        >
           {d.mine && (
             <button className="del" onClick={(e) => del(e, d.id)} title="delete">
               ✗
@@ -92,6 +109,14 @@ export default function Home() {
       {loaded && docs.length === 0 && (
         <div className="empty-note">
           ( nothing here yet — press [ + new draft ] and begin )
+        </div>
+      )}
+      {peek && (peek.preview || peek.header_image) && (
+        <div className="desk-peek" aria-hidden>
+          {peek.header_image && <img src={peek.header_image} alt="" />}
+          <div className="peek-title">{peek.title || 'untitled'}</div>
+          <div className="ascii-rule">~~~~~~~~~~~~~~~~~~</div>
+          <div className="peek-body">{peek.preview}</div>
         </div>
       )}
       <div className="corner-nav">

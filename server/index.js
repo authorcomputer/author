@@ -179,26 +179,41 @@ app.get('/api/docs', requireUser, (req, res) => {
   const rows = db
     .prepare(
       `SELECT d.id, d.title, d.updated_at, d.published, d.slug, d.owner_id, d.html,
-              (d.owner_id = ?) AS mine
+              d.header_image, (d.owner_id = ?) AS mine
        FROM docs d
        WHERE d.owner_id = ? OR d.id IN (SELECT doc_id FROM collaborators WHERE user_id = ?)
        ORDER BY d.updated_at DESC`
     )
     .all(req.user.id, req.user.id, req.user.id)
   res.json(
-    rows.map((r) => ({
-      id: r.id,
-      title: r.title,
-      updated_at: r.updated_at,
-      published: !!r.published,
-      slug: r.slug,
-      mine: !!r.mine,
-      snippet: String(r.html || '')
+    rows.map((r) => {
+      const text = String(r.html || '')
         .replace(/<[^>]+>/g, ' ')
         .replace(/\s+/g, ' ')
         .trim()
-        .slice(0, 140),
-    }))
+      return {
+        id: r.id,
+        title: r.title,
+        updated_at: r.updated_at,
+        published: !!r.published,
+        slug: r.slug,
+        mine: !!r.mine,
+        header_image: r.header_image || null,
+        snippet: text.slice(0, 140),
+        preview: text.slice(0, 420),
+      }
+    })
+  )
+})
+
+// own writing activity, for the desk chart
+app.get('/api/activity', requireUser, (req, res) => {
+  res.json(
+    db
+      .prepare(
+        `SELECT day, count FROM activity WHERE user_id = ? AND day >= date('now', '-181 day')`
+      )
+      .all(req.user.id)
   )
 })
 
