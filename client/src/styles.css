@@ -345,6 +345,67 @@ input, textarea {
 .fmt-bubble button.on { color: var(--accent); }
 .fmt-bubble .fmt-sep { color: var(--fainter); user-select: none; }
 
+/* the waiting pen */
+.scribble { margin-top: 14px; }
+.scribble-line {
+  color: var(--accent);
+  font-size: 13px;
+  letter-spacing: 1px;
+  min-height: 1.4em;
+  white-space: pre;
+}
+.scribble .hint { margin-top: 2px; font-style: italic; }
+
+/* the editor's pen: markup over the text, never in it */
+.check-mark { cursor: help; }
+.check-spelling {
+  text-decoration: underline wavy var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.check-grammar {
+  text-decoration: underline wavy #0e7490;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.check-repetition { background: #fbeed2; box-decoration-break: clone; }
+.check-cliche {
+  background: #f8e3d8;
+  text-decoration: line-through;
+  text-decoration-color: rgba(194, 65, 12, 0.5);
+  text-decoration-thickness: 1px;
+}
+.check-clarity {
+  text-decoration: underline dotted #7c3aed;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.check-other {
+  text-decoration: underline dotted var(--faint);
+  text-underline-offset: 3px;
+}
+.pen-hover {
+  background: #f6ead7;
+  box-decoration-break: clone;
+  animation: pen-hover-breathe 1.6s ease-in-out infinite;
+}
+@keyframes pen-hover-breathe {
+  0%, 100% { background-color: #f6ead7; }
+  50% { background-color: #f0dcbd; }
+}
+
+/* updates page */
+.update-day {
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 600;
+  margin: 36px 0 6px;
+}
+.update-row { padding: 14px 0; border-bottom: 1px solid var(--wash); }
+.update-row .u-time { color: var(--accent); font-size: 11px; }
+.update-row .u-title { font-family: var(--serif); font-size: 16px; margin: 2px 0 4px; }
+.update-row .u-note { color: var(--faint); font-size: 12.5px; }
+
 /* remote cursors */
 .collaboration-cursor__caret {
   border-left: 1px solid;

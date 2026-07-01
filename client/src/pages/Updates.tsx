@@ -1,0 +1,52 @@
+import { Link } from 'react-router-dom'
+import { me } from '../api'
+import Logo from '../Logo'
+import { UPDATES } from '../updates'
+
+export default function Updates() {
+  return (
+    <>
+      <div className="pub-head">
+        <Link to="/" title="author*">
+          <Logo />
+        </Link>
+        <div className="spacer" />
+        {me() && !me()!.anon ? (
+          <Link to="/">[ your desk ]</Link>
+        ) : (
+          <Link to="/login">[ sign in &amp; write ]</Link>
+        )}
+      </div>
+      <div className="pub-wrap">
+        <h1 className="pub-title">updates</h1>
+        <div className="faint">what changed, as it changed.</div>
+        <div className="ascii-rule" style={{ marginTop: 8 }}>
+          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        </div>
+        {UPDATES.map((day) => (
+          <div key={day.date}>
+            <div className="update-day">{day.date}</div>
+            {day.updates.map((u) => (
+              <div className="update-row" key={u.time + u.title}>
+                <div className="u-time">{u.time}</div>
+                <div className="u-title">{u.title}</div>
+                <div className="u-note">{u.note}</div>
+              </div>
+            ))}
+          </div>
+        ))}
+        <div className="pub-foot">
+          ✽ written as it was built —{' '}
+          <a
+            href="https://github.com/authorcomputer/author/commits/main"
+            target="_blank"
+            rel="noreferrer"
+            style={{ borderBottom: '1px dotted' }}
+          >
+            the full history
+          </a>
+        </div>
+      </div>
+    </>
+  )
+}

@@ -15,6 +15,8 @@ import { CommentMark } from '../comment-mark'
 import { track } from '../analytics'
 import AccountModal from '../AccountModal'
 import MembershipModal from '../MembershipModal'
+import Scribble from '../Scribble'
+import { Checkmarks, setMarks, clearMarks, MarkItem } from '../checkmarks'
 
 function needsAccount(e: unknown) {
   return (e as any)?.code === 'account_required'
@@ -167,6 +169,7 @@ function EditorInner({ id }: { id: string }) {
       TiptapLink.configure({ openOnClick: false, autolink: true }),
       Underline,
       CommentMark,
+      Checkmarks,
     ],
   })
 
@@ -709,8 +712,9 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
     commandResultBus.set = setCmd
     return () => {
       if (commandResultBus.set === setCmd) commandResultBus.set = undefined
+      clearMarks(editor, 'pending')
     }
-  }, [])
+  }, [editor])
 
   async function run() {
     if (running) return
@@ -734,6 +738,7 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
 
   function applyCmd(mode: 'replace' | 'insert') {
     if (!cmd) return
+    clearMarks(editor, 'pending')
     track('ai: command applied', { mode })
     const text = cmd.text.trim()
     const docSize = editor.state.doc.content.size
@@ -790,14 +795,24 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
             ⌘K → <i>{cmd.instruction}</i>
             {cmd.running ? ' …' : ''}
           </div>
-          <div className="ai-out">{cmd.text || '…'}</div>
+          {cmd.running && !cmd.text ? (
+            <Scribble phrases={['rewriting…', 'crossing out, starting again…', 'reading it back…']} />
+          ) : (
+            <div className="ai-out">{cmd.text}</div>
+          )}
           {!cmd.running && (
             <div className="ai-actions">
               {cmd.range && cmd.range.to > cmd.range.from && (
                 <button onClick={() => applyCmd('replace')}>[ replace selection ]</button>
               )}
               <button onClick={() => applyCmd('insert')}>[ insert ]</button>
-              <button className="faint" onClick={() => setCmd(null)}>
+              <button
+                className="faint"
+                onClick={() => {
+                  clearMarks(editor, 'pending')
+                  setCmd(null)
+                }}
+              >
                 discard
               </button>
             </div>
@@ -822,9 +837,38 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
           {running ? 'reading…' : '[ read my draft ]'}
         </button>
       </div>
+      {running && !out && (
+        <Scribble
+          phrases={['reading the whole thing…', 'sitting with it…', 'making margin notes…']}
+        />
+      )}
       {out && <div className="ai-out">{out}</div>}
     </div>
   )
+}
+
+const CHECK_PHRASES = [
+  'reading closely…',
+  'uncapping the red pen…',
+  'muttering about commas…',
+  'circling the third paragraph…',
+  'hunting clichés…',
+  'double-checking “necessary”…',
+]
+
+function decorateIssues(editor: TiptapEditor, issues: Issue[]) {
+  const items: MarkItem[] = []
+  for (const iss of issues) {
+    const r = findRange(editor, iss.excerpt)
+    if (r)
+      items.push({
+        from: r.from,
+        to: r.to,
+        cls: `check-mark check-${iss.kind}`,
+        title: `${iss.kind} — ${iss.note}`,
+      })
+  }
+  setMarks(editor, 'checks', items)
 }
 
 function ChecksPanel({ editor }: { editor: TiptapEditor }) {
@@ -832,16 +876,21 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
   const [running, setRunning] = useState(false)
   const [err, setErr] = useState('')
 
+  // the pen lifts when the panel closes
+  useEffect(() => () => clearMarks(editor, 'checks'), [editor])
+
   async function run() {
     setRunning(true)
     setErr('')
     setIssues(null)
+    clearMarks(editor, 'checks')
     try {
       const res = await api('/api/ai/checks', {
         method: 'POST',
         body: JSON.stringify({ text: docText(editor) }),
       })
       setIssues(res.issues || [])
+      decorateIssues(editor, res.issues || [])
       track('ai: checks ran', { issues: (res.issues || []).length })
     } catch (e: any) {
       if (needsAccount(e)) promptAccount()
@@ -860,6 +909,7 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
       <button onClick={run} disabled={running}>
         {running ? 'checking…' : '[ run checks ]'}
       </button>
+      {running && <Scribble phrases={CHECK_PHRASES} />}
       {err && <div className="err">✗ {err}</div>}
       {issues && issues.length === 0 && (
         <div className="hint" style={{ marginTop: 16 }}>
@@ -918,6 +968,11 @@ function TitlesPanel({ editor, onTitle }: { editor: TiptapEditor; onTitle: (t: s
       <button onClick={run} disabled={running}>
         {running ? 'thinking…' : '[ suggest titles ]'}
       </button>
+      {running && (
+        <Scribble
+          phrases={['weighing words…', 'trying names aloud…', 'rejecting the obvious ones…']}
+        />
+      )}
       {err && <div className="err">✗ {err}</div>}
       {titles?.map((t, i) => (
         <div
@@ -1182,6 +1237,9 @@ function CommandBar({
     const selection = hasSel
       ? editor.state.doc.textBetween(range!.from, range!.to, '\n\n')
       : ''
+    if (hasSel && range) {
+      setMarks(editor, 'pending', [{ from: range.from, to: range.to, cls: 'pen-hover' }])
+    }
     // wait a tick for the panel to mount and register the bus
     await new Promise((r) => setTimeout(r, 50))
     const update = (partial: Partial<{ text: string; running: boolean }>) => {

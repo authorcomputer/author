@@ -89,6 +89,7 @@ export default function Landing() {
       <header className="land-head">
         <Logo word />
         <div className="spacer" />
+        <Link to="/updates">updates</Link>
         <a href={REPO_URL} target="_blank" rel="noreferrer">
           github
         </a>
@@ -171,7 +172,10 @@ export default function Landing() {
       </section>
 
       <footer className="land-foot">
-        <Logo word size={14} /> <span className="faint">· a quiet place to write</span>
+        <Logo word size={14} /> <span className="faint">· a quiet place to write ·</span>{' '}
+        <Link className="faint" to="/updates">
+          updates
+        </Link>
       </footer>
     </div>
   )

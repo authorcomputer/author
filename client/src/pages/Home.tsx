@@ -130,6 +130,10 @@ export default function Home() {
         </div>
       )}
       <div className="corner-nav">
+        <Link className="faint" to="/updates" title="what changed, as it changed">
+          updates
+        </Link>
+        <span className="faint">·</span>
         <Link className="faint" to="/me" title="profile & settings">
           profile
         </Link>
