@@ -5,7 +5,11 @@ import Logo from '../Logo'
 
 export default function Public() {
   const { slug } = useParams()
-  const [doc, setDoc] = useState<{ title: string; html: string } | null>(null)
+  const [doc, setDoc] = useState<{
+    title: string
+    html: string
+    header_image?: string | null
+  } | null>(null)
   const [missing, setMissing] = useState(false)
   const signedIn = !!token()
 
@@ -51,6 +55,9 @@ export default function Public() {
       )}
       {doc && (
         <div className="pub-wrap">
+          {doc.header_image && (
+            <img className="pub-header-img" src={doc.header_image} alt="" />
+          )}
           <h1 className="pub-title">{doc.title}</h1>
           <div className="ascii-rule" style={{ marginBottom: 32 }}>
             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

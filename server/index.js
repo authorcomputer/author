@@ -2,6 +2,7 @@ import 'dotenv/config'
 import express from 'express'
 import http from 'node:http'
 import path from 'node:path'
+import fs from 'node:fs'
 import crypto from 'node:crypto'
 import { WebSocketServer } from 'ws'
 import sanitizeHtml from 'sanitize-html'
@@ -107,6 +108,7 @@ app.get('/api/docs/:id', auth, (req, res) => {
     slug: doc.slug,
     mine: doc.owner_id === req.user.id,
     owner: owner ? owner.username : '?',
+    header_image: doc.header_image || null,
   })
 })
 
@@ -114,6 +116,7 @@ app.delete('/api/docs/:id', auth, (req, res) => {
   const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
   if (!doc) return res.status(404).json({ error: 'no such doc' })
   if (doc.owner_id !== req.user.id) return res.status(403).json({ error: 'not yours' })
+  removeHeaderFile(doc.header_image)
   db.prepare('DELETE FROM docs WHERE id = ?').run(doc.id)
   db.prepare('DELETE FROM comments WHERE doc_id = ?').run(doc.id)
   db.prepare('DELETE FROM versions WHERE doc_id = ?').run(doc.id)
@@ -156,7 +159,9 @@ app.post('/api/docs/:id/publish', auth, (req, res) => {
 
 app.get('/api/public/:slug', (req, res) => {
   const doc = db
-    .prepare('SELECT title, html, updated_at FROM docs WHERE slug = ? AND published = 1')
+    .prepare(
+      'SELECT title, html, header_image, updated_at FROM docs WHERE slug = ? AND published = 1'
+    )
     .get(req.params.slug)
   if (!doc) return res.status(404).json({ error: 'nothing here' })
   res.json(doc)
@@ -217,6 +222,52 @@ app.get('/api/versions/:vid', auth, (req, res) => {
   if (!row) return res.status(404).json({ error: 'no such version' })
   res.json({ id: row.id, name: row.name, content: JSON.parse(row.content) })
 })
+
+// ---------- header images ----------
+const uploadsDir = path.join(process.cwd(), 'data', 'uploads')
+fs.mkdirSync(uploadsDir, { recursive: true })
+
+const IMG_EXT = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+}
+
+function removeHeaderFile(url) {
+  if (!url || !url.startsWith('/files/')) return
+  fs.unlink(path.join(uploadsDir, path.basename(url)), () => {})
+}
+
+app.post(
+  '/api/docs/:id/header',
+  auth,
+  express.raw({ type: Object.keys(IMG_EXT), limit: '8mb' }),
+  (req, res) => {
+    const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
+    if (!doc) return res.status(404).json({ error: 'no such doc' })
+    const ext = IMG_EXT[(req.headers['content-type'] || '').split(';')[0]]
+    if (!ext || !Buffer.isBuffer(req.body) || req.body.length === 0) {
+      return res.status(400).json({ error: 'send a jpeg, png, webp, or gif' })
+    }
+    const name = `${doc.id}_${Date.now()}.${ext}`
+    fs.writeFileSync(path.join(uploadsDir, name), req.body)
+    removeHeaderFile(doc.header_image)
+    const url = `/files/${name}`
+    db.prepare('UPDATE docs SET header_image = ? WHERE id = ?').run(url, doc.id)
+    res.json({ url })
+  }
+)
+
+app.delete('/api/docs/:id/header', auth, (req, res) => {
+  const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
+  if (!doc) return res.status(404).json({ error: 'no such doc' })
+  removeHeaderFile(doc.header_image)
+  db.prepare('UPDATE docs SET header_image = NULL WHERE id = ?').run(doc.id)
+  res.json({ ok: true })
+})
+
+app.use('/files', express.static(uploadsDir, { maxAge: '30d', immutable: true }))
 
 // ---------- profile & settings ----------
 function safeLinks(raw) {

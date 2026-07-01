@@ -19,6 +19,7 @@ type Meta = {
   slug: string | null
   mine: boolean
   owner: string
+  header_image?: string | null
 }
 type Comment = {
   id: string
@@ -98,6 +99,7 @@ function EditorInner({ id }: { id: string }) {
   const [panel, setPanel] = useState<Panel>(null)
   const [shareOpen, setShareOpen] = useState(false)
   const [gone, setGone] = useState(false)
+  const [headerUrl, setHeaderUrl] = useState<string | null>(null)
   const [others, setOthers] = useState<{ name: string; color: string }[]>([])
   const [connected, setConnected] = useState(false)
 
@@ -130,15 +132,21 @@ function EditorInner({ id }: { id: string }) {
       .then((m: Meta) => {
         setMeta(m)
         const metaMap = ydoc.getMap('meta')
-        const applyTitle = () => setTitle((metaMap.get('title') as string) ?? '')
-        metaMap.observe(applyTitle)
+        const applyMeta = () => {
+          setTitle((metaMap.get('title') as string) ?? '')
+          setHeaderUrl((metaMap.get('header') as string) ?? null)
+        }
+        metaMap.observe(applyMeta)
         provider.on('sync', (synced: boolean) => {
           setConnected(synced)
           if (synced && metaMap.get('title') === undefined && m.title && m.title !== 'untitled') {
             metaMap.set('title', m.title)
           }
+          if (synced && metaMap.get('header') === undefined && m.header_image) {
+            metaMap.set('header', m.header_image)
+          }
         })
-        applyTitle()
+        applyMeta()
       })
       .catch((e) => {
         if (e.message !== 'signed out') {
@@ -187,6 +195,33 @@ function EditorInner({ id }: { id: string }) {
   function updateTitle(v: string) {
     setTitle(v)
     ydoc.getMap('meta').set('title', v)
+  }
+
+  async function uploadHeader(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0]
+    e.target.value = ''
+    if (!f) return
+    if (!['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(f.type)) {
+      alert('jpeg, png, webp, or gif please')
+      return
+    }
+    const res = await fetch(`/api/docs/${id}/header`, {
+      method: 'POST',
+      headers: { 'Content-Type': f.type, Authorization: `Bearer ${token()}` },
+      body: f,
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      alert((err as any).error || 'upload failed')
+      return
+    }
+    const { url } = await res.json()
+    ydoc.getMap('meta').set('header', url)
+  }
+
+  async function removeHeader() {
+    await api(`/api/docs/${id}/header`, { method: 'DELETE' }).catch(() => {})
+    ydoc.getMap('meta').delete('header')
   }
 
   // ---------- publish ----------
@@ -272,6 +307,33 @@ function EditorInner({ id }: { id: string }) {
       <div className="ed-body">
         <div className="ed-scroll">
           <div className="ed-page">
+            {headerUrl ? (
+              <div className="header-wrap">
+                <img className="header-img" src={headerUrl} alt="" />
+                <div className="header-controls">
+                  <label className="file-pick">
+                    [ change ]
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      style={{ display: 'none' }}
+                      onChange={uploadHeader}
+                    />
+                  </label>
+                  <button onClick={removeHeader}>[ remove ]</button>
+                </div>
+              </div>
+            ) : (
+              <label className="header-add">
+                [ + header image ]
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  style={{ display: 'none' }}
+                  onChange={uploadHeader}
+                />
+              </label>
+            )}
             <input
               className="title-input"
               placeholder="untitled"

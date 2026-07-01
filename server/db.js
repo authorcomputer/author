@@ -72,6 +72,7 @@ function addColumn(table, ddl) {
 addColumn('users', 'profile_public INTEGER DEFAULT 0')
 addColumn('users', 'show_writing INTEGER DEFAULT 1')
 addColumn('users', "links TEXT DEFAULT '[]'")
+addColumn('docs', 'header_image TEXT')
 
 // Seed the two test accounts (uniform password: "author")
 const count = db.prepare('SELECT COUNT(*) AS c FROM users').get()

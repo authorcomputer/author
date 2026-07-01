@@ -146,6 +146,43 @@ input, textarea {
   padding: 56px 24px 40vh;
 }
 
+/* header images */
+.header-add {
+  display: inline-block;
+  font-size: 11px;
+  color: var(--fainter);
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+.header-add:hover { color: var(--accent); }
+.header-wrap { position: relative; margin-bottom: 22px; }
+.header-img {
+  width: 100%;
+  max-height: 300px;
+  object-fit: cover;
+  display: block;
+}
+.header-controls {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  background: rgba(253, 252, 249, 0.92);
+  padding: 4px 10px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.header-wrap:hover .header-controls { opacity: 1; }
+.pub-header-img {
+  width: 100%;
+  max-height: 320px;
+  object-fit: cover;
+  display: block;
+  margin-bottom: 28px;
+}
+
 .title-input {
   width: 100%;
   font-family: var(--serif);
