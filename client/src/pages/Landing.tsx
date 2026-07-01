@@ -1,6 +1,8 @@
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import Logo from '../Logo'
-import { colorFor } from '../api'
+import { api, colorFor, me, refreshMe } from '../api'
+import { authClient } from '../auth-client'
 
 const REPO_URL = 'https://github.com/authorcomputer/author'
 const INK = colorFor('ink')
@@ -46,6 +48,37 @@ const FEATURES = [
 ]
 
 export default function Landing() {
+  const nav = useNavigate()
+  const [busy, setBusy] = useState(false)
+
+  // the ghost door: start writing with no account at all
+  async function startWriting() {
+    if (busy) return
+    setBusy(true)
+    try {
+      // trust the cookie over the local mirror — a signed-in user with a
+      // wiped mirror must not be demoted to a ghost
+      let m = me() ?? (await refreshMe())
+      if (m && !m.anon) return nav('/')
+      if (!m) {
+        const result = await authClient.signIn.anonymous()
+        if (result.error) throw new Error(result.error.message)
+        m = await refreshMe()
+      }
+      // a returning ghost picks up their latest page instead of minting one
+      if (m?.anon) {
+        const docs = await api('/api/docs')
+        if (docs.length > 0) return nav(`/d/${docs[0].id}`)
+      }
+      const { id } = await api('/api/docs', { method: 'POST', body: '{}' })
+      nav(`/d/${id}`)
+    } catch {
+      nav('/login')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="landing">
       <header className="land-head">
@@ -67,9 +100,12 @@ export default function Landing() {
         <p className="land-sub">
           live cursors · an editor that reads · nothing in your way
         </p>
-        <Link className="land-cta" to="/login">
-          [ start writing → ]
-        </Link>
+        <button className="land-cta" onClick={startWriting} disabled={busy}>
+          {busy ? '…' : '[ start writing → ]'}
+        </button>
+        <div className="faint" style={{ marginTop: 12, fontSize: 11 }}>
+          no account needed — the page is already yours
+        </div>
       </section>
 
       <div className="ascii-rule land-rule">

@@ -73,6 +73,12 @@ CREATE TABLE IF NOT EXISTS ai_usage (
   count INTEGER DEFAULT 0,
   PRIMARY KEY (user_id, day)
 );
+CREATE TABLE IF NOT EXISTS profiles (
+  user_id TEXT PRIMARY KEY,
+  profile_public INTEGER DEFAULT 0,
+  show_writing INTEGER DEFAULT 1,
+  links TEXT DEFAULT '[]'
+);
 `)
 
 // lightweight migrations for pre-existing databases
@@ -123,20 +129,6 @@ for (const u of db.prepare("SELECT id, username, password FROM users WHERE passw
   const next = compromised ? crypto.randomBytes(18).toString('hex') : u.password
   db.prepare('UPDATE users SET password = ? WHERE id = ?').run(bcrypt.hashSync(next, 10), u.id)
   if (compromised) console.log(`rotated known password for seeded account "${u.username}"`)
-}
-
-const SESSION_TTL = 90 * 24 * 60 * 60 * 1000 // 90 days
-db.prepare('DELETE FROM sessions WHERE created_at < ?').run(Date.now() - SESSION_TTL)
-
-export function userByToken(token) {
-  if (!token) return null
-  const row = db
-    .prepare(
-      `SELECT u.id, u.username FROM sessions s JOIN users u ON u.id = s.user_id
-       WHERE s.token = ? AND s.created_at > ?`
-    )
-    .get(token, Date.now() - SESSION_TTL)
-  return row || null
 }
 
 export function loadYDoc(docId) {

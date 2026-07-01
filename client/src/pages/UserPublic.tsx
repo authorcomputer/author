@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { token } from '../api'
+import { me } from '../api'
 import Logo from '../Logo'
 
 type ProfileData = {
@@ -108,7 +108,7 @@ export default function UserPublic() {
           <Logo />
         </Link>
         <div className="spacer" />
-        {token() ? (
+        {me() && !me()!.anon ? (
           <Link to="/">[ your desk ]</Link>
         ) : (
           <Link to="/login">[ sign in &amp; write ]</Link>

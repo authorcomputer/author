@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { setAuth } from '../api'
+import { authClient } from '../auth-client'
+import { refreshMe } from '../api'
 import Logo from '../Logo'
 
 export default function Login() {
@@ -10,28 +11,42 @@ export default function Login() {
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
   const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
   const nav = useNavigate()
   const [params] = useSearchParams()
 
+  function goNext() {
+    const next = params.get('next')
+    // internal paths only — reject protocol-relative (//host) redirects
+    nav(next && next.startsWith('/') && !next.startsWith('//') ? next : '/')
+  }
+
   async function go(e: React.FormEvent) {
     e.preventDefault()
+    if (busy) return
+    setBusy(true)
     setErr('')
     try {
-      const res = await fetch(mode === 'in' ? '/api/login' : '/api/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          mode === 'in' ? { username, password } : { username, email, password, code }
-        ),
-      })
-      if (!res.ok) throw new Error((await res.json()).error || 'no luck')
-      const data = await res.json()
-      setAuth(data.token, data.username)
-      const next = params.get('next')
-      // internal paths only — reject protocol-relative (//host) redirects
-      nav(next && next.startsWith('/') && !next.startsWith('//') ? next : '/')
+      if (mode === 'in') {
+        const ident = username.trim()
+        const result = ident.includes('@')
+          ? await authClient.signIn.email({ email: ident, password })
+          : await authClient.signIn.username({ username: ident.toLowerCase(), password })
+        if (result.error) throw new Error(result.error.message || 'wrong name or password')
+      } else {
+        const res = await fetch('/api/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, email, password, code }),
+        })
+        if (!res.ok) throw new Error((await res.json()).error || 'no luck')
+      }
+      await refreshMe()
+      goNext()
     } catch (e: any) {
       setErr(e.message)
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -88,8 +103,8 @@ export default function Login() {
             pick a fresh password — not one you use elsewhere.
           </div>
         )}
-        <button className="go" type="submit">
-          {mode === 'in' ? '[ enter ]' : '[ take a desk ]'}
+        <button className="go" type="submit" disabled={busy}>
+          {busy ? '…' : mode === 'in' ? '[ enter ]' : '[ take a desk ]'}
         </button>
         {err && <div className="err">✗ {err}</div>}
         <div className="faint" style={{ marginTop: 40, fontSize: 11 }}>

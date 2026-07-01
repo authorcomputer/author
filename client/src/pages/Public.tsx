@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { token } from '../api'
+import { me } from '../api'
 import Logo from '../Logo'
 
 export default function Public() {
@@ -11,7 +11,8 @@ export default function Public() {
     header_image?: string | null
   } | null>(null)
   const [missing, setMissing] = useState(false)
-  const signedIn = !!token()
+  const m = me()
+  const signedIn = !!m && !m.anon
 
   useEffect(() => {
     setDoc(null)

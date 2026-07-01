@@ -1,38 +1,73 @@
-export function token(): string | null {
-  return localStorage.getItem('author.token')
+import { authClient } from './auth-client'
+
+// Sessions live in an httpOnly cookie (better-auth). We keep a small local
+// mirror of who's signed in so route guards can be synchronous.
+export type Me = { username: string; anon: boolean }
+
+// bearer-token era debris — remove once, harmless if absent
+localStorage.removeItem('author.token')
+localStorage.removeItem('author.username')
+
+export function me(): Me | null {
+  try {
+    return JSON.parse(localStorage.getItem('author.me') || 'null')
+  } catch {
+    return null
+  }
+}
+export function setMe(m: Me | null) {
+  if (m) localStorage.setItem('author.me', JSON.stringify(m))
+  else localStorage.removeItem('author.me')
 }
 export function username(): string | null {
-  return localStorage.getItem('author.username')
+  return me()?.username ?? null
 }
-export function setAuth(t: string, u: string) {
-  localStorage.setItem('author.token', t)
-  localStorage.setItem('author.username', u)
+export async function refreshMe(): Promise<Me | null> {
+  try {
+    const r = await fetch('/api/me')
+    if (!r.ok) {
+      setMe(null)
+      return null
+    }
+    const m = await r.json()
+    setMe({ username: m.username, anon: !!m.anon })
+    return me()
+  } catch {
+    return me()
+  }
 }
-export function clearAuth() {
-  localStorage.removeItem('author.token')
-  localStorage.removeItem('author.username')
+export async function signOut() {
+  await authClient.signOut().catch(() => {})
+  setMe(null)
+}
+
+export class ApiError extends Error {
+  code?: string
+  constructor(message: string, code?: string) {
+    super(message)
+    this.code = code
+  }
 }
 
 export async function api(path: string, options: RequestInit = {}) {
   const res = await fetch(path, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token() ? { Authorization: `Bearer ${token()}` } : {}),
-      ...(options.headers || {}),
-    },
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
   })
   if (res.status === 401) {
-    clearAuth()
+    setMe(null)
     if (!location.pathname.startsWith('/login')) {
       const dest = location.pathname + location.search
       location.href = `/login?next=${encodeURIComponent(dest)}`
     }
-    throw new Error('signed out')
+    throw new ApiError('signed out')
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error((body as any).error || `request failed (${res.status})`)
+    throw new ApiError(
+      (body as any).error || `request failed (${res.status})`,
+      (body as any).code
+    )
   }
   return res.json()
 }
@@ -46,14 +81,18 @@ export async function apiStream(
 ) {
   const res = await fetch(path, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token()}`,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     signal,
   })
-  if (!res.ok || !res.body) throw new Error(`request failed (${res.status})`)
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}))
+    throw new ApiError(
+      (errBody as any).error || `request failed (${res.status})`,
+      (errBody as any).code
+    )
+  }
+  if (!res.body) throw new ApiError('no response body')
   const reader = res.body.getReader()
   const decoder = new TextDecoder()
   while (true) {

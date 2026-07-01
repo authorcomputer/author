@@ -3,21 +3,25 @@ import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import WebSocket from 'ws'
 
-const [tokenA, tokenB, docId] = process.argv.slice(2)
+const [cookieA, cookieB, docId] = process.argv.slice(2)
 const url = process.env.AUTHOR_WS_URL || 'ws://localhost:3001/ws'
 
-function makeClient(name, token) {
+function makeClient(name, cookie) {
+  class AuthedWS extends WebSocket {
+    constructor(u, protocols) {
+      super(u, protocols, { headers: { Cookie: cookie } })
+    }
+  }
   const doc = new Y.Doc()
   const provider = new WebsocketProvider(url, docId, doc, {
-    WebSocketPolyfill: WebSocket,
-    params: { token },
+    WebSocketPolyfill: AuthedWS,
   })
   provider.awareness.setLocalStateField('user', { name, color: '#000' })
   return { name, doc, provider }
 }
 
-const a = makeClient('ink', tokenA)
-const b = makeClient('quill', tokenB)
+const a = makeClient('ink', cookieA)
+const b = makeClient('quill', cookieB)
 
 const synced = (c) =>
   new Promise((res) => (c.provider.synced ? res() : c.provider.once('sync', res)))

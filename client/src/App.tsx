@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Login from './pages/Login'
 import Home from './pages/Home'
@@ -6,11 +7,22 @@ import Public from './pages/Public'
 import Landing from './pages/Landing'
 import Profile from './pages/Profile'
 import UserPublic from './pages/UserPublic'
-import { token } from './api'
+import { me, refreshMe } from './api'
 
-function RequireAuth({ children }: { children: JSX.Element }) {
+// ghosts (anonymous sessions) may write; full pages require an account
+function RequireSession({ children }: { children: JSX.Element }) {
   const location = useLocation()
-  if (!token()) {
+  if (!me()) {
+    const dest = location.pathname + location.search + location.hash
+    return <Navigate to={`/login?next=${encodeURIComponent(dest)}`} replace />
+  }
+  return children
+}
+
+function RequireAccount({ children }: { children: JSX.Element }) {
+  const location = useLocation()
+  const m = me()
+  if (!m || m.anon) {
     const dest = location.pathname + location.search + location.hash
     return <Navigate to={`/login?next=${encodeURIComponent(dest)}`} replace />
   }
@@ -21,10 +33,16 @@ function RequireAuth({ children }: { children: JSX.Element }) {
 // at App mount (route `element`s are created once per App render).
 function RootGate() {
   useLocation()
-  return token() ? <Home /> : <Landing />
+  const m = me()
+  return m && !m.anon ? <Home /> : <Landing />
 }
 
 export default function App() {
+  // reconcile the local mirror with the real cookie session once per load;
+  // also lets better-auth roll the session cookie so ghosts don't expire
+  useEffect(() => {
+    refreshMe()
+  }, [])
   return (
     <BrowserRouter>
       <Routes>
@@ -35,17 +53,17 @@ export default function App() {
         <Route
           path="/me"
           element={
-            <RequireAuth>
+            <RequireAccount>
               <Profile />
-            </RequireAuth>
+            </RequireAccount>
           }
         />
         <Route
           path="/d/:id"
           element={
-            <RequireAuth>
+            <RequireSession>
               <Editor />
-            </RequireAuth>
+            </RequireSession>
           }
         />
         <Route path="*" element={<Navigate to="/" replace />} />

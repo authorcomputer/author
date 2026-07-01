@@ -7,14 +7,31 @@ import crypto from 'node:crypto'
 import { WebSocketServer } from 'ws'
 import bcrypt from 'bcryptjs'
 import sanitizeHtml from 'sanitize-html'
-import { db, userByToken, docExists } from './db.js'
+import { toNodeHandler, fromNodeHeaders } from 'better-auth/node'
+import { db, docExists } from './db.js'
+import { auth, runAuthMigrations, migrateLegacyUsers, TRUSTED_ORIGINS } from './auth.js'
 import { setupCollab } from './collab.js'
 import { aiFeedback, aiCommand, aiTitles, aiChecks } from './ai.js'
 
 const app = express()
-app.use(express.json({ limit: '5mb' }))
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff')
+  next()
+})
+
+// better-auth needs the raw request body — mount before express.json
+app.all('/api/auth/*', toNodeHandler(auth))
+app.use(express.json({ limit: '5mb' }))
+
+// CSRF defense-in-depth: sessions are cookies now, so refuse mutating
+// cross-origin requests outright instead of leaning on SameSite alone
+// (better-auth origin-checks its own /api/auth routes)
+app.use('/api', (req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next()
+  const origin = req.headers.origin
+  if (origin && !TRUSTED_ORIGINS.includes(origin)) {
+    return res.status(403).json({ error: 'cross-origin request refused' })
+  }
   next()
 })
 
@@ -33,16 +50,40 @@ function cleanHtml(html) {
   })
 }
 
-// ---------- auth ----------
-function auth(req, res, next) {
-  const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
-  const user = userByToken(token)
-  if (!user) return res.status(401).json({ error: 'not signed in' })
-  req.user = user
-  next()
+// ---------- auth (better-auth cookie sessions; ghosts are anonymous users) ----------
+async function getUser(headers) {
+  const session = await auth.api.getSession({ headers: fromNodeHeaders(headers) })
+  if (!session?.user) return null
+  const u = session.user
+  return {
+    id: u.id,
+    username: u.username || u.displayUsername || 'ghost',
+    anon: !!u.isAnonymous,
+  }
 }
 
-// small in-memory per-IP throttle for the credential endpoints
+function requireUser(req, res, next) {
+  getUser(req.headers)
+    .then((user) => {
+      if (!user) return res.status(401).json({ error: 'not signed in' })
+      req.user = user
+      next()
+    })
+    .catch(next)
+}
+
+// for things that mean "keeping" — ghosts get nudged to take a desk
+function requireFullUser(req, res, next) {
+  requireUser(req, res, () => {
+    if (req.user.anon)
+      return res
+        .status(403)
+        .json({ error: 'take a desk to keep things', code: 'account_required' })
+    next()
+  })
+}
+
+// small in-memory per-IP throttle for signup
 const buckets = new Map()
 function rateLimit(limit, windowMs) {
   return (req, res, next) => {
@@ -58,30 +99,10 @@ function rateLimit(limit, windowMs) {
   }
 }
 
-function startSession(res, user) {
-  const token = crypto.randomBytes(24).toString('hex')
-  db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)').run(
-    token,
-    user.id,
-    Date.now()
-  )
-  res.json({ token, username: user.username })
-}
-
-app.post('/api/login', rateLimit(12, 60_000), (req, res) => {
-  const { username, password } = req.body || {}
-  const ident = String(username || '').toLowerCase().trim()
-  const user = db
-    .prepare('SELECT * FROM users WHERE username = ? OR email = ?')
-    .get(ident, ident)
-  if (!user || !bcrypt.compareSync(String(password || ''), user.password)) {
-    // flat delay takes the speed out of online guessing
-    return setTimeout(() => res.status(401).json({ error: 'wrong name or password' }), 400)
-  }
-  startSession(res, user)
-})
-
-app.post('/api/signup', rateLimit(8, 60_000), (req, res) => {
+// signup stays ours so invite codes gate full accounts; the actual account
+// creation is delegated to better-auth (which also links a ghost session's
+// work into the new account via the anonymous plugin)
+app.post('/api/signup', rateLimit(8, 60_000), async (req, res) => {
   const { username, email, password, code } = req.body || {}
   const uname = String(username || '').toLowerCase().trim()
   const mail = String(email || '').toLowerCase().trim()
@@ -97,48 +118,64 @@ app.post('/api/signup', rateLimit(8, 60_000), (req, res) => {
   if (!invite) return res.status(403).json({ error: 'that invite code doesn’t open the door' })
   if (invite.uses >= (invite.max_uses ?? 25))
     return res.status(403).json({ error: 'that invite code is all used up' })
-  if (db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(uname, mail))
+  if (db.prepare('SELECT id FROM user WHERE username = ? OR email = ?').get(uname, mail))
     return res.status(409).json({ error: 'that name or email already has a desk' })
-  const id = uid('u')
-  db.prepare('INSERT INTO users (id, username, password, email) VALUES (?, ?, ?, ?)').run(
-    id,
-    uname,
-    bcrypt.hashSync(String(password), 10),
-    mail
-  )
-  db.prepare('UPDATE invite_codes SET uses = uses + 1 WHERE code = ?').run(invite.code)
-  startSession(res, { id, username: uname })
+  try {
+    const response = await auth.api.signUpEmail({
+      body: { name: uname, username: uname, email: mail, password: String(password) },
+      headers: fromNodeHeaders(req.headers), // carries a ghost session for linking
+      asResponse: true,
+    })
+    if (response.ok) {
+      db.prepare('UPDATE invite_codes SET uses = uses + 1 WHERE code = ?').run(invite.code)
+    }
+    const cookies = response.headers.getSetCookie?.() || []
+    if (cookies.length) res.setHeader('Set-Cookie', cookies)
+    const body = await response.text()
+    res.status(response.status).type('application/json').send(body || '{}')
+  } catch (e) {
+    console.error('signup error', e)
+    res.status(400).json({ error: e?.body?.message || e?.message || 'signup failed' })
+  }
 })
 
-app.get('/api/me', auth, (req, res) => res.json(req.user))
+app.get('/api/me', requireUser, (req, res) => res.json(req.user))
 
-app.post('/api/handle', auth, (req, res) => {
+app.post('/api/handle', requireFullUser, (req, res) => {
   const uname = String((req.body || {}).username || '').toLowerCase().trim()
   if (!/^[a-z0-9_-]{2,24}$/.test(uname))
     return res.status(400).json({ error: 'handle: 2–24 letters, numbers, - or _' })
   if (uname === req.user.username) return res.json({ username: uname })
-  if (db.prepare('SELECT id FROM users WHERE username = ?').get(uname))
+  if (db.prepare('SELECT id FROM user WHERE username = ?').get(uname))
     return res.status(409).json({ error: 'that handle already has a desk' })
   const old = req.user.username
-  db.prepare('UPDATE users SET username = ? WHERE id = ?').run(uname, req.user.id)
+  db.prepare('UPDATE user SET username = ?, displayUsername = ?, name = ? WHERE id = ?').run(
+    uname,
+    uname,
+    uname,
+    req.user.id
+  )
   // display-name snapshots on past comments and versions follow the rename
   db.prepare('UPDATE comments SET username = ? WHERE user_id = ?').run(uname, req.user.id)
   db.prepare('UPDATE versions SET username = ? WHERE username = ?').run(uname, old)
   res.json({ username: uname })
 })
 
-app.post('/api/password', auth, (req, res) => {
+app.post('/api/password', requireFullUser, async (req, res) => {
   const p = String((req.body || {}).password || '')
   if (p.length < 6) return res.status(400).json({ error: 'six characters at least' })
-  db.prepare('UPDATE users SET password = ? WHERE id = ?').run(bcrypt.hashSync(p, 10), req.user.id)
+  db.prepare(
+    `UPDATE account SET password = ? WHERE userId = ? AND providerId = 'credential'`
+  ).run(bcrypt.hashSync(p, 10), req.user.id)
   // sign out everywhere else
-  const current = (req.headers.authorization || '').replace(/^Bearer\s+/i, '')
-  db.prepare('DELETE FROM sessions WHERE user_id = ? AND token != ?').run(req.user.id, current)
+  await auth.api
+    .revokeOtherSessions({ headers: fromNodeHeaders(req.headers) })
+    .catch(() => {})
   res.json({ ok: true })
 })
 
 // ---------- docs ----------
-app.get('/api/docs', auth, (req, res) => {
+app.get('/api/docs', requireUser, (req, res) => {
   const rows = db
     .prepare(
       `SELECT d.id, d.title, d.updated_at, d.published, d.slug, d.owner_id, d.html,
@@ -165,7 +202,7 @@ app.get('/api/docs', auth, (req, res) => {
   )
 })
 
-app.post('/api/docs', auth, (req, res) => {
+app.post('/api/docs', requireUser, (req, res) => {
   const id = uid('doc')
   const now = Date.now()
   db.prepare(
@@ -174,7 +211,29 @@ app.post('/api/docs', auth, (req, res) => {
   res.json({ id })
 })
 
-app.get('/api/docs/:id', auth, (req, res) => {
+function docMeta(doc, userId) {
+  const owner = db.prepare('SELECT username FROM user WHERE id = ?').get(doc.owner_id)
+  return {
+    id: doc.id,
+    title: doc.title,
+    published: !!doc.published,
+    slug: doc.slug,
+    mine: doc.owner_id === userId,
+    owner: owner?.username || 'a ghost',
+    header_image: doc.header_image || null,
+  }
+}
+
+// side-effect-free read (a GET must never enroll anyone — lax cookies ride
+// on top-level navigations, so a mutating GET is a CSRF hole)
+app.get('/api/docs/:id', requireUser, (req, res) => {
+  const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
+  if (!doc) return res.status(404).json({ error: 'no such doc' })
+  res.json(docMeta(doc, req.user.id))
+})
+
+// opening a doc in the editor — this is what enrolls a collaborator
+app.post('/api/docs/:id/open', requireUser, (req, res) => {
   const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
   if (!doc) return res.status(404).json({ error: 'no such doc' })
   if (doc.owner_id !== req.user.id) {
@@ -183,19 +242,10 @@ app.get('/api/docs/:id', auth, (req, res) => {
       req.user.id
     )
   }
-  const owner = db.prepare('SELECT username FROM users WHERE id = ?').get(doc.owner_id)
-  res.json({
-    id: doc.id,
-    title: doc.title,
-    published: !!doc.published,
-    slug: doc.slug,
-    mine: doc.owner_id === req.user.id,
-    owner: owner ? owner.username : '?',
-    header_image: doc.header_image || null,
-  })
+  res.json(docMeta(doc, req.user.id))
 })
 
-app.delete('/api/docs/:id', auth, (req, res) => {
+app.delete('/api/docs/:id', requireUser, (req, res) => {
   const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
   if (!doc) return res.status(404).json({ error: 'no such doc' })
   if (doc.owner_id !== req.user.id) return res.status(403).json({ error: 'not yours' })
@@ -208,7 +258,7 @@ app.delete('/api/docs/:id', auth, (req, res) => {
 })
 
 // html snapshot (for list snippets + published page)
-app.post('/api/docs/:id/html', auth, (req, res) => {
+app.post('/api/docs/:id/html', requireUser, (req, res) => {
   if (!docExists(req.params.id)) return res.status(404).json({ error: 'no such doc' })
   db.prepare('UPDATE docs SET html = ? WHERE id = ?').run(
     cleanHtml(req.body && req.body.html),
@@ -223,7 +273,8 @@ app.post('/api/docs/:id/html', auth, (req, res) => {
   res.json({ ok: true })
 })
 
-app.post('/api/docs/:id/publish', auth, (req, res) => {
+// publishing is "keeping" — full accounts only
+app.post('/api/docs/:id/publish', requireFullUser, (req, res) => {
   const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
   if (!doc) return res.status(404).json({ error: 'no such doc' })
   const publish = !!(req.body && req.body.publish)
@@ -251,14 +302,14 @@ app.get('/api/public/:slug', (req, res) => {
 })
 
 // ---------- comments ----------
-app.get('/api/docs/:id/comments', auth, (req, res) => {
+app.get('/api/docs/:id/comments', requireUser, (req, res) => {
   const rows = db
     .prepare('SELECT * FROM comments WHERE doc_id = ? ORDER BY created_at ASC')
     .all(req.params.id)
   res.json(rows.map((r) => ({ ...r, resolved: !!r.resolved })))
 })
 
-app.post('/api/docs/:id/comments', auth, (req, res) => {
+app.post('/api/docs/:id/comments', requireUser, (req, res) => {
   const { text, quote, id } = req.body || {}
   if (!text || !text.trim()) return res.status(400).json({ error: 'empty comment' })
   const cid = id || uid('c')
@@ -268,13 +319,13 @@ app.post('/api/docs/:id/comments', auth, (req, res) => {
   res.json({ id: cid })
 })
 
-app.post('/api/comments/:cid/resolve', auth, (req, res) => {
+app.post('/api/comments/:cid/resolve', requireUser, (req, res) => {
   db.prepare('UPDATE comments SET resolved = 1 WHERE id = ?').run(req.params.cid)
   res.json({ ok: true })
 })
 
 // ---------- versions ----------
-app.get('/api/docs/:id/versions', auth, (req, res) => {
+app.get('/api/docs/:id/versions', requireUser, (req, res) => {
   const rows = db
     .prepare(
       'SELECT id, name, username, created_at FROM versions WHERE doc_id = ? ORDER BY created_at DESC'
@@ -283,7 +334,8 @@ app.get('/api/docs/:id/versions', auth, (req, res) => {
   res.json(rows)
 })
 
-app.post('/api/docs/:id/versions', auth, (req, res) => {
+// saving a version is "keeping" — full accounts only
+app.post('/api/docs/:id/versions', requireFullUser, (req, res) => {
   const { name, content } = req.body || {}
   if (!content) return res.status(400).json({ error: 'no content' })
   const vid = uid('v')
@@ -300,7 +352,7 @@ app.post('/api/docs/:id/versions', auth, (req, res) => {
   res.json({ id: vid })
 })
 
-app.get('/api/versions/:vid', auth, (req, res) => {
+app.get('/api/versions/:vid', requireUser, (req, res) => {
   const row = db.prepare('SELECT * FROM versions WHERE id = ?').get(req.params.vid)
   if (!row) return res.status(404).json({ error: 'no such version' })
   res.json({ id: row.id, name: row.name, content: JSON.parse(row.content) })
@@ -343,27 +395,9 @@ function removeHeaderFile(url) {
   fs.unlink(path.join(uploadsDir, path.basename(url)), () => {})
 }
 
-// migrate any pre-existing header files that embedded the doc id in their
-// public URL (the doc id is an edit capability — it must never be public)
-for (const row of db
-  .prepare("SELECT id, header_image FROM docs WHERE header_image LIKE '/files/doc_%'")
-  .all()) {
-  const old = path.basename(row.header_image)
-  const fresh = crypto.randomBytes(12).toString('hex') + '.' + old.split('.').pop()
-  try {
-    db.prepare('UPDATE docs SET header_image = ? WHERE id = ?').run('/files/' + fresh, row.id)
-    try {
-      fs.renameSync(path.join(uploadsDir, old), path.join(uploadsDir, fresh))
-    } catch {
-      // file missing or rename failed — point the row back at the old name
-      db.prepare('UPDATE docs SET header_image = ? WHERE id = ?').run(row.header_image, row.id)
-    }
-  } catch {}
-}
-
 app.post(
   '/api/docs/:id/header',
-  auth,
+  requireUser,
   express.raw({ type: Object.keys(IMG_EXT), limit: '8mb' }),
   (req, res) => {
     const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
@@ -384,7 +418,7 @@ app.post(
   }
 )
 
-app.delete('/api/docs/:id/header', auth, (req, res) => {
+app.delete('/api/docs/:id/header', requireUser, (req, res) => {
   const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
   if (!doc) return res.status(404).json({ error: 'no such doc' })
   removeHeaderFile(doc.header_image)
@@ -404,40 +438,48 @@ function safeLinks(raw) {
     .slice(0, 6)
 }
 
-app.get('/api/settings', auth, (req, res) => {
-  const row = db
-    .prepare('SELECT profile_public, show_writing, links FROM users WHERE id = ?')
-    .get(req.user.id)
+function profileFor(userId) {
+  return (
+    db.prepare('SELECT * FROM profiles WHERE user_id = ?').get(userId) || {
+      profile_public: 0,
+      show_writing: 1,
+      links: '[]',
+    }
+  )
+}
+
+app.get('/api/settings', requireFullUser, (req, res) => {
+  const p = profileFor(req.user.id)
   res.json({
     username: req.user.username,
-    profile_public: !!row.profile_public,
-    show_writing: !!row.show_writing,
-    links: JSON.parse(row.links || '[]'),
+    profile_public: !!p.profile_public,
+    show_writing: !!p.show_writing,
+    links: JSON.parse(p.links || '[]'),
   })
 })
 
-app.post('/api/settings', auth, (req, res) => {
+app.post('/api/settings', requireFullUser, (req, res) => {
   const { profile_public, show_writing, links } = req.body || {}
-  db.prepare('UPDATE users SET profile_public = ?, show_writing = ?, links = ? WHERE id = ?').run(
-    profile_public ? 1 : 0,
-    show_writing ? 1 : 0,
-    JSON.stringify(safeLinks(links)),
-    req.user.id
-  )
+  db.prepare(
+    `INSERT INTO profiles (user_id, profile_public, show_writing, links) VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET profile_public = excluded.profile_public,
+       show_writing = excluded.show_writing, links = excluded.links`
+  ).run(req.user.id, profile_public ? 1 : 0, show_writing ? 1 : 0, JSON.stringify(safeLinks(links)))
   res.json({ ok: true })
 })
 
 app.get('/api/profile/:username', (req, res) => {
   const u = db
-    .prepare('SELECT * FROM users WHERE username = ?')
+    .prepare('SELECT id, username FROM user WHERE username = ?')
     .get(String(req.params.username || '').toLowerCase())
-  if (!u || !u.profile_public) return res.status(404).json({ error: 'no such profile' })
+  const p = u && profileFor(u.id)
+  if (!u || !p.profile_public) return res.status(404).json({ error: 'no such profile' })
   const activity = db
     .prepare(
       `SELECT day, count FROM activity WHERE user_id = ? AND day >= date('now', '-181 day')`
     )
     .all(u.id)
-  const articles = u.show_writing
+  const articles = p.show_writing
     ? db
         .prepare(
           `SELECT title, slug, updated_at FROM docs
@@ -447,40 +489,70 @@ app.get('/api/profile/:username', (req, res) => {
     : []
   res.json({
     username: u.username,
-    links: JSON.parse(u.links || '[]'),
-    show_writing: !!u.show_writing,
+    links: JSON.parse(p.links || '[]'),
+    show_writing: !!p.show_writing,
     activity,
     articles,
   })
 })
 
 // ---------- ai ----------
-// per-user daily cap so the model bill can't be run up by one account
+// ghosts get one on the house; accounts get a daily allowance; the site
+// as a whole has a hard daily budget
 const AI_DAILY_CAP = Number(process.env.AI_DAILY_CAP || 150)
+const AI_GHOST_CAP = Number(process.env.AI_GHOST_CAP || 1)
 const AI_GLOBAL_DAILY_CAP = Number(process.env.AI_GLOBAL_DAILY_CAP || 1000)
+const AI_GHOST_IP_CAP = Number(process.env.AI_GHOST_IP_CAP || 3)
+function bumpUsage(key, day) {
+  db.prepare(
+    `INSERT INTO ai_usage (user_id, day, count) VALUES (?, ?, 1)
+     ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1`
+  ).run(key, day)
+}
 function aiLimit(req, res, next) {
+  // don't charge anyone for a request that can't run
+  const b = req.body || {}
+  const hasInput = [b.text, b.selection, b.context, b.instruction].some(
+    (v) => typeof v === 'string' && v.trim()
+  )
+  if (!hasInput) return res.status(400).json({ error: 'nothing to read yet — write a little first' })
+
   const day = new Date().toISOString().slice(0, 10)
+  const accountRequired = () =>
+    res.status(403).json({
+      error: 'that one was on the house — take a desk for more',
+      code: 'account_required',
+    })
+
   const row = db
     .prepare('SELECT count FROM ai_usage WHERE user_id = ? AND day = ?')
     .get(req.user.id, day)
-  if (row && row.count >= AI_DAILY_CAP) {
+  const cap = req.user.anon ? AI_GHOST_CAP : AI_DAILY_CAP
+  if (row && row.count >= cap) {
+    if (req.user.anon) return accountRequired()
     return res.status(429).json({ error: 'the pen rests — daily limit reached, back tomorrow' })
+  }
+  // fresh ghosts are free to mint — cap the IP, not just the ghost
+  const ipKey = req.user.anon ? 'ip:' + (req.headers['fly-client-ip'] || req.ip || '?') : null
+  if (ipKey) {
+    const ipRow = db
+      .prepare('SELECT count FROM ai_usage WHERE user_id = ? AND day = ?')
+      .get(ipKey, day)
+    if (ipRow && ipRow.count >= AI_GHOST_IP_CAP) return accountRequired()
   }
   const global = db.prepare('SELECT COALESCE(SUM(count), 0) AS s FROM ai_usage WHERE day = ?').get(day)
   if (global.s >= AI_GLOBAL_DAILY_CAP) {
     return res.status(429).json({ error: 'the pen rests — the whole desk hit its daily limit' })
   }
-  db.prepare(
-    `INSERT INTO ai_usage (user_id, day, count) VALUES (?, ?, 1)
-     ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1`
-  ).run(req.user.id, day)
+  bumpUsage(req.user.id, day)
+  if (ipKey) bumpUsage(ipKey, day)
   next()
 }
 
-app.post('/api/ai/feedback', auth, aiLimit, aiFeedback)
-app.post('/api/ai/command', auth, aiLimit, aiCommand)
-app.post('/api/ai/titles', auth, aiLimit, aiTitles)
-app.post('/api/ai/checks', auth, aiLimit, aiChecks)
+app.post('/api/ai/feedback', requireUser, aiLimit, aiFeedback)
+app.post('/api/ai/command', requireUser, aiLimit, aiCommand)
+app.post('/api/ai/titles', requireUser, aiLimit, aiTitles)
+app.post('/api/ai/checks', requireUser, aiLimit, aiChecks)
 
 // ---------- static client ----------
 const dist = path.join(process.cwd(), 'dist')
@@ -497,19 +569,63 @@ server.on('upgrade', (req, socket, head) => {
   const url = new URL(req.url, 'http://x')
   const match = url.pathname.match(/^\/ws\/([^/]+)$/)
   if (!match) return socket.destroy()
-  const docId = match[1]
-  const token = url.searchParams.get('token')
-  const user = userByToken(token)
-  if (!user || !docExists(docId)) {
-    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+  // browsers always send Origin on ws handshakes — refuse cross-site sockets
+  const origin = req.headers.origin
+  if (origin && !TRUSTED_ORIGINS.includes(origin)) {
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n')
     return socket.destroy()
   }
-  wss.handleUpgrade(req, socket, head, (ws) => {
-    setupCollab(ws, docId)
-  })
+  const docId = match[1]
+  // sessions are cookie-based; the browser sends them on the ws handshake
+  getUser(req.headers)
+    .then((user) => {
+      if (!user || !docExists(docId)) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
+        return socket.destroy()
+      }
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        setupCollab(ws, docId)
+      })
+    })
+    .catch(() => socket.destroy())
 })
 
+// sweep ghosts that drifted off: anonymous users whose sessions have all
+// expired and who haven't written in two weeks, along with their pages
+function sweepGhosts() {
+  const nowIso = new Date().toISOString()
+  const cutoffMs = Date.now() - 14 * 24 * 60 * 60 * 1000
+  const stale = db
+    .prepare(
+      `SELECT u.id FROM user u
+       WHERE u.isAnonymous = 1
+         AND u.id NOT IN (SELECT userId FROM session WHERE expiresAt > ?)
+         AND COALESCE((SELECT MAX(updated_at) FROM docs WHERE owner_id = u.id), 0) < ?`
+    )
+    .all(nowIso, cutoffMs)
+  for (const { id } of stale) {
+    for (const d of db.prepare('SELECT id, header_image FROM docs WHERE owner_id = ?').all(id)) {
+      removeHeaderFile(d.header_image)
+      db.prepare('DELETE FROM comments WHERE doc_id = ?').run(d.id)
+      db.prepare('DELETE FROM versions WHERE doc_id = ?').run(d.id)
+      db.prepare('DELETE FROM collaborators WHERE doc_id = ?').run(d.id)
+    }
+    db.prepare('DELETE FROM docs WHERE owner_id = ?').run(id)
+    db.prepare('DELETE FROM collaborators WHERE user_id = ?').run(id)
+    db.prepare('DELETE FROM activity WHERE user_id = ?').run(id)
+    db.prepare('DELETE FROM ai_usage WHERE user_id = ?').run(id)
+    db.prepare('DELETE FROM account WHERE userId = ?').run(id)
+    db.prepare('DELETE FROM session WHERE userId = ?').run(id)
+    db.prepare('DELETE FROM user WHERE id = ?').run(id)
+  }
+  if (stale.length) console.log(`swept ${stale.length} drifted ghost(s)`)
+}
+
 const PORT = process.env.PORT || 3001
+await runAuthMigrations()
+await migrateLegacyUsers()
+sweepGhosts()
+setInterval(sweepGhosts, 24 * 60 * 60 * 1000).unref()
 server.listen(PORT, () => {
   console.log(`author* listening on http://localhost:${PORT}`)
 })

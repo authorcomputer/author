@@ -8,7 +8,7 @@ import { marked } from 'marked'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { prosemirrorJSONToYDoc } from 'y-prosemirror'
-import { api, setAuth, token, username } from '../api'
+import { api, setMe, username } from '../api'
 import { CommentMark } from '../comment-mark'
 import Logo from '../Logo'
 
@@ -49,9 +49,7 @@ async function importMarkdownFile(file: File): Promise<string> {
 
   const ydoc = new Y.Doc()
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const provider = new WebsocketProvider(`${proto}//${location.host}/ws`, id, ydoc, {
-    params: { token: token() || '' },
-  })
+  const provider = new WebsocketProvider(`${proto}//${location.host}/ws`, id, ydoc)
   try {
     await new Promise<void>((resolve, reject) => {
       const t = setTimeout(() => reject(new Error('sync timeout')), 10000)
@@ -197,7 +195,7 @@ function HandleRow({ current, onRenamed }: { current: string; onRenamed: (u: str
         method: 'POST',
         body: JSON.stringify({ username: name }),
       })
-      setAuth(token()!, res.username)
+      setMe({ username: res.username, anon: false })
       setName(res.username)
       onRenamed(res.username)
       setState('saved')

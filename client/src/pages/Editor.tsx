@@ -9,8 +9,16 @@ import CharacterCount from '@tiptap/extension-character-count'
 import TiptapLink from '@tiptap/extension-link'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
-import { api, apiStream, token, username, colorFor } from '../api'
+import { api, apiStream, me, username, colorFor } from '../api'
 import { CommentMark } from '../comment-mark'
+import AccountModal from '../AccountModal'
+
+function needsAccount(e: unknown) {
+  return (e as any)?.code === 'account_required'
+}
+function promptAccount() {
+  window.dispatchEvent(new CustomEvent('author:account-required'))
+}
 
 type Meta = {
   id: string
@@ -96,7 +104,9 @@ export default function EditorPage() {
 }
 
 function EditorInner({ id }: { id: string }) {
-  const me = username() || 'someone'
+  const penName = username() || 'someone'
+  const isGhost = !!me()?.anon
+  const [modalReason, setModalReason] = useState<string | null>(null)
   const [meta, setMeta] = useState<Meta | null>(null)
   const [title, setTitle] = useState('')
   const [panel, setPanel] = useState<Panel>(null)
@@ -109,9 +119,8 @@ function EditorInner({ id }: { id: string }) {
   const ydoc = useMemo(() => new Y.Doc(), [id])
   const provider = useMemo(() => {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:'
-    return new WebsocketProvider(`${proto}//${location.host}/ws`, id, ydoc, {
-      params: { token: token() || '' },
-    })
+    // auth rides on the session cookie, sent automatically on the handshake
+    return new WebsocketProvider(`${proto}//${location.host}/ws`, id, ydoc)
   }, [id, ydoc])
 
   const editor = useEditor({
@@ -120,7 +129,7 @@ function EditorInner({ id }: { id: string }) {
       Collaboration.configure({ document: ydoc }),
       CollaborationCursor.configure({
         provider,
-        user: { name: me, color: colorFor(me) },
+        user: { name: penName, color: colorFor(penName) },
       }),
       Placeholder.configure({ placeholder: 'begin…' }),
       CharacterCount,
@@ -131,7 +140,7 @@ function EditorInner({ id }: { id: string }) {
 
   // lifecycle: meta, presence, teardown
   useEffect(() => {
-    api(`/api/docs/${id}`)
+    api(`/api/docs/${id}/open`, { method: 'POST' })
       .then((m: Meta) => {
         setMeta(m)
         const metaMap = ydoc.getMap('meta')
@@ -214,7 +223,7 @@ function EditorInner({ id }: { id: string }) {
     }
     const res = await fetch(`/api/docs/${id}/header`, {
       method: 'POST',
-      headers: { 'Content-Type': f.type, Authorization: `Bearer ${token()}` },
+      headers: { 'Content-Type': f.type },
       body: f,
     })
     if (!res.ok) {
@@ -241,6 +250,28 @@ function EditorInner({ id }: { id: string }) {
     setMeta({ ...meta, published: res.published, slug: res.slug })
   }
 
+  // ghosts get exactly one nudge: on account-required errors, and once if
+  // they try to leave with unsaved writing
+  useEffect(() => {
+    const onNeed = () =>
+      setModalReason('that one was on the house — take a desk for more')
+    window.addEventListener('author:account-required', onNeed)
+    return () => window.removeEventListener('author:account-required', onNeed)
+  }, [])
+
+  useEffect(() => {
+    if (!isGhost || !editor) return
+    const h = (e: BeforeUnloadEvent) => {
+      if (localStorage.getItem('author.ghost-nagged')) return
+      if (editor.isDestroyed || editor.storage.characterCount.words() === 0) return
+      localStorage.setItem('author.ghost-nagged', '1')
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', h)
+    return () => window.removeEventListener('beforeunload', h)
+  }, [isGhost, editor])
+
   const words = editor ? editor.storage.characterCount.words() : 0
 
   if (gone)
@@ -258,11 +289,11 @@ function EditorInner({ id }: { id: string }) {
   return (
     <div className="ed-wrap">
       <div className="ed-top">
-        <Link to="/">← desk</Link>
+        {isGhost ? <span className="faint">✎ a ghost draft</span> : <Link to="/">← desk</Link>}
         <span className="faint">{connected ? '●' : '○'}</span>
         <div className="presence">
-          <span className="who" style={{ color: colorFor(me) }}>
-            {me}
+          <span className="who" style={{ color: colorFor(penName) }}>
+            {penName}
           </span>
           {others.map((o, i) => (
             <span className="who" key={i} style={{ color: o.color }}>
@@ -295,21 +326,34 @@ function EditorInner({ id }: { id: string }) {
         </button>
         <button
           className={panel === 'versions' ? 'on' : ''}
-          onClick={() => setPanel(panel === 'versions' ? null : 'versions')}
+          onClick={() =>
+            isGhost
+              ? setModalReason('versions keep what you had — that needs a desk')
+              : setPanel(panel === 'versions' ? null : 'versions')
+          }
         >
           [ versions ]
         </button>
-        <div className="share-anchor">
+        {isGhost ? (
           <button
-            className={shareOpen || meta?.published ? 'on' : ''}
-            onClick={() => meta && setShareOpen(!shareOpen)}
+            className="accent"
+            onClick={() => setModalReason('keep this page — it only exists in this tab for now')}
           >
-            {meta?.published ? '✽ share' : '[ share ]'}
+            [ save to a desk ]
           </button>
-          {shareOpen && meta && (
-            <SharePop meta={meta} onToggle={togglePublish} onClose={() => setShareOpen(false)} />
-          )}
-        </div>
+        ) : (
+          <div className="share-anchor">
+            <button
+              className={shareOpen || meta?.published ? 'on' : ''}
+              onClick={() => meta && setShareOpen(!shareOpen)}
+            >
+              {meta?.published ? '✽ share' : '[ share ]'}
+            </button>
+            {shareOpen && meta && (
+              <SharePop meta={meta} onToggle={togglePublish} onClose={() => setShareOpen(false)} />
+            )}
+          </div>
+        )}
       </div>
       <div className="ed-body">
         <div className="ed-scroll">
@@ -362,6 +406,9 @@ function EditorInner({ id }: { id: string }) {
         )}
       </div>
       {editor && <CommandBar editor={editor} setPanel={setPanel} />}
+      {modalReason && (
+        <AccountModal reason={modalReason} onClose={() => setModalReason(null)} />
+      )}
     </div>
   )
 }
@@ -515,7 +562,8 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
         (chunk) => setOut((o) => o + chunk)
       )
     } catch (e: any) {
-      setOut((o) => o + `\n✗ ${e.message}`)
+      if (needsAccount(e)) promptAccount()
+      else setOut((o) => o + `\n✗ ${e.message}`)
     } finally {
       setRunning(false)
     }
@@ -631,7 +679,8 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
       })
       setIssues(res.issues || [])
     } catch (e: any) {
-      setErr(e.message)
+      if (needsAccount(e)) promptAccount()
+      else setErr(e.message)
     } finally {
       setRunning(false)
     }
@@ -686,7 +735,8 @@ function TitlesPanel({ editor, onTitle }: { editor: TiptapEditor; onTitle: (t: s
       })
       setTitles(res.titles || [])
     } catch (e: any) {
-      setErr(e.message)
+      if (needsAccount(e)) promptAccount()
+      else setErr(e.message)
     } finally {
       setRunning(false)
     }
@@ -967,7 +1017,8 @@ function CommandBar({
         }
       )
     } catch (e: any) {
-      current.text += `\n✗ ${e.message}`
+      if (needsAccount(e)) promptAccount()
+      else current.text += `\n✗ ${e.message}`
     } finally {
       current.running = false
       update({ text: current.text, running: false })

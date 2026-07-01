@@ -8,7 +8,7 @@ import { WebsocketProvider } from 'y-websocket'
 import { prosemirrorJSONToYDoc } from 'y-prosemirror'
 import WebSocket from 'ws'
 
-const [token] = process.argv.slice(2)
+const [cookie] = process.argv.slice(2)
 const BASE = process.env.AUTHOR_BASE || 'http://localhost:3001'
 const WS = process.env.AUTHOR_WS_URL || 'ws://localhost:3001/ws'
 
@@ -34,7 +34,7 @@ console.log('html:', html.replace(/\n/g, '').slice(0, 120))
 
 const res = await fetch(`${BASE}/api/docs`, {
   method: 'POST',
-  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+  headers: { 'Content-Type': 'application/json', Cookie: cookie },
   body: JSON.stringify({ title }),
 })
 const { id } = await res.json()
@@ -46,9 +46,13 @@ const json = generateJSON(html, extensions)
 const update = Y.encodeStateAsUpdate(prosemirrorJSONToYDoc(schema, json, 'default'))
 
 const ydoc = new Y.Doc()
+class AuthedWS extends WebSocket {
+  constructor(u, protocols) {
+    super(u, protocols, { headers: { Cookie: cookie } })
+  }
+}
 const provider = new WebsocketProvider(WS, id, ydoc, {
-  WebSocketPolyfill: WebSocket,
-  params: { token },
+  WebSocketPolyfill: AuthedWS,
 })
 await new Promise((r, j) => {
   const t = setTimeout(() => j(new Error('sync timeout')), 10000)
@@ -61,7 +65,7 @@ Y.applyUpdate(ydoc, update)
 ydoc.getMap('meta').set('title', title)
 await fetch(`${BASE}/api/docs/${id}/html`, {
   method: 'POST',
-  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+  headers: { 'Content-Type': 'application/json', Cookie: cookie },
   body: JSON.stringify({ html }),
 })
 await new Promise((r) => setTimeout(r, 500))
@@ -70,7 +74,7 @@ ydoc.destroy()
 
 // verify: reconnect fresh and read back
 const check = new Y.Doc()
-const p2 = new WebsocketProvider(WS, id, check, { WebSocketPolyfill: WebSocket, params: { token } })
+const p2 = new WebsocketProvider(WS, id, check, { WebSocketPolyfill: AuthedWS })
 await new Promise((r) => p2.once('sync', r))
 const content = check.getXmlFragment('default').toString()
 const gotTitle = check.getMap('meta').get('title')

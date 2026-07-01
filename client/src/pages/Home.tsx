@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { api, username, clearAuth } from '../api'
+import { api, username, signOut } from '../api'
 import Logo from '../Logo'
 
 type DocRow = {
@@ -89,8 +89,8 @@ export default function Home() {
           </Link>
           <button
             className="faint"
-            onClick={() => {
-              clearAuth()
+            onClick={async () => {
+              await signOut()
               nav('/login')
             }}
           >
