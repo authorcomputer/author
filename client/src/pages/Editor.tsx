@@ -137,12 +137,16 @@ function EditorInner({ id }: { id: string }) {
           setHeaderUrl((metaMap.get('header') as string) ?? null)
         }
         metaMap.observe(applyMeta)
+        let seeded = false // sync fires on every reconnect; seed only once
         provider.on('sync', (synced: boolean) => {
           setConnected(synced)
-          if (synced && metaMap.get('title') === undefined && m.title && m.title !== 'untitled') {
+          if (!synced || seeded) return
+          seeded = true
+          if (metaMap.get('title') === undefined && m.title && m.title !== 'untitled') {
             metaMap.set('title', m.title)
           }
-          if (synced && metaMap.get('header') === undefined && m.header_image) {
+          // the server column is authoritative for the header image
+          if (m.header_image && metaMap.get('header') !== m.header_image) {
             metaMap.set('header', m.header_image)
           }
         })
@@ -439,9 +443,15 @@ function SharePop({
 /* side panel                                                          */
 /* ------------------------------------------------------------------ */
 
-let commandResultBus: {
-  set?: (r: { instruction: string; range: { from: number; to: number } | null; text: string; running: boolean } | null) => void
-} = {}
+type CommandResult = {
+  instruction: string
+  range: { from: number; to: number } | null
+  sourceText: string
+  text: string
+  running: boolean
+}
+
+let commandResultBus: { set?: (r: CommandResult | null) => void } = {}
 
 function SidePanel({
   panel,
@@ -482,12 +492,7 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
   const [question, setQuestion] = useState('')
   const [out, setOut] = useState('')
   const [running, setRunning] = useState(false)
-  const [cmd, setCmd] = useState<{
-    instruction: string
-    range: { from: number; to: number } | null
-    text: string
-    running: boolean
-  } | null>(null)
+  const [cmd, setCmd] = useState<CommandResult | null>(null)
 
   useEffect(() => {
     commandResultBus.set = setCmd
@@ -515,17 +520,44 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
 
   function applyCmd(mode: 'replace' | 'insert') {
     if (!cmd) return
-    const html = textToHtml(cmd.text.trim())
+    const text = cmd.text.trim()
+    const docSize = editor.state.doc.content.size
+
     if (mode === 'replace' && cmd.range && cmd.range.to > cmd.range.from) {
-      editor
-        .chain()
-        .focus()
-        .deleteRange(cmd.range)
-        .insertContentAt(cmd.range.from, html)
-        .run()
+      // the doc may have changed since ⌘K was pressed (typing, collaborators) —
+      // trust the stored range only if it still holds the original selection,
+      // otherwise search for that text and replace it where it lives now.
+      let r: { from: number; to: number } | null = {
+        from: Math.min(cmd.range.from, docSize),
+        to: Math.min(cmd.range.to, docSize),
+      }
+      const current = editor.state.doc.textBetween(r.from, r.to, '\n\n')
+      if (current !== cmd.sourceText) r = findRange(editor, cmd.sourceText)
+      if (!r) {
+        alert('the original selection has changed — inserting at the end instead')
+        editor.chain().focus().insertContentAt(docSize, textToHtml(text)).run()
+        setCmd(null)
+        return
+      }
+      if (/\n{2,}/.test(text)) {
+        // multi-paragraph result: replace with block content
+        editor.chain().focus().deleteRange(r).insertContentAt(r.from, textToHtml(text)).run()
+      } else {
+        // single-paragraph result: replace as plain text so the surrounding
+        // paragraph isn't split and no characters get HTML-mangled
+        const range = r
+        editor
+          .chain()
+          .focus()
+          .command(({ tr }) => {
+            tr.insertText(text, range.from, range.to)
+            return true
+          })
+          .run()
+      }
     } else {
-      const end = cmd.range ? cmd.range.to : editor.state.doc.content.size
-      editor.chain().focus().insertContentAt(end, html).run()
+      const end = Math.min(cmd.range ? cmd.range.to : docSize, editor.state.doc.content.size)
+      editor.chain().focus().insertContentAt(end, textToHtml(text)).run()
     }
     setCmd(null)
   }
@@ -909,10 +941,11 @@ function CommandBar({
       commandResultBus.set?.({
         instruction: inst,
         range: hasSel ? range : null,
+        sourceText: selection,
         text: current.text,
         running: current.running,
         ...partial,
-      } as any)
+      })
     }
     const current = { text: '', running: true }
     update({})

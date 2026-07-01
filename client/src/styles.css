@@ -112,6 +112,9 @@ input, textarea {
 .doc-row .del { float: right; color: var(--fainter); }
 .doc-row .del:hover { color: var(--accent); }
 .empty-note { color: var(--faint); margin-top: 48px; text-align: center; }
+.home-foot { margin-top: 72px; text-align: center; }
+.home-foot .ascii-rule { margin-bottom: 14px; }
+.home-foot-links { display: flex; justify-content: center; gap: 24px; font-size: 12px; }
 
 /* ---------- editor chrome ---------- */
 .ed-wrap { height: 100%; display: flex; flex-direction: column; }

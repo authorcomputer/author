@@ -50,23 +50,9 @@ export default function Home() {
     <div className="home">
       <div className="home-head">
         <h1>
-          <Logo word size={16} />{' '}
-          <Link className="faint" to="/me" title="profile & settings">
-            / {username()}
-          </Link>
+          <Logo word size={16} /> <span className="faint">/ {username()}</span>
         </h1>
-        <div style={{ display: 'flex', gap: 16 }}>
-          <button onClick={newDraft}>[ + new draft ]</button>
-          <button
-            className="faint"
-            onClick={() => {
-              clearAuth()
-              nav('/login')
-            }}
-          >
-            leave
-          </button>
-        </div>
+        <button onClick={newDraft}>[ + new draft ]</button>
       </div>
       <div className="ascii-rule">════════════════════════════════════════════════════════════</div>
       {docs.map((d) => (
@@ -95,6 +81,23 @@ export default function Home() {
           ( nothing here yet — press [ + new draft ] and begin )
         </div>
       )}
+      <div className="home-foot">
+        <div className="ascii-rule">· · · · · · · · · · · · · · · · · · · · · · · · · · · ·</div>
+        <div className="home-foot-links">
+          <Link className="faint" to="/me">
+            [ profile &amp; settings ]
+          </Link>
+          <button
+            className="faint"
+            onClick={() => {
+              clearAuth()
+              nav('/login')
+            }}
+          >
+            [ leave ]
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

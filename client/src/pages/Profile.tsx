@@ -165,6 +165,8 @@ function SettingsTab() {
         <div className="hint">only drafts you've explicitly published ever appear.</div>
       </div>
 
+      <PasswordRow />
+
       <div className="setting-row">
         <div style={{ marginBottom: 6 }}>social links</div>
         <textarea
@@ -178,6 +180,46 @@ function SettingsTab() {
           <span className="hint">one per line, up to six — full https:// urls</span>
         </div>
       </div>
+    </div>
+  )
+}
+
+function PasswordRow() {
+  const [pw, setPw] = useState('')
+  const [state, setState] = useState<'idle' | 'saved' | 'error'>('idle')
+  const [msg, setMsg] = useState('')
+
+  async function set() {
+    try {
+      await api('/api/password', { method: 'POST', body: JSON.stringify({ password: pw }) })
+      setPw('')
+      setState('saved')
+      setTimeout(() => setState('idle'), 1500)
+    } catch (e: any) {
+      setMsg(e.message)
+      setState('error')
+    }
+  }
+
+  return (
+    <div className="setting-row">
+      <div style={{ marginBottom: 6 }}>change password</div>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <input
+          type="password"
+          style={{ flex: 1, borderBottom: '1px solid var(--fainter)' }}
+          placeholder="new password"
+          value={pw}
+          onChange={(e) => {
+            setPw(e.target.value)
+            setState('idle')
+          }}
+        />
+        <button onClick={set} disabled={!pw}>
+          {state === 'saved' ? '✓ changed' : '[ set password ]'}
+        </button>
+      </div>
+      {state === 'error' && <div className="err">✗ {msg}</div>}
     </div>
   )
 }

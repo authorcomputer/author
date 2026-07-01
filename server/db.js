@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import path from 'node:path'
 import fs from 'node:fs'
+import crypto from 'node:crypto'
 
 const dataDir = path.join(process.cwd(), 'data')
 fs.mkdirSync(dataDir, { recursive: true })
@@ -59,6 +60,17 @@ CREATE TABLE IF NOT EXISTS activity (
   count INTEGER DEFAULT 0,
   PRIMARY KEY (user_id, day)
 );
+CREATE TABLE IF NOT EXISTS invite_codes (
+  code TEXT PRIMARY KEY,
+  label TEXT,
+  uses INTEGER DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS ai_usage (
+  user_id TEXT NOT NULL,
+  day TEXT NOT NULL,
+  count INTEGER DEFAULT 0,
+  PRIMARY KEY (user_id, day)
+);
 `)
 
 // lightweight migrations for pre-existing databases
@@ -72,7 +84,20 @@ function addColumn(table, ddl) {
 addColumn('users', 'profile_public INTEGER DEFAULT 0')
 addColumn('users', 'show_writing INTEGER DEFAULT 1')
 addColumn('users', "links TEXT DEFAULT '[]'")
+addColumn('users', 'email TEXT')
 addColumn('docs', 'header_image TEXT')
+
+// seed two invite codes: one personal, one to hand to friends
+const codeCount = db.prepare('SELECT COUNT(*) AS c FROM invite_codes').get()
+if (codeCount.c === 0) {
+  const mk = () => 'author-' + crypto.randomBytes(4).toString('hex')
+  const ins = db.prepare('INSERT INTO invite_codes (code, label) VALUES (?, ?)')
+  const personal = mk()
+  const friends = mk()
+  ins.run(personal, 'personal')
+  ins.run(friends, 'friends')
+  console.log(`invite codes — personal: ${personal} · friends: ${friends}`)
+}
 
 // Seed the two test accounts (uniform password: "author")
 const count = db.prepare('SELECT COUNT(*) AS c FROM users').get()

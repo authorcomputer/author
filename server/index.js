@@ -12,6 +12,10 @@ import { aiFeedback, aiCommand, aiTitles, aiChecks } from './ai.js'
 
 const app = express()
 app.use(express.json({ limit: '5mb' }))
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff')
+  next()
+})
 
 const uid = (p) => p + '_' + crypto.randomBytes(8).toString('hex')
 
@@ -37,12 +41,7 @@ function auth(req, res, next) {
   next()
 }
 
-app.post('/api/login', (req, res) => {
-  const { username, password } = req.body || {}
-  const user = db
-    .prepare('SELECT * FROM users WHERE username = ? AND password = ?')
-    .get(String(username || '').toLowerCase().trim(), String(password || ''))
-  if (!user) return res.status(401).json({ error: 'wrong name or password' })
+function startSession(res, user) {
   const token = crypto.randomBytes(24).toString('hex')
   db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)').run(
     token,
@@ -50,9 +49,53 @@ app.post('/api/login', (req, res) => {
     Date.now()
   )
   res.json({ token, username: user.username })
+}
+
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body || {}
+  const ident = String(username || '').toLowerCase().trim()
+  const user = db
+    .prepare('SELECT * FROM users WHERE (username = ? OR email = ?) AND password = ?')
+    .get(ident, ident, String(password || ''))
+  if (!user) return res.status(401).json({ error: 'wrong name or password' })
+  startSession(res, user)
+})
+
+app.post('/api/signup', (req, res) => {
+  const { username, email, password, code } = req.body || {}
+  const uname = String(username || '').toLowerCase().trim()
+  const mail = String(email || '').toLowerCase().trim()
+  if (!/^[a-z0-9_-]{2,24}$/.test(uname))
+    return res.status(400).json({ error: 'handle: 2–24 letters, numbers, - or _' })
+  if (!/^\S+@\S+\.\S+$/.test(mail))
+    return res.status(400).json({ error: 'that email looks off' })
+  if (String(password || '').length < 6)
+    return res.status(400).json({ error: 'password: six characters at least' })
+  const invite = db
+    .prepare('SELECT * FROM invite_codes WHERE code = ?')
+    .get(String(code || '').trim().toLowerCase())
+  if (!invite) return res.status(403).json({ error: 'that invite code doesn’t open the door' })
+  if (db.prepare('SELECT id FROM users WHERE username = ? OR email = ?').get(uname, mail))
+    return res.status(409).json({ error: 'that name or email already has a desk' })
+  const id = uid('u')
+  db.prepare('INSERT INTO users (id, username, password, email) VALUES (?, ?, ?, ?)').run(
+    id,
+    uname,
+    String(password),
+    mail
+  )
+  db.prepare('UPDATE invite_codes SET uses = uses + 1 WHERE code = ?').run(invite.code)
+  startSession(res, { id, username: uname })
 })
 
 app.get('/api/me', auth, (req, res) => res.json(req.user))
+
+app.post('/api/password', auth, (req, res) => {
+  const p = String((req.body || {}).password || '')
+  if (p.length < 6) return res.status(400).json({ error: 'six characters at least' })
+  db.prepare('UPDATE users SET password = ? WHERE id = ?').run(p, req.user.id)
+  res.json({ ok: true })
+})
 
 // ---------- docs ----------
 app.get('/api/docs', auth, (req, res) => {
@@ -234,9 +277,43 @@ const IMG_EXT = {
   'image/gif': 'gif',
 }
 
+// content-type alone is attacker-controlled — check the file signature too
+function magicOk(ext, b) {
+  if (!Buffer.isBuffer(b) || b.length < 12) return false
+  if (ext === 'jpg') return b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff
+  if (ext === 'png') return b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47
+  if (ext === 'gif') return b[0] === 0x47 && b[1] === 0x49 && b[2] === 0x46
+  if (ext === 'webp')
+    return b.slice(0, 4).toString('ascii') === 'RIFF' && b.slice(8, 12).toString('ascii') === 'WEBP'
+  return false
+}
+
+function uploadsDirSize() {
+  let total = 0
+  for (const f of fs.readdirSync(uploadsDir)) {
+    try {
+      total += fs.statSync(path.join(uploadsDir, f)).size
+    } catch {}
+  }
+  return total
+}
+
 function removeHeaderFile(url) {
   if (!url || !url.startsWith('/files/')) return
   fs.unlink(path.join(uploadsDir, path.basename(url)), () => {})
+}
+
+// migrate any pre-existing header files that embedded the doc id in their
+// public URL (the doc id is an edit capability — it must never be public)
+for (const row of db
+  .prepare("SELECT id, header_image FROM docs WHERE header_image LIKE '/files/doc_%'")
+  .all()) {
+  const old = path.basename(row.header_image)
+  const fresh = crypto.randomBytes(12).toString('hex') + '.' + old.split('.').pop()
+  try {
+    fs.renameSync(path.join(uploadsDir, old), path.join(uploadsDir, fresh))
+    db.prepare('UPDATE docs SET header_image = ? WHERE id = ?').run('/files/' + fresh, row.id)
+  } catch {}
 }
 
 app.post(
@@ -247,10 +324,13 @@ app.post(
     const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
     if (!doc) return res.status(404).json({ error: 'no such doc' })
     const ext = IMG_EXT[(req.headers['content-type'] || '').split(';')[0]]
-    if (!ext || !Buffer.isBuffer(req.body) || req.body.length === 0) {
+    if (!ext || !magicOk(ext, req.body)) {
       return res.status(400).json({ error: 'send a jpeg, png, webp, or gif' })
     }
-    const name = `${doc.id}_${Date.now()}.${ext}`
+    if (uploadsDirSize() > 500 * 1024 * 1024) {
+      return res.status(507).json({ error: 'image storage is full' })
+    }
+    const name = `${crypto.randomBytes(12).toString('hex')}.${ext}`
     fs.writeFileSync(path.join(uploadsDir, name), req.body)
     removeHeaderFile(doc.header_image)
     const url = `/files/${name}`
@@ -330,10 +410,27 @@ app.get('/api/profile/:username', (req, res) => {
 })
 
 // ---------- ai ----------
-app.post('/api/ai/feedback', auth, aiFeedback)
-app.post('/api/ai/command', auth, aiCommand)
-app.post('/api/ai/titles', auth, aiTitles)
-app.post('/api/ai/checks', auth, aiChecks)
+// per-user daily cap so the model bill can't be run up by one account
+const AI_DAILY_CAP = Number(process.env.AI_DAILY_CAP || 150)
+function aiLimit(req, res, next) {
+  const day = new Date().toISOString().slice(0, 10)
+  const row = db
+    .prepare('SELECT count FROM ai_usage WHERE user_id = ? AND day = ?')
+    .get(req.user.id, day)
+  if (row && row.count >= AI_DAILY_CAP) {
+    return res.status(429).json({ error: 'the pen rests — daily limit reached, back tomorrow' })
+  }
+  db.prepare(
+    `INSERT INTO ai_usage (user_id, day, count) VALUES (?, ?, 1)
+     ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1`
+  ).run(req.user.id, day)
+  next()
+}
+
+app.post('/api/ai/feedback', auth, aiLimit, aiFeedback)
+app.post('/api/ai/command', auth, aiLimit, aiCommand)
+app.post('/api/ai/titles', auth, aiLimit, aiTitles)
+app.post('/api/ai/checks', auth, aiLimit, aiChecks)
 
 // ---------- static client ----------
 const dist = path.join(process.cwd(), 'dist')

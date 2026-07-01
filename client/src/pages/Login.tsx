@@ -4,7 +4,10 @@ import { setAuth } from '../api'
 import Logo from '../Logo'
 
 export default function Login() {
+  const [mode, setMode] = useState<'in' | 'up'>('in')
   const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
+  const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
   const [err, setErr] = useState('')
   const nav = useNavigate()
@@ -14,10 +17,12 @@ export default function Login() {
     e.preventDefault()
     setErr('')
     try {
-      const res = await fetch('/api/login', {
+      const res = await fetch(mode === 'in' ? '/api/login' : '/api/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify(
+          mode === 'in' ? { username, password } : { username, email, password, code }
+        ),
       })
       if (!res.ok) throw new Error((await res.json()).error || 'no luck')
       const data = await res.json()
@@ -42,13 +47,24 @@ export default function Login() {
         </div>
         <div className="field">
           <input
-            placeholder="name"
+            placeholder={mode === 'in' ? 'name or email' : 'pick a handle'}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             autoFocus
             autoCapitalize="none"
           />
         </div>
+        {mode === 'up' && (
+          <div className="field">
+            <input
+              placeholder="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoCapitalize="none"
+            />
+          </div>
+        )}
         <div className="field">
           <input
             placeholder="password"
@@ -57,12 +73,48 @@ export default function Login() {
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
+        {mode === 'up' && (
+          <div className="field">
+            <input
+              placeholder="invite code"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+              autoCapitalize="none"
+            />
+          </div>
+        )}
         <button className="go" type="submit">
-          [ enter ]
+          {mode === 'in' ? '[ enter ]' : '[ take a desk ]'}
         </button>
         {err && <div className="err">✗ {err}</div>}
         <div className="faint" style={{ marginTop: 40, fontSize: 11 }}>
-          test desks: <b>ink</b> or <b>quill</b> · password: <b>author</b>
+          {mode === 'in' ? (
+            <>
+              have an invite?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('up')
+                  setErr('')
+                }}
+              >
+                [ create an account ]
+              </button>
+            </>
+          ) : (
+            <>
+              already have a desk?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('in')
+                  setErr('')
+                }}
+              >
+                [ sign in ]
+              </button>
+            </>
+          )}
         </div>
       </form>
     </div>
