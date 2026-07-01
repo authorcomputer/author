@@ -3,8 +3,10 @@
 a quiet place to write — together.
 
 **author\*** is a small, open-source collaborative writing app: a calm serif page
-with live multiplayer editing, an AI writing companion, comments, versions, and
-one-click publishing. Think of it as a self-hostable take on the modern word processor.
+with live multiplayer editing, an editor you can ask things of, comments,
+versions, and one-click publishing. A modern interpretation of the word
+processor — for anyone who writes, whether that's tweets, letters to your
+landlord, or the novel.
 
 ```
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -20,7 +22,7 @@ one-click publishing. Think of it as a self-hostable take on the modern word pro
 - **ask** — stream feedback on your draft, or ask it a question
 - **⌘K commands** — select text, hit ⌘K: improve, shorten, expand, fix
   grammar, or any instruction you type; preview then replace/insert
-- **checks** — AI proofread that returns clickable issues (spelling, grammar,
+- **checks** — a proofread that returns clickable issues (spelling, grammar,
   repetition, clichés, clarity)
 - **title ideas** — eight titles, one click to take one
 - **comments** — select text, leave a note; resolvable threads in the margin
@@ -46,7 +48,7 @@ Two test accounts are seeded on first run: **ink** and **quill**, password
 | editor  | [Tiptap](https://tiptap.dev) (ProseMirror) + React + Vite      |
 | collab  | [Yjs](https://yjs.dev) — custom y-websocket server (`server/collab.js`) |
 | server  | Express + `ws` + better-sqlite3 (single file DB in `data/`)    |
-| ai      | Anthropic API (`claude-opus-4-8`), server-side only            |
+| editor  | Anthropic API (`claude-opus-4-8`), server-side only            |
 
 ## contributing
 

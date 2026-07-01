@@ -1,0 +1,27 @@
+# fly.io config — free-ish always-on hosting with a persistent volume.
+# Setup (once):
+#   fly launch --no-deploy      # or: fly apps create author-computer
+#   fly volumes create author_data --size 1
+#   fly secrets set ANTHROPIC_API_KEY=sk-ant-...
+#   fly deploy
+
+app = "author-computer"
+primary_region = "ewr"
+
+[env]
+  PORT = "3001"
+
+[[mounts]]
+  source = "author_data"
+  destination = "/app/data"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
