@@ -24,15 +24,10 @@ export default function Updates() {
           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         </div>
         {UPDATES.map((day) => (
-          <div key={day.date}>
-            <div className="update-day">{day.date}</div>
-            {day.updates.map((u) => (
-              <div className="update-row" key={u.time + u.title}>
-                <div className="u-time">{u.time}</div>
-                <div className="u-title">{u.title}</div>
-                <div className="u-note">{u.note}</div>
-              </div>
-            ))}
+          <div className="update-row" key={day.date}>
+            <div className="u-time">{day.date}</div>
+            <div className="u-title">{day.title}</div>
+            <div className="u-note">{day.note}</div>
           </div>
         ))}
         <div className="pub-foot">

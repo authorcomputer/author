@@ -405,16 +405,10 @@ input, textarea {
 }
 
 /* updates page */
-.update-day {
-  font-family: var(--serif);
-  font-size: 20px;
-  font-weight: 600;
-  margin: 36px 0 6px;
-}
-.update-row { padding: 14px 0; border-bottom: 1px solid var(--wash); }
+.update-row { padding: 20px 0; border-bottom: 1px solid var(--wash); }
 .update-row .u-time { color: var(--accent); font-size: 11px; }
-.update-row .u-title { font-family: var(--serif); font-size: 16px; margin: 2px 0 4px; }
-.update-row .u-note { color: var(--faint); font-size: 12.5px; }
+.update-row .u-title { font-family: var(--serif); font-size: 20px; font-weight: 600; margin: 2px 0 6px; }
+.update-row .u-note { color: var(--faint); font-size: 12.5px; line-height: 1.7; }
 
 /* remote cursors */
 .collaboration-cursor__caret {
