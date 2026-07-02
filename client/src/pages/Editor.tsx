@@ -169,6 +169,8 @@ function EditorInner({ id }: { id: string }) {
   const [meta, setMeta] = useState<Meta | null>(null)
   const [title, setTitle] = useState('')
   const [panel, setPanel] = useState<Panel>(null)
+  // remembered so the single [ editor ] button reopens where you left off
+  const [lastTab, setLastTab] = useState<Exclude<Panel, null>>('ai')
   const [shareOpen, setShareOpen] = useState(false)
   const [gone, setGone] = useState(false)
   const [headerUrl, setHeaderUrl] = useState<string | null>(null)
@@ -434,6 +436,19 @@ function EditorInner({ id }: { id: string }) {
 
   const words = editor ? editor.storage.characterCount.words() : 0
 
+  // reopening returns to the last tab; versions still needs a desk
+  useEffect(() => {
+    if (panel) setLastTab(panel)
+  }, [panel])
+  function openPanel(p: Panel) {
+    if (p === 'versions' && isGhost) {
+      track('account prompt: shown', { reason: 'versions' })
+      setModalReason('versions keep what you had — that needs a desk')
+      return
+    }
+    setPanel(p)
+  }
+
   if (gone)
     return (
       <div className="home">
@@ -463,37 +478,12 @@ function EditorInner({ id }: { id: string }) {
         </div>
         <div className="spacer" />
         <span className="faint">{words} words</span>
-        <button className={panel === 'ai' ? 'on' : ''} onClick={() => setPanel(panel === 'ai' ? null : 'ai')}>
-          [ ask ]
-        </button>
         <button
-          className={panel === 'checks' ? 'on' : ''}
-          onClick={() => setPanel(panel === 'checks' ? null : 'checks')}
+          className={panel ? 'on' : ''}
+          onClick={() => (panel ? setPanel(null) : openPanel(lastTab))}
+          title="ask, checks, titles, comments, versions"
         >
-          [ checks ]
-        </button>
-        <button
-          className={panel === 'titles' ? 'on' : ''}
-          onClick={() => setPanel(panel === 'titles' ? null : 'titles')}
-        >
-          [ titles ]
-        </button>
-        <button
-          className={panel === 'comments' ? 'on' : ''}
-          onClick={() => setPanel(panel === 'comments' ? null : 'comments')}
-        >
-          [ comments ]
-        </button>
-        <button
-          className={panel === 'versions' ? 'on' : ''}
-          onClick={() =>
-            isGhost
-              ? (track('account prompt: shown', { reason: 'versions' }),
-                setModalReason('versions keep what you had — that needs a desk'))
-              : setPanel(panel === 'versions' ? null : 'versions')
-          }
-        >
-          [ versions ]
+          [ editor ]
         </button>
         {isGhost ? (
           <button
@@ -585,7 +575,7 @@ function EditorInner({ id }: { id: string }) {
         {panel && editor && (
           <SidePanel
             panel={panel}
-            setPanel={setPanel}
+            setPanel={openPanel}
             editor={editor}
             docId={id}
             onTitle={(t) => updateTitle(t)}
