@@ -1,0 +1,10 @@
+# continuous SQLite replication to Tigris (S3-compatible), so the database
+# survives the volume. credentials come from the standard AWS_* env vars
+# that `fly storage create` sets as app secrets.
+dbs:
+  - path: /app/data/author.db
+    replicas:
+      - type: s3
+        bucket: ${BUCKET_NAME}
+        path: author.db
+        endpoint: ${AWS_ENDPOINT_URL_S3}
