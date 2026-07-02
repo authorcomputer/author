@@ -291,8 +291,17 @@ app.post('/api/docs/:id/html', requireUser, (req, res) => {
     cleanHtml(req.body && req.body.html),
     req.params.id
   )
-  // writing activity, for the profile contribution chart (UTC days)
-  const day = new Date().toISOString().slice(0, 10)
+  // writing activity, for the profile contribution chart. the client sends
+  // its own local day so the chart follows the writer's clock, not UTC's;
+  // it must sit within a day of UTC-now (any real timezone does)
+  const utcDay = new Date().toISOString().slice(0, 10)
+  const claimed = req.body && req.body.day
+  const day =
+    typeof claimed === 'string' &&
+    /^\d{4}-\d{2}-\d{2}$/.test(claimed) &&
+    Math.abs(Date.parse(claimed) - Date.parse(utcDay)) <= 86400000
+      ? claimed
+      : utcDay
   db.prepare(
     `INSERT INTO activity (user_id, day, count) VALUES (?, ?, 1)
      ON CONFLICT(user_id, day) DO UPDATE SET count = count + 1`

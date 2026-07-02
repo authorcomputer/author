@@ -10,7 +10,7 @@ import TiptapLink from '@tiptap/extension-link'
 import Underline from '@tiptap/extension-underline'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
-import { api, apiStream, me, username, colorFor } from '../api'
+import { api, apiStream, me, username, colorFor, localDay } from '../api'
 import { CommentMark } from '../comment-mark'
 import { track } from '../analytics'
 import AccountModal from '../AccountModal'
@@ -232,7 +232,7 @@ function EditorInner({ id }: { id: string }) {
       htmlTimer.current = setTimeout(() => {
         api(`/api/docs/${id}/html`, {
           method: 'POST',
-          body: JSON.stringify({ html: editor.getHTML() }),
+          body: JSON.stringify({ html: editor.getHTML(), day: localDay() }),
         }).catch(() => {})
       }, 2500)
     }
@@ -480,6 +480,13 @@ function EditorInner({ id }: { id: string }) {
               placeholder="untitled"
               value={title}
               onChange={(e) => updateTitle(e.target.value)}
+              onKeyDown={(e) => {
+                // enter drops you into the page, same as tab
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  editor?.chain().focus('start').run()
+                }
+              }}
             />
             <div className="ascii-rule">~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</div>
             <EditorContent editor={editor} />

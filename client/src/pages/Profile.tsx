@@ -8,7 +8,7 @@ import { marked } from 'marked'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { prosemirrorJSONToYDoc } from 'y-prosemirror'
-import { api, setMe, username } from '../api'
+import { api, localDay, setMe, username } from '../api'
 import { track } from '../analytics'
 import { CommentMark } from '../comment-mark'
 import Logo from '../Logo'
@@ -61,7 +61,10 @@ async function importMarkdownFile(file: File): Promise<string> {
     })
     Y.applyUpdate(ydoc, update)
     ydoc.getMap('meta').set('title', title)
-    await api(`/api/docs/${id}/html`, { method: 'POST', body: JSON.stringify({ html }) })
+    await api(`/api/docs/${id}/html`, {
+      method: 'POST',
+      body: JSON.stringify({ html, day: localDay() }),
+    })
     // give the websocket a beat to flush before tearing down
     await new Promise((r) => setTimeout(r, 400))
   } catch (e) {

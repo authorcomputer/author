@@ -105,6 +105,14 @@ export async function apiStream(
   }
 }
 
+// YYYY-MM-DD in the user's own timezone — activity days follow their clock,
+// not UTC's (a late evening in PST is still "today")
+export function localDay(d = new Date()): string {
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${d.getFullYear()}-${m}-${day}`
+}
+
 const PALETTE = ['#c2410c', '#0e7490', '#7c3aed', '#15803d', '#be185d', '#a16207']
 export function colorFor(name: string): string {
   let h = 0

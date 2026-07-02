@@ -1,17 +1,19 @@
 import { useState } from 'react'
-
-const DAY_MS = 86400000
+import { localDay } from './api'
 
 export default function Chart({ activity }: { activity: { day: string; count: number }[] }) {
   const [hover, setHover] = useState<{ day: string; count: number } | null>(null)
   const byDay = new Map(activity.map((a) => [a.day, a.count]))
   const days: { day: string; count: number }[] = []
+  // the grid runs on the viewer's calendar — "today" is their today, and
+  // date arithmetic (not ms offsets) keeps DST from skipping a day
+  const now = new Date()
   for (let i = 181; i >= 0; i--) {
-    const key = new Date(Date.now() - i * DAY_MS).toISOString().slice(0, 10)
+    const key = localDay(new Date(now.getFullYear(), now.getMonth(), now.getDate() - i))
     days.push({ day: key, count: byDay.get(key) || 0 })
   }
   // pad to start on Sunday so columns are calendar weeks
-  const pad = new Date(days[0].day + 'T00:00:00Z').getUTCDay()
+  const pad = new Date(days[0].day + 'T00:00:00').getDay()
   const cells: ({ day: string; count: number } | null)[] = [...Array(pad).fill(null), ...days]
   const weeks: (typeof cells)[] = []
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7))
@@ -19,10 +21,9 @@ export default function Chart({ activity }: { activity: { day: string; count: nu
   const level = (c: number) => (c === 0 ? 0 : c < 3 ? 1 : c < 8 ? 2 : c < 15 ? 3 : 4)
   const daysWriting = days.filter((d) => d.count > 0).length
   const fmt = (day: string) =>
-    new Date(day + 'T00:00:00Z').toLocaleDateString(undefined, {
+    new Date(day + 'T00:00:00').toLocaleDateString(undefined, {
       month: 'short',
       day: 'numeric',
-      timeZone: 'UTC',
     })
 
   return (
