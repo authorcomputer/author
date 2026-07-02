@@ -27,7 +27,24 @@ export default function Updates() {
           <div className="update-row" key={day.date}>
             <div className="u-time">{day.date}</div>
             <div className="u-title">{day.title}</div>
-            <div className="u-note">{day.note}</div>
+            {day.blocks.map((b, i) =>
+              b.kind === 'p' ? (
+                <div className="u-p" key={i}>
+                  {b.text}
+                </div>
+              ) : b.kind === 'bullet' ? (
+                <div className="u-bullet" key={i}>
+                  <span className="u-sym">✽</span>
+                  <span>
+                    <span className="u-head">{b.head}</span> — {b.text}
+                  </span>
+                </div>
+              ) : (
+                <div className="u-aside" key={i}>
+                  <span className="u-sym">· · ·</span> {b.text}
+                </div>
+              ),
+            )}
           </div>
         ))}
         <div className="pub-foot">

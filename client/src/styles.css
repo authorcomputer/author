@@ -405,10 +405,15 @@ input, textarea {
 }
 
 /* updates page */
-.update-row { padding: 20px 0; border-bottom: 1px solid var(--wash); }
+.update-row { padding: 24px 0; border-bottom: 1px solid var(--wash); }
 .update-row .u-time { color: var(--accent); font-size: 11px; }
-.update-row .u-title { font-family: var(--serif); font-size: 20px; font-weight: 600; margin: 2px 0 6px; }
-.update-row .u-note { color: var(--faint); font-size: 12.5px; line-height: 1.7; }
+.update-row .u-title { font-family: var(--serif); font-size: 20px; font-weight: 600; margin: 2px 0 8px; }
+.update-row .u-p { color: var(--faint); font-size: 12.5px; line-height: 1.7; font-style: italic; margin: 0 0 10px; }
+.update-row .u-bullet { display: flex; gap: 9px; color: var(--faint); font-size: 12.5px; line-height: 1.7; margin: 7px 0; }
+.update-row .u-bullet .u-sym { color: var(--accent); flex: none; }
+.update-row .u-bullet .u-head { color: var(--ink); font-weight: 600; }
+.update-row .u-aside { color: var(--faint); font-size: 12px; line-height: 1.7; margin-top: 12px; opacity: 0.85; }
+.update-row .u-aside .u-sym { color: var(--accent); letter-spacing: 1px; margin-right: 4px; }
 
 /* remote cursors */
 .collaboration-cursor__caret {
