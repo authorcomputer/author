@@ -1,9 +1,12 @@
-# fly.io config — free-ish always-on hosting with a persistent volume.
+# fly.io config — cheap hosting with a persistent volume.
 # Setup (once):
 #   fly launch --no-deploy      # or: fly apps create author-computer
 #   fly volumes create author_data --size 1
 #   fly secrets set ANTHROPIC_API_KEY=sk-ant-...
-#   fly deploy
+#   fly storage create          # Tigris bucket — litestream replicates the db to it
+#   npm run deploy
+# Ship every change with `npm run deploy` (scripts/deploy.sh): it snapshots
+# the volume, builds, deploys, and verifies prod serves the new bundle.
 
 app = "author-computer"
 primary_region = "ewr"
@@ -22,6 +25,8 @@ primary_region = "ewr"
   auto_start_machines = true
   min_machines_running = 0
 
+# 512mb: node holds live Yjs docs and litestream rides along as a second
+# resident process — 256mb left too little headroom
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "256mb"
+  memory = "512mb"

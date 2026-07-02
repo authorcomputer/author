@@ -59,6 +59,13 @@ Two dev accounts are seeded on first run (**ink** / **quill**, password
   mount a volume at `/app/data` so the database and images persist
 - required in production: `BETTER_AUTH_SECRET` (random 32+ bytes) and
   `BETTER_AUTH_URL` (your origin) — the server refuses to boot without them
+- backups: with `BUCKET_NAME` + `AWS_*` secrets set (on Fly: `fly storage
+  create`), litestream continuously replicates the database to S3-compatible
+  storage and restores it automatically onto an empty volume; without them
+  the entrypoint warns that replication is off. images are **not** in the
+  replica — they live only on the volume
+- ship with `npm run deploy` — snapshots the volume, builds, deploys, and
+  verifies prod serves the new bundle
 - model spend is tiered: ghosts get one request, free accounts get
   `AI_FREE_MONTHLY` (default 5) per month, members get `AI_DAILY_CAP`
   (default 150) per day, and the whole site stops at
