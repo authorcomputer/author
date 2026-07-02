@@ -522,6 +522,38 @@ app.post('/api/settings', requireFullUser, (req, res) => {
   res.json({ ok: true })
 })
 
+// ---------- admin (one person's desk lamp, not a control panel) ----------
+const ADMIN_USER_ID = process.env.ADMIN_USER_ID || 'u_ink'
+
+app.get('/api/admin/stats', requireFullUser, (req, res) => {
+  // quiet 404 for everyone else — the page shouldn't admit it exists
+  if (req.user.id !== ADMIN_USER_ID) return res.status(404).json({ error: 'nothing here' })
+
+  const writers = db
+    .prepare('SELECT COUNT(*) c FROM user WHERE isAnonymous IS NOT 1').get().c
+  const ghosts = db
+    .prepare('SELECT COUNT(*) c FROM user WHERE isAnonymous = 1').get().c
+  const members = db.prepare('SELECT COUNT(*) c FROM profiles WHERE member = 1').get().c
+  const pages = db.prepare('SELECT COUNT(*) c FROM docs').get().c
+  const published = db.prepare('SELECT COUNT(*) c FROM docs WHERE published = 1').get().c
+
+  // words across every page, from the html snapshots — good enough for a lamp
+  let words = 0
+  for (const d of db.prepare('SELECT html FROM docs WHERE html IS NOT NULL').all()) {
+    const text = d.html.replace(/<[^>]+>/g, ' ')
+    words += (text.match(/\S+/g) || []).length
+  }
+
+  const recent = db
+    .prepare(
+      `SELECT username, email, createdAt FROM user
+       WHERE isAnonymous IS NOT 1 ORDER BY createdAt DESC LIMIT 20`
+    )
+    .all()
+
+  res.json({ writers, ghosts, members, pages, published, words, recent })
+})
+
 app.get('/api/profile/:username', (req, res) => {
   const u = db
     .prepare('SELECT id, username FROM user WHERE username = ?')

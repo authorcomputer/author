@@ -8,6 +8,7 @@ import Landing from './pages/Landing'
 import Profile from './pages/Profile'
 import UserPublic from './pages/UserPublic'
 import Updates from './pages/Updates'
+import Admin from './pages/Admin'
 import Privacy from './pages/Privacy'
 import Terms from './pages/Terms'
 import { me, refreshMe } from './api'
@@ -67,6 +68,14 @@ export default function App() {
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/" element={<RootGate />} />
+        <Route
+          path="/admin"
+          element={
+            <RequireAccount>
+              <Admin />
+            </RequireAccount>
+          }
+        />
         <Route
           path="/me"
           element={
