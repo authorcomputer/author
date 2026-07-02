@@ -195,13 +195,22 @@ function EditorInner({ id }: { id: string }) {
       return
     }
     const { url } = await res.json()
+    // the upload took a round-trip; the editor may be gone (navigated away)
+    // or the doc may have shrunk under a collaborator's edits
+    if (view.isDestroyed) return
     track('doc: inline image added')
     const node = view.state.schema.nodes.image.create({ src: url })
-    const tr =
-      pos != null
-        ? view.state.tr.insert(pos, node)
-        : view.state.tr.replaceSelectionWith(node)
-    view.dispatch(tr)
+    const end = view.state.doc.content.size
+    const at = pos != null ? Math.min(pos, end) : null
+    try {
+      const tr =
+        at != null ? view.state.tr.insert(at, node) : view.state.tr.replaceSelectionWith(node)
+      view.dispatch(tr)
+    } catch {
+      // pos landed inside a node boundary after concurrent edits — fall back
+      // to the current selection rather than throwing the image away
+      view.dispatch(view.state.tr.replaceSelectionWith(node))
+    }
   }
 
   const editor = useEditor({
@@ -215,16 +224,27 @@ function EditorInner({ id }: { id: string }) {
       Placeholder.configure({ placeholder: 'begin…' }),
       CharacterCount,
       TiptapLink.configure({ openOnClick: false, autolink: true }),
-      TiptapImage,
+      // only recognize our own uploads — a pasted external/data: <img> is
+      // dropped on the way in, so the editor never shows an image the
+      // published page (which strips non-/files srcs) would silently lose
+      TiptapImage.extend({
+        parseHTML() {
+          return [{ tag: 'img[src^="/files/"]' }]
+        },
+      }),
       Underline,
       CommentMark,
       Checkmarks,
     ],
     editorProps: {
       handlePaste: (view, event) => {
-        const file = Array.from(event.clipboardData?.files ?? []).find((f) =>
-          f.type.startsWith('image/')
-        )
+        const cd = event.clipboardData
+        // rich content (Word, web pages) ships an image rendition *alongside*
+        // the real text — let the default paste win when there's text to keep
+        const hasText =
+          !!cd && Array.from(cd.types).some((t) => t === 'text/html' || t === 'text/plain')
+        if (hasText) return false
+        const file = Array.from(cd?.files ?? []).find((f) => f.type.startsWith('image/'))
         if (!file) return false
         insertInlineImage(view, file)
         return true

@@ -286,12 +286,8 @@ app.delete('/api/docs/:id', requireUser, (req, res) => {
   const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
   if (!doc) return res.status(404).json({ error: 'no such doc' })
   if (doc.owner_id !== req.user.id) return res.status(403).json({ error: 'not yours' })
-  removeHeaderFile(doc.header_image)
-  // inline images ride along in the html — best-effort cleanup
-  for (const m of String(doc.html || '').matchAll(/\/files\/[a-f0-9]{24}\.(?:jpg|png|webp|gif)/g)) {
-    removeHeaderFile(m[0])
-  }
   db.prepare('DELETE FROM docs WHERE id = ?').run(doc.id)
+  unlinkDocImages(doc) // after the row is gone, so it isn't counted as a referrer
   db.prepare('DELETE FROM comments WHERE doc_id = ?').run(doc.id)
   db.prepare('DELETE FROM versions WHERE doc_id = ?').run(doc.id)
   db.prepare('DELETE FROM collaborators WHERE doc_id = ?').run(doc.id)
@@ -457,9 +453,68 @@ function uploadsDirSize() {
   return total
 }
 
-function removeHeaderFile(url) {
+// every uploaded-file reference in a blob of html or a header column
+const FILE_URL_RE = new RegExp(
+  `/files/[a-f0-9]{24}\\.(?:${Object.values(IMG_EXT).join('|')})`,
+  'g'
+)
+function imageUrlsIn(html) {
+  return String(html || '').match(FILE_URL_RE) || []
+}
+
+// only unlink a file once nothing else points at it — headers and inline
+// images can be shared across docs by copy-paste, and the same names appear
+// in other users' docs, so a blind unlink lets one user delete another's file
+function unlinkIfOrphan(url, exceptDocId) {
   if (!url || !url.startsWith('/files/')) return
+  const still = db
+    .prepare(
+      `SELECT 1 FROM docs
+       WHERE id != ? AND (header_image = ? OR html LIKE ?) LIMIT 1`
+    )
+    .get(exceptDocId || '', url, `%${url}%`)
+  if (still) return
   fs.unlink(path.join(uploadsDir, path.basename(url)), () => {})
+}
+// a doc is going away entirely — drop every image it alone still holds
+function unlinkDocImages(doc) {
+  for (const url of new Set([doc.header_image, ...imageUrlsIn(doc.html)])) {
+    unlinkIfOrphan(url, doc.id)
+  }
+}
+
+// only the owner or someone who has opened the doc (a collaborator) may write
+function canEditDoc(doc, userId) {
+  if (doc.owner_id === userId) return true
+  return !!db
+    .prepare('SELECT 1 FROM collaborators WHERE doc_id = ? AND user_id = ?')
+    .get(doc.id, userId)
+}
+
+// shared receive-validate-store for both header and inline uploads;
+// returns the /files/ url, or null after sending the error response itself
+function receiveImage(req, res) {
+  const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
+  if (!doc) {
+    res.status(404).json({ error: 'no such doc' })
+    return null
+  }
+  if (!canEditDoc(doc, req.user.id)) {
+    res.status(403).json({ error: 'not yours' })
+    return null
+  }
+  const ext = IMG_EXT[(req.headers['content-type'] || '').split(';')[0]]
+  if (!ext || !magicOk(ext, req.body)) {
+    res.status(400).json({ error: 'send a jpeg, png, webp, or gif' })
+    return null
+  }
+  if (uploadsDirSize() > 500 * 1024 * 1024) {
+    res.status(507).json({ error: 'image storage is full' })
+    return null
+  }
+  const name = `${crypto.randomBytes(12).toString('hex')}.${ext}`
+  fs.writeFileSync(path.join(uploadsDir, name), req.body)
+  return `/files/${name}`
 }
 
 app.post(
@@ -467,20 +522,11 @@ app.post(
   requireUser,
   express.raw({ type: Object.keys(IMG_EXT), limit: '12mb' }),
   (req, res) => {
-    const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
-    if (!doc) return res.status(404).json({ error: 'no such doc' })
-    const ext = IMG_EXT[(req.headers['content-type'] || '').split(';')[0]]
-    if (!ext || !magicOk(ext, req.body)) {
-      return res.status(400).json({ error: 'send a jpeg, png, webp, or gif' })
-    }
-    if (uploadsDirSize() > 500 * 1024 * 1024) {
-      return res.status(507).json({ error: 'image storage is full' })
-    }
-    const name = `${crypto.randomBytes(12).toString('hex')}.${ext}`
-    fs.writeFileSync(path.join(uploadsDir, name), req.body)
-    removeHeaderFile(doc.header_image)
-    const url = `/files/${name}`
-    db.prepare('UPDATE docs SET header_image = ? WHERE id = ?').run(url, doc.id)
+    const url = receiveImage(req, res)
+    if (!url) return
+    const prev = db.prepare('SELECT header_image FROM docs WHERE id = ?').get(req.params.id)
+    db.prepare('UPDATE docs SET header_image = ? WHERE id = ?').run(url, req.params.id)
+    unlinkIfOrphan(prev?.header_image, req.params.id)
     res.json({ url })
   }
 )
@@ -491,25 +537,18 @@ app.post(
   requireUser,
   express.raw({ type: Object.keys(IMG_EXT), limit: '12mb' }),
   (req, res) => {
-    if (!docExists(req.params.id)) return res.status(404).json({ error: 'no such doc' })
-    const ext = IMG_EXT[(req.headers['content-type'] || '').split(';')[0]]
-    if (!ext || !magicOk(ext, req.body)) {
-      return res.status(400).json({ error: 'send a jpeg, png, webp, or gif' })
-    }
-    if (uploadsDirSize() > 500 * 1024 * 1024) {
-      return res.status(507).json({ error: 'image storage is full' })
-    }
-    const name = `${crypto.randomBytes(12).toString('hex')}.${ext}`
-    fs.writeFileSync(path.join(uploadsDir, name), req.body)
-    res.json({ url: `/files/${name}` })
+    const url = receiveImage(req, res)
+    if (!url) return
+    res.json({ url })
   }
 )
 
 app.delete('/api/docs/:id/header', requireUser, (req, res) => {
   const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
   if (!doc) return res.status(404).json({ error: 'no such doc' })
-  removeHeaderFile(doc.header_image)
+  if (!canEditDoc(doc, req.user.id)) return res.status(403).json({ error: 'not yours' })
   db.prepare('UPDATE docs SET header_image = NULL WHERE id = ?').run(doc.id)
+  unlinkIfOrphan(doc.header_image, doc.id)
   res.json({ ok: true })
 })
 
@@ -760,16 +799,15 @@ function sweepGhosts() {
     )
     .all(nowIso, cutoffMs)
   for (const { id } of stale) {
-    for (const d of db.prepare('SELECT id, header_image, html FROM docs WHERE owner_id = ?').all(id)) {
-      removeHeaderFile(d.header_image)
-      for (const m of String(d.html || '').matchAll(/\/files\/[a-f0-9]{24}\.(?:jpg|png|webp|gif)/g)) {
-        removeHeaderFile(m[0])
-      }
+    const docs = db.prepare('SELECT id, header_image, html FROM docs WHERE owner_id = ?').all(id)
+    for (const d of docs) {
       db.prepare('DELETE FROM comments WHERE doc_id = ?').run(d.id)
       db.prepare('DELETE FROM versions WHERE doc_id = ?').run(d.id)
       db.prepare('DELETE FROM collaborators WHERE doc_id = ?').run(d.id)
     }
     db.prepare('DELETE FROM docs WHERE owner_id = ?').run(id)
+    // rows gone first, so a file shared with another doc isn't unlinked
+    for (const d of docs) unlinkDocImages(d)
     db.prepare('DELETE FROM collaborators WHERE user_id = ?').run(id)
     db.prepare('DELETE FROM activity WHERE user_id = ?').run(id)
     db.prepare('DELETE FROM ai_usage WHERE user_id = ?').run(id)

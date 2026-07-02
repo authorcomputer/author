@@ -290,10 +290,13 @@ input, textarea {
   line-height: 1.75;
 }
 .tiptap p { margin: 0 0 1em; }
-.tiptap h1, .tiptap h2, .tiptap h3 { font-weight: 600; line-height: 1.3; }
-.tiptap h1 { font-size: 24px; }
-.tiptap h2 { font-size: 20px; }
-.tiptap h3 { font-size: 17px; }
+/* editor and published page share one set of heading sizes so the page you
+   publish is the page you wrote (pub-body adds its own top/bottom margins) */
+.tiptap h1, .tiptap h2, .tiptap h3,
+.pub-body h1, .pub-body h2, .pub-body h3 { font-weight: 600; line-height: 1.3; }
+.tiptap h1, .pub-body h1 { font-size: 24px; }
+.tiptap h2, .pub-body h2 { font-size: 20px; }
+.tiptap h3, .pub-body h3 { font-size: 17px; }
 .tiptap blockquote {
   margin: 0 0 1em;
   padding-left: 16px;
@@ -312,8 +315,6 @@ input, textarea {
 .tiptap pre code { background: none; padding: 0; }
 .tiptap a { color: var(--accent); border-bottom: 1px dotted var(--accent); cursor: pointer; }
 .pub-body a { color: var(--accent); border-bottom: 1px dotted var(--accent); }
-.tiptap hr { border: none; text-align: center; margin: 2em 0; }
-.tiptap hr::before { content: '· · ·'; color: var(--faint); letter-spacing: 8px; }
 .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   color: var(--fainter);
@@ -609,18 +610,9 @@ input, textarea {
 
 .pub-body { font-family: var(--serif); font-size: 17px; line-height: 1.75; }
 .pub-body p { margin: 0 0 1em; }
-/* headings and the · · · divider match the editor, so the page you publish
-   is the page you wrote */
-.pub-body h1, .pub-body h2, .pub-body h3 {
-  font-weight: 600;
-  line-height: 1.3;
-  margin: 1.6em 0 0.4em;
-}
-.pub-body h1 { font-size: 24px; }
-.pub-body h2 { font-size: 20px; }
-.pub-body h3 { font-size: 17px; }
-.pub-body hr { border: none; text-align: center; margin: 2em 0; }
-.pub-body hr::before { content: '· · ·'; color: var(--faint); letter-spacing: 8px; }
+.pub-body h1, .pub-body h2, .pub-body h3 { margin: 1.6em 0 0.4em; }
+.tiptap hr, .pub-body hr { border: none; text-align: center; margin: 2em 0; }
+.tiptap hr::before, .pub-body hr::before { content: '· · ·'; color: var(--faint); letter-spacing: 8px; }
 .pub-body img, .tiptap img { max-width: 100%; height: auto; display: block; margin: 0 auto 1em; }
 .tiptap img.ProseMirror-selectednode { outline: 2px solid var(--accent); }
 .pub-body blockquote { margin: 0 0 1em; padding-left: 16px; border-left: 2px solid var(--fainter); }
