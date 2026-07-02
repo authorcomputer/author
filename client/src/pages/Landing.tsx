@@ -146,12 +146,13 @@ function MockScene() {
               await sleep(34)
             }
           } else {
-            // hop a few characters at a time so the move reads as travel
+            // amble a couple of characters at a time with an uneven rhythm —
+            // quick enough to read as travel, slow enough to read as a person
             while (alive && pos[op.who] !== op.to) {
               const d = op.to - pos[op.who]
-              pos[op.who] += Math.max(-7, Math.min(7, d))
+              pos[op.who] += Math.sign(d) * Math.min(3, Math.abs(d))
               setScene((s) => ({ ...s, [op.who]: pos[op.who] }))
-              await sleep(26)
+              await sleep(38 + Math.random() * 34)
             }
           }
         }
