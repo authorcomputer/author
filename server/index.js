@@ -66,6 +66,11 @@ function textOf(html) {
     .replace(/<[^>]+>/g, ' ')
     .replace(/&[a-z#0-9]+;/gi, ' ')
 }
+// readable text collapsed to a single line and trimmed to n chars — snippets,
+// profile previews, and share-card descriptions all want the same shape
+function previewOf(html, n = 420) {
+  return textOf(html).replace(/\s+/g, ' ').trim().slice(0, n)
+}
 
 // embedded players: only these exact /embed/ URL shapes are allowed through,
 // mirroring the client's parseEmbed() — anything else is dropped as an iframe
@@ -226,7 +231,7 @@ app.get('/api/docs', requireUser, (req, res) => {
     .all(req.user.id, req.user.id, req.user.id)
   res.json(
     rows.map((r) => {
-      const text = textOf(r.html).replace(/\s+/g, ' ').trim()
+      const text = previewOf(r.html)
       return {
         id: r.id,
         title: r.title,
@@ -237,7 +242,7 @@ app.get('/api/docs', requireUser, (req, res) => {
         header_image: r.header_image || null,
         on_profile: !!r.on_profile,
         snippet: text.slice(0, 140),
-        preview: text.slice(0, 420),
+        preview: text,
       }
     })
   )
@@ -680,7 +685,7 @@ app.get('/api/profile/:username', (req, res) => {
           slug: a.slug,
           updated_at: a.updated_at,
           header_image: a.header_image || null,
-          preview: textOf(a.html).replace(/\s+/g, ' ').trim().slice(0, 420),
+          preview: previewOf(a.html),
         }))
     : []
   res.json({
@@ -775,8 +780,19 @@ const dist = path.join(process.cwd(), 'dist')
 // tabs pick up new bundles on refresh
 app.use(express.static(dist, { index: false, maxAge: '365d', immutable: true }))
 
-// the SPA shell, read once — social-share tags are stitched in per page
-const indexHtml = fs.readFileSync(path.join(dist, 'index.html'), 'utf8')
+// the SPA shell with its default og:/twitter: tags stripped, computed once —
+// per-page share tags are spliced into the <head> at request time. guarded so
+// a missing build (dev without `vite build`) doesn't crash the whole server;
+// /p pages then just fall through to the plain shell.
+let strippedShell = ''
+try {
+  strippedShell = fs
+    .readFileSync(path.join(dist, 'index.html'), 'utf8')
+    // whitespace-agnostic so it survives a future html-minify pass
+    .replace(/[ \t]*<meta (?:property="og:|name="twitter:)[^>]*>\n?/g, '')
+} catch {
+  /* no build yet */
+}
 const esc = (s) =>
   String(s || '')
     .replace(/&/g, '&amp;')
@@ -790,11 +806,10 @@ const esc = (s) =>
 // so they must live in the shell, not be set by React after load.
 function publishedShareTags(doc, origin) {
   const title = esc(doc.title || 'untitled') + ' · author*'
-  const desc = esc(textOf(doc.html).replace(/\s+/g, ' ').trim().slice(0, 200)) ||
-    'a quiet place to write — together.'
+  const desc = esc(previewOf(doc.html, 200)) || 'a quiet place to write — together.'
   const rel = doc.header_image || (String(doc.html || '').match(FILE_URL_RE) || [])[0]
-  const img = rel ? origin + rel : null
-  const url = `${origin}/p/${doc.slug}`
+  const img = rel ? esc(origin + rel) : null
+  const url = esc(`${origin}/p/${doc.slug}`)
   const card = img ? 'summary_large_image' : 'summary'
   const tags = [
     `<meta property="og:type" content="article" />`,
@@ -807,8 +822,8 @@ function publishedShareTags(doc, origin) {
     `<meta name="twitter:description" content="${desc}" />`,
   ]
   if (img) {
-    tags.push(`<meta property="og:image" content="${esc(img)}" />`)
-    tags.push(`<meta name="twitter:image" content="${esc(img)}" />`)
+    tags.push(`<meta property="og:image" content="${img}" />`)
+    tags.push(`<meta name="twitter:image" content="${img}" />`)
   }
   return tags.join('\n    ')
 }
@@ -818,14 +833,12 @@ app.get('/p/:slug', (req, res) => {
     .prepare('SELECT title, slug, html, header_image FROM docs WHERE slug = ? AND published = 1')
     .get(req.params.slug)
   res.set('Cache-Control', 'no-cache')
-  if (!doc) return res.sendFile(path.join(dist, 'index.html'))
-  // strip the shell's default og:/twitter: meta, keep the rest of <head>
+  if (!doc || !strippedShell) return res.sendFile(path.join(dist, 'index.html'))
   const origin = (process.env.BETTER_AUTH_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '')
-  const stripped = indexHtml.replace(
-    /\n\s*<meta (?:property="og:|name="twitter:)[^>]*>/g,
-    ''
+  const html = strippedShell.replace(
+    '</head>',
+    `    ${publishedShareTags(doc, origin)}\n  </head>`
   )
-  const html = stripped.replace('</head>', `    ${publishedShareTags(doc, origin)}\n  </head>`)
   res.type('html').send(html)
 })
 
