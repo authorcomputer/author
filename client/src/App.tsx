@@ -12,6 +12,16 @@ import Privacy from './pages/Privacy'
 import Terms from './pages/Terms'
 import { me, refreshMe } from './api'
 
+// the browser keeps the old scroll position across client-side navigations;
+// reset to the top on every path change (hash links still win)
+function ScrollToTop() {
+  const { pathname, hash } = useLocation()
+  useEffect(() => {
+    if (!hash) window.scrollTo(0, 0)
+  }, [pathname, hash])
+  return null
+}
+
 // ghosts (anonymous sessions) may write; full pages require an account
 function RequireSession({ children }: { children: JSX.Element }) {
   const location = useLocation()
@@ -48,6 +58,7 @@ export default function App() {
   }, [])
   return (
     <BrowserRouter>
+      <ScrollToTop />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/p/:slug" element={<Public />} />
