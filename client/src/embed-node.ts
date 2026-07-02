@@ -22,7 +22,9 @@ export const Embed = Node.create({
   },
 
   parseHTML() {
-    return [{ tag: 'iframe[src]' }]
+    // only our own serialized embeds carry data-provider; a raw pasted
+    // <iframe> is not adopted into the doc (paste a provider URL instead)
+    return [{ tag: 'iframe[data-provider]' }]
   },
 
   renderHTML({ HTMLAttributes }) {

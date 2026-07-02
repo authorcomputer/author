@@ -29,7 +29,7 @@ const CSP = [
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
-  // embedded players — must match EMBED_HOSTS / the client's parseEmbed()
+  // embedded players — must match EMBED_SRC_RE / the client's parseEmbed()
   'frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://www.loom.com https://open.spotify.com https://platform.twitter.com',
 ].join('; ')
 app.use((req, res, next) => {

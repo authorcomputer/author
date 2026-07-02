@@ -128,7 +128,7 @@ export default function UserPublic() {
             <div
               className="desk-peek peek-left"
               aria-hidden
-              style={{ top: Math.min(peek.top - 8, window.innerHeight - 340) }}
+              style={{ top: Math.max(76, Math.min(peek.top - 8, window.innerHeight - 340)) }}
             >
               {peek.a.header_image && <img src={peek.a.header_image} alt="" />}
               <div className="peek-title">{peek.a.title || 'untitled'}</div>

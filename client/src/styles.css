@@ -616,8 +616,10 @@ input, textarea {
 .pub-body img, .tiptap img { max-width: 100%; height: auto; display: block; margin: 0 auto 1em; }
 .tiptap img.ProseMirror-selectednode { outline: 2px solid var(--accent); }
 
-/* embedded players — video is 16:9, audio/social get their natural heights */
-.tiptap .embed, .pub-body .embed {
+/* embedded players — video is 16:9, audio/social get their natural heights.
+   keyed off data-provider (not class) because the publish-time sanitizer keeps
+   data-provider but strips class, so this must match on the public page too */
+.tiptap iframe[data-provider], .pub-body iframe[data-provider] {
   display: block;
   width: 100%;
   border: 1px solid var(--wash);
@@ -625,17 +627,17 @@ input, textarea {
   aspect-ratio: 16 / 9;
   height: auto;
 }
-.tiptap .embed[data-provider='spotify'], .pub-body .embed[data-provider='spotify'] {
+.tiptap iframe[data-provider='spotify'], .pub-body iframe[data-provider='spotify'] {
   aspect-ratio: auto;
   height: 152px;
 }
-.tiptap .embed[data-provider='tweet'], .pub-body .embed[data-provider='tweet'] {
+.tiptap iframe[data-provider='tweet'], .pub-body iframe[data-provider='tweet'] {
   aspect-ratio: auto;
   height: 560px;
   max-width: 550px;
   margin: 0 auto 1em;
 }
-.tiptap .embed.ProseMirror-selectednode { outline: 2px solid var(--accent); }
+.tiptap iframe[data-provider].ProseMirror-selectednode { outline: 2px solid var(--accent); }
 .pub-body blockquote { margin: 0 0 1em; padding-left: 16px; border-left: 2px solid var(--fainter); }
 .pub-body pre { font-family: var(--mono); font-size: 13px; background: var(--wash); padding: 12px 14px; overflow-x: auto; }
 .pub-body span[data-comment-id] { background: none; border: none; }
