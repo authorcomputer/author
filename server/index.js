@@ -71,10 +71,13 @@ function cleanHtml(html) {
   return sanitizeHtml(String(html || ''), {
     allowedTags: [
       'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'code', 'pre',
-      'blockquote', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'hr', 'span', 'a',
+      'blockquote', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'hr', 'span', 'a', 'img',
     ],
-    allowedAttributes: { span: ['data-comment-id'], a: ['href'] },
+    allowedAttributes: { span: ['data-comment-id'], a: ['href'], img: ['src', 'alt'] },
     allowedSchemes: ['http', 'https', 'mailto'],
+    // images may only point at our own uploads — nothing external, no data:
+    exclusiveFilter: (frame) =>
+      frame.tag === 'img' && !/^\/files\/[a-f0-9]{24}\.(jpg|png|webp|gif)$/.test(frame.attribs?.src || ''),
   })
 }
 
@@ -284,6 +287,10 @@ app.delete('/api/docs/:id', requireUser, (req, res) => {
   if (!doc) return res.status(404).json({ error: 'no such doc' })
   if (doc.owner_id !== req.user.id) return res.status(403).json({ error: 'not yours' })
   removeHeaderFile(doc.header_image)
+  // inline images ride along in the html — best-effort cleanup
+  for (const m of String(doc.html || '').matchAll(/\/files\/[a-f0-9]{24}\.(?:jpg|png|webp|gif)/g)) {
+    removeHeaderFile(m[0])
+  }
   db.prepare('DELETE FROM docs WHERE id = ?').run(doc.id)
   db.prepare('DELETE FROM comments WHERE doc_id = ?').run(doc.id)
   db.prepare('DELETE FROM versions WHERE doc_id = ?').run(doc.id)
@@ -475,6 +482,26 @@ app.post(
     const url = `/files/${name}`
     db.prepare('UPDATE docs SET header_image = ? WHERE id = ?').run(url, doc.id)
     res.json({ url })
+  }
+)
+
+// inline images pasted or dropped into the page — same rules as headers
+app.post(
+  '/api/docs/:id/images',
+  requireUser,
+  express.raw({ type: Object.keys(IMG_EXT), limit: '12mb' }),
+  (req, res) => {
+    if (!docExists(req.params.id)) return res.status(404).json({ error: 'no such doc' })
+    const ext = IMG_EXT[(req.headers['content-type'] || '').split(';')[0]]
+    if (!ext || !magicOk(ext, req.body)) {
+      return res.status(400).json({ error: 'send a jpeg, png, webp, or gif' })
+    }
+    if (uploadsDirSize() > 500 * 1024 * 1024) {
+      return res.status(507).json({ error: 'image storage is full' })
+    }
+    const name = `${crypto.randomBytes(12).toString('hex')}.${ext}`
+    fs.writeFileSync(path.join(uploadsDir, name), req.body)
+    res.json({ url: `/files/${name}` })
   }
 )
 
@@ -733,8 +760,11 @@ function sweepGhosts() {
     )
     .all(nowIso, cutoffMs)
   for (const { id } of stale) {
-    for (const d of db.prepare('SELECT id, header_image FROM docs WHERE owner_id = ?').all(id)) {
+    for (const d of db.prepare('SELECT id, header_image, html FROM docs WHERE owner_id = ?').all(id)) {
       removeHeaderFile(d.header_image)
+      for (const m of String(d.html || '').matchAll(/\/files\/[a-f0-9]{24}\.(?:jpg|png|webp|gif)/g)) {
+        removeHeaderFile(m[0])
+      }
       db.prepare('DELETE FROM comments WHERE doc_id = ?').run(d.id)
       db.prepare('DELETE FROM versions WHERE doc_id = ?').run(d.id)
       db.prepare('DELETE FROM collaborators WHERE doc_id = ?').run(d.id)

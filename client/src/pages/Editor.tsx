@@ -7,7 +7,9 @@ import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 import Placeholder from '@tiptap/extension-placeholder'
 import CharacterCount from '@tiptap/extension-character-count'
 import TiptapLink from '@tiptap/extension-link'
+import TiptapImage from '@tiptap/extension-image'
 import Underline from '@tiptap/extension-underline'
+import type { EditorView } from '@tiptap/pm/view'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { api, apiStream, me, username, colorFor, localDay } from '../api'
@@ -47,6 +49,27 @@ async function compressImage(f: File): Promise<Blob | null> {
     return null
   }
 }
+// keep small gifs animated; everything else gets resized + recompressed
+// in the browser so heic photos and 20mb screenshots both just work
+const NATIVE_IMG = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+async function prepareImage(f: File): Promise<{ body: Blob; type: string } | null> {
+  let body: Blob = f
+  let type = f.type
+  if (!(type === 'image/gif' && f.size < 6_000_000)) {
+    if (!NATIVE_IMG.includes(type) || f.size > 2_500_000) {
+      const squeezed = await compressImage(f)
+      if (squeezed) {
+        body = squeezed
+        type = 'image/jpeg'
+      } else if (!NATIVE_IMG.includes(type)) {
+        alert('couldn’t read that image — jpeg, png, webp, or gif work best')
+        return null
+      }
+    }
+  }
+  return { body, type }
+}
+
 function promptAccount() {
   window.dispatchEvent(new CustomEvent('author:account-required'))
 }
@@ -156,6 +179,31 @@ function EditorInner({ id }: { id: string }) {
     return new WebsocketProvider(`${proto}//${location.host}/ws`, id, ydoc)
   }, [id, ydoc])
 
+  // paste or drop an image anywhere in the page: it uploads alongside the
+  // header images and lands at the caret (or the drop point) as a block
+  async function insertInlineImage(view: EditorView, file: File, pos?: number | null) {
+    const prepped = await prepareImage(file)
+    if (!prepped) return
+    const res = await fetch(`/api/docs/${id}/images`, {
+      method: 'POST',
+      headers: { 'Content-Type': prepped.type },
+      body: prepped.body,
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      alert((err as any).error || 'upload failed — try a smaller image')
+      return
+    }
+    const { url } = await res.json()
+    track('doc: inline image added')
+    const node = view.state.schema.nodes.image.create({ src: url })
+    const tr =
+      pos != null
+        ? view.state.tr.insert(pos, node)
+        : view.state.tr.replaceSelectionWith(node)
+    view.dispatch(tr)
+  }
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ history: false }),
@@ -167,10 +215,31 @@ function EditorInner({ id }: { id: string }) {
       Placeholder.configure({ placeholder: 'begin…' }),
       CharacterCount,
       TiptapLink.configure({ openOnClick: false, autolink: true }),
+      TiptapImage,
       Underline,
       CommentMark,
       Checkmarks,
     ],
+    editorProps: {
+      handlePaste: (view, event) => {
+        const file = Array.from(event.clipboardData?.files ?? []).find((f) =>
+          f.type.startsWith('image/')
+        )
+        if (!file) return false
+        insertInlineImage(view, file)
+        return true
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        if (moved) return false // reordering content within the doc, not a file
+        const file = Array.from(event.dataTransfer?.files ?? []).find((f) =>
+          f.type.startsWith('image/')
+        )
+        if (!file) return false
+        const drop = view.posAtCoords({ left: event.clientX, top: event.clientY })
+        insertInlineImage(view, file, drop?.pos)
+        return true
+      },
+    },
   })
 
   // lifecycle: meta, presence, teardown
@@ -252,27 +321,12 @@ function EditorInner({ id }: { id: string }) {
     const f = e.target.files?.[0]
     e.target.value = ''
     if (!f) return
-    const NATIVE = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
-    let body: Blob = f
-    let type = f.type
-    // keep small gifs animated; everything else gets resized + recompressed
-    // in the browser so heic photos and 20mb screenshots both just work
-    if (!(type === 'image/gif' && f.size < 6_000_000)) {
-      if (!NATIVE.includes(type) || f.size > 2_500_000) {
-        const squeezed = await compressImage(f)
-        if (squeezed) {
-          body = squeezed
-          type = 'image/jpeg'
-        } else if (!NATIVE.includes(type)) {
-          alert('couldn’t read that image — jpeg, png, webp, or gif work best')
-          return
-        }
-      }
-    }
+    const prepped = await prepareImage(f)
+    if (!prepped) return
     const res = await fetch(`/api/docs/${id}/header`, {
       method: 'POST',
-      headers: { 'Content-Type': type },
-      body,
+      headers: { 'Content-Type': prepped.type },
+      body: prepped.body,
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
