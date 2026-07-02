@@ -774,6 +774,61 @@ const dist = path.join(process.cwd(), 'dist')
 // hashed assets cache forever; index.html must always revalidate so open
 // tabs pick up new bundles on refresh
 app.use(express.static(dist, { index: false, maxAge: '365d', immutable: true }))
+
+// the SPA shell, read once — social-share tags are stitched in per page
+const indexHtml = fs.readFileSync(path.join(dist, 'index.html'), 'utf8')
+const esc = (s) =>
+  String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+
+// share cards for published pages: the site's default og:/twitter: tags are
+// swapped for the article's own title, opening lines, and image (the header,
+// or the first inline image, or none). crawlers read these from the raw html,
+// so they must live in the shell, not be set by React after load.
+function publishedShareTags(doc, origin) {
+  const title = esc(doc.title || 'untitled') + ' · author*'
+  const desc = esc(textOf(doc.html).replace(/\s+/g, ' ').trim().slice(0, 200)) ||
+    'a quiet place to write — together.'
+  const rel = doc.header_image || (String(doc.html || '').match(FILE_URL_RE) || [])[0]
+  const img = rel ? origin + rel : null
+  const url = `${origin}/p/${doc.slug}`
+  const card = img ? 'summary_large_image' : 'summary'
+  const tags = [
+    `<meta property="og:type" content="article" />`,
+    `<meta property="og:site_name" content="author*" />`,
+    `<meta property="og:title" content="${title}" />`,
+    `<meta property="og:description" content="${desc}" />`,
+    `<meta property="og:url" content="${url}" />`,
+    `<meta name="twitter:card" content="${card}" />`,
+    `<meta name="twitter:title" content="${title}" />`,
+    `<meta name="twitter:description" content="${desc}" />`,
+  ]
+  if (img) {
+    tags.push(`<meta property="og:image" content="${esc(img)}" />`)
+    tags.push(`<meta name="twitter:image" content="${esc(img)}" />`)
+  }
+  return tags.join('\n    ')
+}
+
+app.get('/p/:slug', (req, res) => {
+  const doc = db
+    .prepare('SELECT title, slug, html, header_image FROM docs WHERE slug = ? AND published = 1')
+    .get(req.params.slug)
+  res.set('Cache-Control', 'no-cache')
+  if (!doc) return res.sendFile(path.join(dist, 'index.html'))
+  // strip the shell's default og:/twitter: meta, keep the rest of <head>
+  const origin = (process.env.BETTER_AUTH_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '')
+  const stripped = indexHtml.replace(
+    /\n\s*<meta (?:property="og:|name="twitter:)[^>]*>/g,
+    ''
+  )
+  const html = stripped.replace('</head>', `    ${publishedShareTags(doc, origin)}\n  </head>`)
+  res.type('html').send(html)
+})
+
 app.get(/^\/(?!api\/|ws\/).*/, (req, res) => {
   res.set('Cache-Control', 'no-cache')
   res.sendFile(path.join(dist, 'index.html'))
