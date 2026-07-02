@@ -615,6 +615,27 @@ input, textarea {
 .tiptap hr::before, .pub-body hr::before { content: '· · ·'; color: var(--faint); letter-spacing: 8px; }
 .pub-body img, .tiptap img { max-width: 100%; height: auto; display: block; margin: 0 auto 1em; }
 .tiptap img.ProseMirror-selectednode { outline: 2px solid var(--accent); }
+
+/* embedded players — video is 16:9, audio/social get their natural heights */
+.tiptap .embed, .pub-body .embed {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--wash);
+  margin: 0 0 1em;
+  aspect-ratio: 16 / 9;
+  height: auto;
+}
+.tiptap .embed[data-provider='spotify'], .pub-body .embed[data-provider='spotify'] {
+  aspect-ratio: auto;
+  height: 152px;
+}
+.tiptap .embed[data-provider='tweet'], .pub-body .embed[data-provider='tweet'] {
+  aspect-ratio: auto;
+  height: 560px;
+  max-width: 550px;
+  margin: 0 auto 1em;
+}
+.tiptap .embed.ProseMirror-selectednode { outline: 2px solid var(--accent); }
 .pub-body blockquote { margin: 0 0 1em; padding-left: 16px; border-left: 2px solid var(--fainter); }
 .pub-body pre { font-family: var(--mono); font-size: 13px; background: var(--wash); padding: 12px 14px; overflow-x: auto; }
 .pub-body span[data-comment-id] { background: none; border: none; }
@@ -628,10 +649,19 @@ input, textarea {
 .file-pick:hover { color: var(--accent); }
 .import-row { padding: 6px 0; }
 
-.profile-grid { display: flex; gap: 48px; align-items: flex-start; }
-.profile-main { flex: 1; min-width: 0; }
 .profile-links { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 12px; }
-.profile-aside { width: 200px; flex-shrink: 0; padding-top: 14px; }
+.profile-chart { margin-top: 24px; }
+
+/* the article peek pops up in the left gutter of the centered column,
+   mirroring the desk peek (which sits in the right gutter) */
+.desk-peek.peek-left {
+  left: auto;
+  right: calc(50% + 320px + 48px);
+  transform: rotate(-0.4deg);
+}
+@media (max-width: 1240px) {
+  .desk-peek.peek-left { display: none; }
+}
 
 .contrib-grid { display: flex; gap: 3px; }
 .contrib-col { display: flex; flex-direction: column; gap: 3px; }
@@ -643,11 +673,6 @@ input, textarea {
 .contrib-cell.lv4 { background: #c2410c; }
 .contrib-cell.hovered { outline: 1px solid var(--ink); outline-offset: 0; }
 .contrib-caption { margin-top: 8px; min-height: 1.4em; }
-
-@media (max-width: 700px) {
-  .profile-grid { flex-direction: column-reverse; }
-  .profile-aside { width: auto; }
-}
 
 /* ---------- landing ---------- */
 .landing {

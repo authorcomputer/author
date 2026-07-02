@@ -29,6 +29,8 @@ const CSP = [
   "base-uri 'self'",
   "form-action 'self'",
   "frame-ancestors 'none'",
+  // embedded players — must match EMBED_HOSTS / the client's parseEmbed()
+  'frame-src https://www.youtube-nocookie.com https://player.vimeo.com https://www.loom.com https://open.spotify.com https://platform.twitter.com',
 ].join('; ')
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff')
@@ -65,19 +67,33 @@ function textOf(html) {
     .replace(/&[a-z#0-9]+;/gi, ' ')
 }
 
+// embedded players: only these exact /embed/ URL shapes are allowed through,
+// mirroring the client's parseEmbed() — anything else is dropped as an iframe
+const EMBED_SRC_RE =
+  /^https:\/\/(?:www\.youtube-nocookie\.com\/embed\/[\w-]{11}|player\.vimeo\.com\/video\/\d+|www\.loom\.com\/embed\/[a-f0-9]{32}|open\.spotify\.com\/embed\/(?:track|album|playlist|episode|show)\/[a-zA-Z0-9]+|platform\.twitter\.com\/embed\/Tweet\.html\?id=\d+)$/
+
 // Doc snapshots are rendered on the public read-only page with
 // dangerouslySetInnerHTML — allow only what the editor actually produces.
 function cleanHtml(html) {
   return sanitizeHtml(String(html || ''), {
     allowedTags: [
       'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'code', 'pre',
-      'blockquote', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'hr', 'span', 'a', 'img',
+      'blockquote', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'hr', 'span', 'a', 'img', 'iframe',
     ],
-    allowedAttributes: { span: ['data-comment-id'], a: ['href'], img: ['src', 'alt'] },
+    allowedAttributes: {
+      span: ['data-comment-id'],
+      a: ['href'],
+      img: ['src', 'alt'],
+      iframe: ['src', 'data-provider', 'loading', 'frameborder', 'allow', 'allowfullscreen'],
+    },
     allowedSchemes: ['http', 'https', 'mailto'],
-    // images may only point at our own uploads — nothing external, no data:
-    exclusiveFilter: (frame) =>
-      frame.tag === 'img' && !/^\/files\/[a-f0-9]{24}\.(jpg|png|webp|gif)$/.test(frame.attribs?.src || ''),
+    // images may only point at our own uploads; iframes only at a known player
+    exclusiveFilter: (frame) => {
+      if (frame.tag === 'img')
+        return !/^\/files\/[a-f0-9]{24}\.(jpg|png|webp|gif)$/.test(frame.attribs?.src || '')
+      if (frame.tag === 'iframe') return !EMBED_SRC_RE.test(frame.attribs?.src || '')
+      return false
+    },
   })
 }
 
@@ -654,11 +670,18 @@ app.get('/api/profile/:username', (req, res) => {
   const articles = p.show_writing
     ? db
         .prepare(
-          `SELECT title, slug, updated_at FROM docs
+          `SELECT title, slug, updated_at, html, header_image FROM docs
            WHERE owner_id = ? AND published = 1 AND on_profile = 1
            ORDER BY updated_at DESC`
         )
         .all(u.id)
+        .map((a) => ({
+          title: a.title,
+          slug: a.slug,
+          updated_at: a.updated_at,
+          header_image: a.header_image || null,
+          preview: textOf(a.html).replace(/\s+/g, ' ').trim().slice(0, 420),
+        }))
     : []
   res.json({
     username: u.username,
