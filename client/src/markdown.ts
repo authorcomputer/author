@@ -5,14 +5,19 @@ import { marked } from 'marked'
 // writer's own session. allowlist the tags the editor itself produces.
 const ALLOWED = new Set([
   'P', 'BR', 'STRONG', 'B', 'EM', 'I', 'U', 'S', 'DEL', 'CODE', 'PRE',
-  'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'UL', 'OL', 'LI', 'A', 'HR', 'SPAN',
+  'BLOCKQUOTE', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'UL', 'OL', 'LI', 'A', 'HR', 'SPAN',
 ])
 
 function scrub(node: Element) {
   for (const el of Array.from(node.children)) {
+    // depth-first first, so a disallowed wrapper's children are already clean
+    // before we move them up (a nested <script> can't survive an unwrap)
+    scrub(el)
     if (!ALLOWED.has(el.tagName)) {
-      // drop the tag, keep its text (so a stray <img>/<script> becomes nothing)
-      el.replaceWith(document.createTextNode(el.textContent || ''))
+      // drop <script>/<style> whole; unwrap any other disallowed tag (e.g. a
+      // stray <div>) so its allowed children aren't lost with it
+      const dangerous = el.tagName === 'SCRIPT' || el.tagName === 'STYLE'
+      el.replaceWith(...(dangerous ? [] : Array.from(el.childNodes)))
       continue
     }
     for (const attr of Array.from(el.attributes)) {
@@ -20,15 +25,14 @@ function scrub(node: Element) {
       if (name === 'href') {
         const ok = /^https?:\/\//i.test(attr.value) || attr.value.startsWith('mailto:')
         if (!ok) el.removeAttribute('href')
-      } else if (name !== 'class') {
-        el.removeAttribute(attr.name) // strips on*, style, src, etc.
+      } else {
+        el.removeAttribute(attr.name) // strips on*, style, src, class, etc.
       }
     }
     if (el.tagName === 'A' && el.getAttribute('href')) {
       el.setAttribute('target', '_blank')
       el.setAttribute('rel', 'noreferrer noopener')
     }
-    scrub(el)
   }
 }
 

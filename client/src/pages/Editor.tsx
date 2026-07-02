@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useEditor, EditorContent, BubbleMenu, Editor as TiptapEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -805,6 +805,11 @@ function SidePanel({
 
 type Turn = { role: 'user' | 'assistant'; content: string }
 
+// memoized so a streaming turn doesn't re-parse every prior answer each chunk
+const MarkdownView = memo(({ content }: { content: string }) => (
+  <div className="ai-out" dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
+))
+
 function AskPanel({ editor }: { editor: TiptapEditor }) {
   const [turns, setTurns] = useState<Turn[]>([])
   const [input, setInput] = useState('')
@@ -825,13 +830,14 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
     // the first message can be blank (general feedback); replies need words
     if (turns.length > 0 && !q) return
     track('ai: feedback asked', { question: !!q, reply: turns.length > 0 })
+    const prev = turns // for rollback if nothing streams back
     const thread = [...turns, { role: 'user' as const, content: q }]
     // render the user's turn immediately, plus an empty assistant turn to stream into
     setTurns([...thread, { role: 'assistant', content: '' }])
     setInput('')
     setRunning(true)
+    let acc = ''
     try {
-      let acc = ''
       await apiStream(
         '/api/ai/feedback',
         { text: docText(editor), turns: thread },
@@ -845,15 +851,21 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
         }
       )
     } catch (e: any) {
-      if (needsAccount(e)) promptAccount()
-      else if (needsMembership(e)) promptMembership()
-      else
+      if (acc) {
+        // partial answer arrived — keep it and mark the interruption
         setTurns((t) => {
           const copy = t.slice()
-          const last = copy[copy.length - 1]
-          copy[copy.length - 1] = { role: 'assistant', content: (last?.content || '') + `\n✗ ${e.message}` }
+          copy[copy.length - 1] = { role: 'assistant', content: acc + `\n\n✗ ${e.message}` }
           return copy
         })
+      } else {
+        // nothing streamed (e.g. a 403) — undo the optimistic turns and let the
+        // writer retry, rather than stranding an empty bubble in the thread
+        setTurns(prev)
+        setInput(q)
+      }
+      if (needsAccount(e)) promptAccount()
+      else if (needsMembership(e)) promptMembership()
     } finally {
       setRunning(false)
     }
@@ -921,7 +933,8 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
           {cmd.running && !cmd.text ? (
             <Scribble phrases={['rewriting…', 'crossing out, starting again…', 'reading it back…']} />
           ) : (
-            <div className="ai-out">{cmd.text}</div>
+            // the rewrite is plain text, not markdown — keep its line breaks
+            <div className="ai-out plain">{cmd.text}</div>
           )}
           {!cmd.running && (
             <div className="ai-actions">
@@ -962,11 +975,7 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
             phrases={['reading the whole thing…', 'sitting with it…', 'making margin notes…']}
           />
         ) : (
-          <div
-            className="ai-out"
-            key={i}
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(t.content) }}
-          />
+          <MarkdownView content={t.content} key={i} />
         )
       )}
       <textarea

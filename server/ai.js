@@ -42,19 +42,33 @@ export async function aiFeedback(req, res) {
 
   let messages
   if (Array.isArray(turns) && turns.length) {
-    // a running conversation: the draft is stitched into the opening turn, the
-    // rest of the thread carries through so follow-ups have context
-    messages = turns.slice(0, 40).map((t, i) => ({
-      role: t.role === 'assistant' ? 'assistant' : 'user',
-      content:
-        i === 0
-          ? firstTurn(text, t.content)
-          : String(t.content || '').slice(0, 20000),
-    }))
-    // Anthropic needs the thread to end on a user turn
-    if (messages[messages.length - 1].role !== 'user') {
+    // a running conversation. normalize defensively: coerce roles, drop blank
+    // turns, keep the most recent 40, and make the window start on a user turn
+    // (the draft is stitched into that opening turn)
+    let picked = turns
+      .map((t) => ({
+        role: t && t.role === 'assistant' ? 'assistant' : 'user',
+        content: String((t && t.content) || '').slice(0, 20000),
+      }))
+      .filter((t) => t.content.trim())
+    if (picked.length > 40) picked = picked.slice(-40)
+    while (picked.length && picked[0].role !== 'user') picked.shift()
+    // fold any adjacent same-role turns together so the thread strictly
+    // alternates (Anthropic requires it); dropping blanks above can leave two
+    // in a row
+    const alt = []
+    for (const t of picked) {
+      const last = alt[alt.length - 1]
+      if (last && last.role === t.role) last.content += '\n\n' + t.content
+      else alt.push(t)
+    }
+    if (!alt.length || alt[alt.length - 1].role !== 'user') {
       return res.status(400).json({ error: 'expected a question' })
     }
+    messages = alt.map((t, i) => ({
+      role: t.role,
+      content: i === 0 ? firstTurn(text, t.content) : t.content,
+    }))
   } else {
     messages = [{ role: 'user', content: firstTurn(text, question) }]
   }

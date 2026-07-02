@@ -483,6 +483,8 @@ input, textarea {
 .ai-out pre { font-family: var(--mono); font-size: 12.5px; background: var(--wash); padding: 10px 12px; overflow-x: auto; }
 .ai-out pre code { background: none; padding: 0; }
 .ai-out a { color: var(--accent); border-bottom: 1px dotted var(--accent); }
+/* plain-text variant (the ⌘K rewrite preview), not markdown */
+.ai-out.plain { white-space: pre-wrap; }
 
 /* the writer's own turn in the ask thread */
 .ask-you {
