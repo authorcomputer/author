@@ -9,6 +9,8 @@ export default function Public() {
     title: string
     html: string
     header_image?: string | null
+    author?: string
+    author_public?: boolean
   } | null>(null)
   const [missing, setMissing] = useState(false)
   const m = me()
@@ -40,13 +42,22 @@ export default function Public() {
           <Logo />
         </Link>
         <div className="spacer" />
+        {doc?.author && (
+          <span className="faint pub-pitch">
+            written by{' '}
+            {doc.author_public ? (
+              <Link to={`/u/${doc.author}`} style={{ borderBottom: '1px dotted' }}>
+                {doc.author}
+              </Link>
+            ) : (
+              doc.author
+            )}
+          </span>
+        )}
         {signedIn ? (
           <Link to="/">[ your desk ]</Link>
         ) : (
-          <>
-            <span className="faint pub-pitch">written together on author*</span>
-            <Link to="/login">[ sign in &amp; write ]</Link>
-          </>
+          <Link to="/login">[ sign in &amp; write ]</Link>
         )}
       </div>
       {missing && !doc && (

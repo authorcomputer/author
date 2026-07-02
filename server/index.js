@@ -338,13 +338,20 @@ app.post('/api/docs/:id/publish', requireFullUser, (req, res) => {
 })
 
 app.get('/api/public/:slug', (req, res) => {
+  // author rides along for the byline; the profile link only makes sense
+  // when the profile itself is public
   const doc = db
     .prepare(
-      'SELECT title, html, header_image, updated_at FROM docs WHERE slug = ? AND published = 1'
+      `SELECT d.title, d.html, d.header_image, d.updated_at,
+              u.username AS author, COALESCE(p.profile_public, 0) AS author_public
+       FROM docs d
+       JOIN user u ON u.id = d.owner_id
+       LEFT JOIN profiles p ON p.user_id = d.owner_id
+       WHERE d.slug = ? AND d.published = 1`
     )
     .get(req.params.slug)
   if (!doc) return res.status(404).json({ error: 'nothing here' })
-  res.json(doc)
+  res.json({ ...doc, author_public: !!doc.author_public })
 })
 
 // ---------- comments ----------
