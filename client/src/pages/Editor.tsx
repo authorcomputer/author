@@ -14,6 +14,8 @@ import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { api, apiStream, me, username, colorFor, localDay } from '../api'
 import { CommentMark } from '../comment-mark'
+import { Embed } from '../embed-node'
+import { parseEmbed } from '../embeds'
 import { track } from '../analytics'
 import AccountModal from '../AccountModal'
 import MembershipModal from '../MembershipModal'
@@ -234,11 +236,23 @@ function EditorInner({ id }: { id: string }) {
       }),
       Underline,
       CommentMark,
+      Embed,
       Checkmarks,
     ],
     editorProps: {
       handlePaste: (view, event) => {
         const cd = event.clipboardData
+        // a bare provider URL on its own line becomes a player
+        const text = cd?.getData('text/plain')?.trim() ?? ''
+        if (text && !/\s/.test(text)) {
+          const embed = parseEmbed(text)
+          if (embed) {
+            const node = view.state.schema.nodes.embed.create(embed)
+            view.dispatch(view.state.tr.replaceSelectionWith(node))
+            track('doc: embed added', { provider: embed.provider })
+            return true
+          }
+        }
         // rich content (Word, web pages) ships an image rendition *alongside*
         // the real text — let the default paste win when there's text to keep
         const hasText =
