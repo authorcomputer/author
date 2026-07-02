@@ -380,29 +380,6 @@ app.get('/api/public/:slug', (req, res) => {
   res.json({ ...doc, author_public: !!doc.author_public })
 })
 
-// a handful of the featured author's own published pages, for the front page.
-// the site owner curates it simply by publishing pages and leaving them
-// "listed on profile"; defaults to the admin so a fresh install shows nothing
-const FEATURED_USER_ID = process.env.FEATURED_USER_ID || process.env.ADMIN_USER_ID
-app.get('/api/featured', (req, res) => {
-  if (!FEATURED_USER_ID) return res.json({ articles: [] })
-  const articles = db
-    .prepare(
-      `SELECT title, slug, updated_at, html, header_image FROM docs
-       WHERE owner_id = ? AND published = 1 AND on_profile = 1
-       ORDER BY updated_at DESC LIMIT 4`
-    )
-    .all(FEATURED_USER_ID)
-    .map((a) => ({
-      title: a.title,
-      slug: a.slug,
-      updated_at: a.updated_at,
-      header_image: a.header_image || null,
-      preview: textOf(a.html).replace(/\s+/g, ' ').trim().slice(0, 200),
-    }))
-  res.json({ articles })
-})
-
 // ---------- comments ----------
 app.get('/api/docs/:id/comments', requireUser, (req, res) => {
   const rows = db

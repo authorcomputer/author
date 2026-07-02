@@ -194,24 +194,9 @@ function MockScene() {
   )
 }
 
-type Featured = {
-  title: string
-  slug: string
-  updated_at: number
-  header_image: string | null
-  preview: string
-}
-
 export default function Landing() {
   const nav = useNavigate()
   const [busy, setBusy] = useState(false)
-  const [featured, setFeatured] = useState<Featured[]>([])
-
-  useEffect(() => {
-    api('/api/featured')
-      .then((d) => setFeatured(d.articles || []))
-      .catch(() => {})
-  }, [])
 
   // the ghost door: start writing with no account at all
   async function startWriting() {
@@ -286,21 +271,6 @@ export default function Landing() {
         </div>
         <MockScene />
       </section>
-
-      {featured.length > 0 && (
-        <section className="land-writing">
-          <div className="land-writing-head">lately, from the desk</div>
-          <div className="land-writing-list">
-            {featured.map((a) => (
-              <Link className="land-piece" key={a.slug} to={`/p/${a.slug}`}>
-                {a.header_image && <img src={a.header_image} alt="" />}
-                <div className="land-piece-title">{a.title || 'untitled'}</div>
-                {a.preview && <div className="land-piece-body">{a.preview}</div>}
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
 
       <section className="land-grid">
         {FEATURES.map((f) => (
