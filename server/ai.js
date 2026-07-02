@@ -24,23 +24,47 @@ async function streamText(res, params) {
   }
 }
 
+const DEFAULT_ASK = `Give feedback on this draft: what works, what drags, and the two or three highest-leverage changes. Quote short passages when pointing at something specific. End with one sentence on what the piece wants to be.`
+
+// the first user turn carries the draft; ask a question or leave it blank for
+// general feedback
+function firstTurn(text, question) {
+  const q = String(question || '').trim()
+  const ask = q
+    ? `The writer asks: "${q}"\nAnswer their question about the draft directly, quoting from it where useful.`
+    : DEFAULT_ASK
+  return `<draft>\n${text.slice(0, 150000)}\n</draft>\n\n${ask}`
+}
+
 export async function aiFeedback(req, res) {
-  const { text, question } = req.body || {}
+  const { text, question, turns } = req.body || {}
   if (!text || !text.trim()) return res.status(400).json({ error: 'empty draft' })
-  const ask = question && question.trim()
-    ? `The writer asks: "${question.trim()}"\nAnswer their question about the draft directly, quoting from it where useful.`
-    : `Give feedback on this draft: what works, what drags, and the two or three highest-leverage changes. Quote short passages when pointing at something specific. End with one sentence on what the piece wants to be.`
+
+  let messages
+  if (Array.isArray(turns) && turns.length) {
+    // a running conversation: the draft is stitched into the opening turn, the
+    // rest of the thread carries through so follow-ups have context
+    messages = turns.slice(0, 40).map((t, i) => ({
+      role: t.role === 'assistant' ? 'assistant' : 'user',
+      content:
+        i === 0
+          ? firstTurn(text, t.content)
+          : String(t.content || '').slice(0, 20000),
+    }))
+    // Anthropic needs the thread to end on a user turn
+    if (messages[messages.length - 1].role !== 'user') {
+      return res.status(400).json({ error: 'expected a question' })
+    }
+  } else {
+    messages = [{ role: 'user', content: firstTurn(text, question) }]
+  }
+
   await streamText(res, {
     model: MODEL,
     max_tokens: 16000,
     thinking: { type: 'adaptive' },
     system: VOICE,
-    messages: [
-      {
-        role: 'user',
-        content: `<draft>\n${text.slice(0, 150000)}\n</draft>\n\n${ask}`,
-      },
-    ],
+    messages,
   })
 }
 

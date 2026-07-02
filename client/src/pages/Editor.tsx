@@ -16,6 +16,7 @@ import { api, apiStream, me, username, colorFor, localDay } from '../api'
 import { CommentMark } from '../comment-mark'
 import { Embed } from '../embed-node'
 import { parseEmbed } from '../embeds'
+import { renderMarkdown } from '../markdown'
 import { track } from '../analytics'
 import AccountModal from '../AccountModal'
 import MembershipModal from '../MembershipModal'
@@ -802,9 +803,11 @@ function SidePanel({
   )
 }
 
+type Turn = { role: 'user' | 'assistant'; content: string }
+
 function AskPanel({ editor }: { editor: TiptapEditor }) {
-  const [question, setQuestion] = useState('')
-  const [out, setOut] = useState('')
+  const [turns, setTurns] = useState<Turn[]>([])
+  const [input, setInput] = useState('')
   const [running, setRunning] = useState(false)
   const [cmd, setCmd] = useState<CommandResult | null>(null)
 
@@ -816,21 +819,41 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
     }
   }, [editor])
 
-  async function run() {
+  async function send() {
     if (running) return
-    track('ai: feedback asked', { question: !!question.trim() })
-    setOut('')
+    const q = input.trim()
+    // the first message can be blank (general feedback); replies need words
+    if (turns.length > 0 && !q) return
+    track('ai: feedback asked', { question: !!q, reply: turns.length > 0 })
+    const thread = [...turns, { role: 'user' as const, content: q }]
+    // render the user's turn immediately, plus an empty assistant turn to stream into
+    setTurns([...thread, { role: 'assistant', content: '' }])
+    setInput('')
     setRunning(true)
     try {
+      let acc = ''
       await apiStream(
         '/api/ai/feedback',
-        { text: docText(editor), question },
-        (chunk) => setOut((o) => o + chunk)
+        { text: docText(editor), turns: thread },
+        (chunk) => {
+          acc += chunk
+          setTurns((t) => {
+            const copy = t.slice()
+            copy[copy.length - 1] = { role: 'assistant', content: acc }
+            return copy
+          })
+        }
       )
     } catch (e: any) {
       if (needsAccount(e)) promptAccount()
       else if (needsMembership(e)) promptMembership()
-      else setOut((o) => o + `\n✗ ${e.message}`)
+      else
+        setTurns((t) => {
+          const copy = t.slice()
+          const last = copy[copy.length - 1]
+          copy[copy.length - 1] = { role: 'assistant', content: (last?.content || '') + `\n✗ ${e.message}` }
+          return copy
+        })
     } finally {
       setRunning(false)
     }
@@ -922,27 +945,64 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
           </div>
         </div>
       )}
-      <div className="hint" style={{ marginBottom: 8 }}>
-        ask for feedback on the draft — or ask a question about it. tip: ⌘K in the
-        text runs rewrite commands.
-      </div>
+      {turns.length === 0 && (
+        <div className="hint" style={{ marginBottom: 8 }}>
+          ask for feedback on the draft — or ask a question about it. tip: ⌘K in the
+          text runs rewrite commands.
+        </div>
+      )}
+      {turns.map((t, i) =>
+        t.role === 'user' ? (
+          <div className="ask-you" key={i}>
+            {t.content || <span className="faint">read my draft</span>}
+          </div>
+        ) : running && i === turns.length - 1 && !t.content ? (
+          <Scribble
+            key={i}
+            phrases={['reading the whole thing…', 'sitting with it…', 'making margin notes…']}
+          />
+        ) : (
+          <div
+            className="ai-out"
+            key={i}
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(t.content) }}
+          />
+        )
+      )}
       <textarea
         className="ask-box"
-        placeholder="optional question, e.g. “does the opening land?”"
-        value={question}
-        onChange={(e) => setQuestion(e.target.value)}
+        style={{ marginTop: turns.length ? 18 : 0 }}
+        placeholder={
+          turns.length
+            ? 'reply…'
+            : 'optional question, e.g. “does the opening land?”'
+        }
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => {
+          // ⌘/Ctrl+Enter sends, like most chat boxes
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault()
+            send()
+          }
+        }}
       />
       <div className="ai-actions">
-        <button onClick={run} disabled={running}>
-          {running ? 'reading…' : '[ read my draft ]'}
+        <button onClick={send} disabled={running || (turns.length > 0 && !input.trim())}>
+          {running ? 'reading…' : turns.length ? '[ reply ]' : '[ read my draft ]'}
         </button>
+        {turns.length > 0 && !running && (
+          <button
+            className="faint"
+            onClick={() => {
+              setTurns([])
+              setInput('')
+            }}
+          >
+            start over
+          </button>
+        )}
       </div>
-      {running && !out && (
-        <Scribble
-          phrases={['reading the whole thing…', 'sitting with it…', 'making margin notes…']}
-        />
-      )}
-      {out && <div className="ai-out">{out}</div>}
     </div>
   )
 }
