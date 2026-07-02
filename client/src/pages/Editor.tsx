@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useEditor, EditorContent, BubbleMenu, Editor as TiptapEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -523,14 +523,17 @@ function FormatBubble({ editor }: { editor: TiptapEditor }) {
   }
 
   const item = (
-    label: string,
+    label: ReactNode,
     active: boolean,
     run: () => void,
+    name: string,
     title?: string
   ) => (
     <button
       className={active ? 'on' : ''}
-      title={title}
+      title={title || name}
+      aria-label={name}
+      aria-pressed={active}
       onMouseDown={(e) => {
         e.preventDefault() // keep the selection
         run()
@@ -542,23 +545,25 @@ function FormatBubble({ editor }: { editor: TiptapEditor }) {
 
   return (
     <BubbleMenu editor={editor} tippyOptions={{ duration: 120, maxWidth: 'none' }}>
-      <div className="fmt-bubble">
-        {item('b', editor.isActive('bold'), () => editor.chain().focus().toggleBold().run(), 'bold ⌘B')}
-        {item('i', editor.isActive('italic'), () => editor.chain().focus().toggleItalic().run(), 'italic ⌘I')}
-        {item('u', editor.isActive('underline'), () => editor.chain().focus().toggleUnderline().run(), 'underline ⌘U')}
-        {item('s', editor.isActive('strike'), () => editor.chain().focus().toggleStrike().run(), 'strikethrough ⌘⇧X')}
-        {item('`', editor.isActive('code'), () => editor.chain().focus().toggleCode().run(), 'code')}
+      <div className="fmt-bubble" role="toolbar" aria-label="formatting">
+        {item(<b>b</b>, editor.isActive('bold'), () => editor.chain().focus().toggleBold().run(), 'bold', 'bold ⌘B')}
+        {item(<i>i</i>, editor.isActive('italic'), () => editor.chain().focus().toggleItalic().run(), 'italic', 'italic ⌘I')}
+        {item(<u>u</u>, editor.isActive('underline'), () => editor.chain().focus().toggleUnderline().run(), 'underline', 'underline ⌘U')}
+        {item(<s>s</s>, editor.isActive('strike'), () => editor.chain().focus().toggleStrike().run(), 'strikethrough', 'strikethrough ⌘⇧X')}
+        {item(<code>code</code>, editor.isActive('code'), () => editor.chain().focus().toggleCode().run(), 'code')}
         <span className="fmt-sep">·</span>
         {item('h1', editor.isActive('heading', { level: 1 }), () =>
-          editor.chain().focus().toggleHeading({ level: 1 }).run()
+          editor.chain().focus().toggleHeading({ level: 1 }).run(),
+          'big heading'
         )}
         {item('h2', editor.isActive('heading', { level: 2 }), () =>
-          editor.chain().focus().toggleHeading({ level: 2 }).run()
+          editor.chain().focus().toggleHeading({ level: 2 }).run(),
+          'small heading'
         )}
-        {item('“', editor.isActive('blockquote'), () => editor.chain().focus().toggleBlockquote().run(), 'quote')}
+        {item('“quote”', editor.isActive('blockquote'), () => editor.chain().focus().toggleBlockquote().run(), 'quote')}
         <span className="fmt-sep">·</span>
-        {item('link', editor.isActive('link'), setLink, 'add or edit link')}
-        {item('✎ ai', false, () => window.dispatchEvent(new CustomEvent('author:open-cmdk')), 'rewrite with ⌘K')}
+        {item('link', editor.isActive('link'), setLink, 'link', 'add or edit link')}
+        {item('✎ ai', false, () => window.dispatchEvent(new CustomEvent('author:open-cmdk')), 'ai', 'rewrite with ⌘K')}
       </div>
     </BubbleMenu>
   )

@@ -343,6 +343,15 @@ input, textarea {
 }
 .fmt-bubble button { padding: 8px 4px; margin: -8px -4px; }
 .fmt-bubble button.on { color: var(--accent); }
+/* labels wear their own formatting so each button reads as what it does */
+.fmt-bubble button b { font-weight: 700; }
+.fmt-bubble button u { text-underline-offset: 2px; }
+.fmt-bubble button code {
+  font-family: inherit;
+  font-size: inherit;
+  background: var(--wash);
+  padding: 1px 3px;
+}
 .fmt-bubble .fmt-sep { color: var(--fainter); user-select: none; }
 
 /* the waiting pen */
