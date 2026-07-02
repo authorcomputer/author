@@ -654,6 +654,10 @@ input, textarea {
 .profile-links { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 12px; }
 .profile-chart { margin-top: 24px; }
 
+/* the profile has no desk rail filling the right gutter, so its article peek
+   hugs the column edge instead of floating out where the chart would be */
+.desk-peek.peek-hug { left: calc(50% + 320px + 12px); }
+
 .contrib-grid { display: flex; gap: 3px; }
 .contrib-col { display: flex; flex-direction: column; gap: 3px; }
 .contrib-cell { width: 8px; height: 8px; border-radius: 1px; background: var(--wash); }

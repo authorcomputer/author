@@ -126,7 +126,7 @@ export default function UserPublic() {
           )}
           {peek && (peek.a.preview || peek.a.header_image) && (
             <div
-              className="desk-peek"
+              className="desk-peek peek-hug"
               aria-hidden
               style={{ top: Math.max(76, Math.min(peek.top - 8, window.innerHeight - 340)) }}
             >
