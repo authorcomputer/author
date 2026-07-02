@@ -842,6 +842,32 @@ app.get('/p/:slug', (req, res) => {
   res.type('html').send(html)
 })
 
+// share card for the public changelog — its own og image and copy, so a
+// pasted /updates link unfurls as the changelog rather than the front door
+app.get('/updates', (req, res) => {
+  res.set('Cache-Control', 'no-cache')
+  if (!strippedShell) return res.sendFile(path.join(dist, 'index.html'))
+  const origin = esc(
+    (process.env.BETTER_AUTH_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '')
+  )
+  const desc = 'what changed, as it changed. the public changelog — written as it was built.'
+  const tags = [
+    `<meta property="og:type" content="website" />`,
+    `<meta property="og:site_name" content="author*" />`,
+    `<meta property="og:title" content="updates · author*" />`,
+    `<meta property="og:description" content="${desc}" />`,
+    `<meta property="og:url" content="${origin}/updates" />`,
+    `<meta property="og:image" content="${origin}/og-updates.png" />`,
+    `<meta property="og:image:width" content="1200" />`,
+    `<meta property="og:image:height" content="630" />`,
+    `<meta name="twitter:card" content="summary_large_image" />`,
+    `<meta name="twitter:title" content="updates · author*" />`,
+    `<meta name="twitter:description" content="${desc}" />`,
+    `<meta name="twitter:image" content="${origin}/og-updates.png" />`,
+  ].join('\n    ')
+  res.type('html').send(strippedShell.replace('</head>', `    ${tags}\n  </head>`))
+})
+
 app.get(/^\/(?!api\/|ws\/).*/, (req, res) => {
   res.set('Cache-Control', 'no-cache')
   res.sendFile(path.join(dist, 'index.html'))
