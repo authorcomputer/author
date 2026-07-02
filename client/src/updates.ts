@@ -10,47 +10,27 @@ export const UPDATES: UpdateDay[] = [
     date: 'july 2, 2026',
     updates: [
       {
-        time: '19:20',
+        time: '13:52',
         title: 'embeds',
         note: 'paste a youtube, vimeo, loom, spotify, or tweet link on its own line and it becomes a player — in the editor and on the published page.',
       },
       {
-        time: '18:40',
+        time: '13:52',
         title: 'profiles, rearranged',
         note: 'a public profile now reads top to bottom — name, links, your writing chart, then your pages — and hovering an article floats a preview card in the margin.',
       },
       {
-        time: '17:30',
+        time: '13:26',
         title: 'images in the page',
         note: 'paste or drag an image straight into your writing. it uploads quietly and lands where you dropped it.',
       },
       {
-        time: '16:10',
+        time: '13:26',
         title: 'the published page, truer',
         note: 'headings keep their size and the “· · ·” divider carries over, so a published piece looks like the one you wrote.',
       },
       {
-        time: '12:05',
-        title: 'a byline of your own',
-        note: 'read-only pages now say “written by” with a link to the author’s profile, instead of a generic line.',
-      },
-      {
-        time: '11:20',
-        title: 'the chart keeps your time',
-        note: 'contribution days follow your own timezone now, so a late evening still counts as today.',
-      },
-      {
-        time: '10:15',
-        title: 'small kindnesses',
-        note: 'clearer formatting buttons (each wears the style it applies), enter jumps from a title into the page, and every page you open scrolls to the top.',
-      },
-      {
-        time: '09:30',
-        title: 'ink & quill, at work',
-        note: 'the mock editor on the front page now writes, reconsiders, and revises itself in a quiet loop.',
-      },
-      {
-        time: '02:00',
+        time: '11:05',
         title: 'under the floorboards',
         note: 'the writing is now backed up continuously to separate storage and can be restored onto fresh hardware in minutes — the site moved to the west coast in the process.',
       },
@@ -59,6 +39,26 @@ export const UPDATES: UpdateDay[] = [
   {
     date: 'july 1, 2026',
     updates: [
+      {
+        time: '18:48',
+        title: 'a byline of your own',
+        note: 'read-only pages now say “written by” with a link to the author’s profile, instead of a generic line.',
+      },
+      {
+        time: '18:39',
+        title: 'the chart keeps your time',
+        note: 'contribution days follow your own timezone now, so a late evening still counts as today.',
+      },
+      {
+        time: '18:39',
+        title: 'ink & quill, at work',
+        note: 'the mock editor on the front page writes, reconsiders, and revises itself in a quiet loop.',
+      },
+      {
+        time: '18:26',
+        title: 'small kindnesses',
+        note: 'clearer formatting buttons (each wears the style it applies), enter jumps from a title into the page, and every page you open scrolls to the top.',
+      },
       {
         time: '15:55',
         title: 'the doors open',
