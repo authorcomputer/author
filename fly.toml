@@ -9,7 +9,7 @@
 # the volume, builds, deploys, and verifies prod serves the new bundle.
 
 app = "author-computer"
-primary_region = "ewr"
+primary_region = "sjc"
 
 [env]
   PORT = "3001"
