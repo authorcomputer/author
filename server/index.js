@@ -55,6 +55,16 @@ app.use('/api', (req, res, next) => {
 
 const uid = (p) => p + '_' + crypto.randomBytes(8).toString('hex')
 
+// html snapshot → readable text, for snippets and word counts. inline marks
+// vanish (Tiptap splits words with them: '<strong>re</strong>ally'), block
+// tags and entities become spaces so paragraphs don't fuse into one word.
+function textOf(html) {
+  return String(html || '')
+    .replace(/<\/?(?:strong|b|em|i|u|s|code|a|span)\b[^>]*>/g, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&[a-z#0-9]+;/gi, ' ')
+}
+
 // Doc snapshots are rendered on the public read-only page with
 // dangerouslySetInnerHTML — allow only what the editor actually produces.
 function cleanHtml(html) {
@@ -197,10 +207,7 @@ app.get('/api/docs', requireUser, (req, res) => {
     .all(req.user.id, req.user.id, req.user.id)
   res.json(
     rows.map((r) => {
-      const text = String(r.html || '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
+      const text = textOf(r.html).replace(/\s+/g, ' ').trim()
       return {
         id: r.id,
         title: r.title,
@@ -523,11 +530,29 @@ app.post('/api/settings', requireFullUser, (req, res) => {
 })
 
 // ---------- admin (one person's desk lamp, not a control panel) ----------
-const ADMIN_USER_ID = process.env.ADMIN_USER_ID || 'u_ink'
+// no default: this repo is public and its seeded test accounts have a
+// documented password, so admin must be granted explicitly per install
+// (fly secrets set ADMIN_USER_ID=...)
+const ADMIN_USER_ID = process.env.ADMIN_USER_ID
+
+// the word count walks every html snapshot — cache it so an open admin tab
+// can't keep the event loop busy re-scanning the whole corpus
+let wordCache = { words: 0, at: 0 }
+function totalWords() {
+  if (Date.now() - wordCache.at < 5 * 60 * 1000) return wordCache.words
+  let words = 0
+  for (const d of db.prepare('SELECT html FROM docs WHERE html IS NOT NULL').all()) {
+    words += (textOf(d.html).match(/\S+/g) || []).length
+  }
+  wordCache = { words, at: Date.now() }
+  return words
+}
 
 app.get('/api/admin/stats', requireFullUser, (req, res) => {
   // quiet 404 for everyone else — the page shouldn't admit it exists
-  if (req.user.id !== ADMIN_USER_ID) return res.status(404).json({ error: 'nothing here' })
+  if (!ADMIN_USER_ID || req.user.id !== ADMIN_USER_ID) {
+    return res.status(404).json({ error: 'nothing here' })
+  }
 
   const writers = db
     .prepare('SELECT COUNT(*) c FROM user WHERE isAnonymous IS NOT 1').get().c
@@ -537,13 +562,6 @@ app.get('/api/admin/stats', requireFullUser, (req, res) => {
   const pages = db.prepare('SELECT COUNT(*) c FROM docs').get().c
   const published = db.prepare('SELECT COUNT(*) c FROM docs WHERE published = 1').get().c
 
-  // words across every page, from the html snapshots — good enough for a lamp
-  let words = 0
-  for (const d of db.prepare('SELECT html FROM docs WHERE html IS NOT NULL').all()) {
-    const text = d.html.replace(/<[^>]+>/g, ' ')
-    words += (text.match(/\S+/g) || []).length
-  }
-
   const recent = db
     .prepare(
       `SELECT username, email, createdAt FROM user
@@ -551,7 +569,9 @@ app.get('/api/admin/stats', requireFullUser, (req, res) => {
     )
     .all()
 
-  res.json({ writers, ghosts, members, pages, published, words, recent })
+  // emails in the body — keep it out of every cache
+  res.set('Cache-Control', 'no-store, private')
+  res.json({ writers, ghosts, members, pages, published, words: totalWords(), recent })
 })
 
 app.get('/api/profile/:username', (req, res) => {

@@ -46,9 +46,11 @@ export async function signOut() {
 
 export class ApiError extends Error {
   code?: string
-  constructor(message: string, code?: string) {
+  status?: number
+  constructor(message: string, code?: string, status?: number) {
     super(message)
     this.code = code
+    this.status = status
   }
 }
 
@@ -69,7 +71,8 @@ export async function api(path: string, options: RequestInit = {}) {
     const body = await res.json().catch(() => ({}))
     throw new ApiError(
       (body as any).error || `request failed (${res.status})`,
-      (body as any).code
+      (body as any).code,
+      res.status
     )
   }
   return res.json()

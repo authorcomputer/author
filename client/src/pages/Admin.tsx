@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../api'
+import { api, ApiError } from '../api'
 import Logo from '../Logo'
 
 type Stats = {
@@ -17,12 +17,19 @@ const nice = (n: number) => n.toLocaleString('en-US')
 
 export default function Admin() {
   const [stats, setStats] = useState<Stats | null>(null)
-  const [missing, setMissing] = useState(false)
+  // 'loading' → spinner; 'missing' → the not-admin decoy; 'error' → the
+  // admin deserves to know the difference between locked out and broken
+  const [state, setState] = useState<'loading' | 'ok' | 'missing' | 'error'>('loading')
 
   useEffect(() => {
     api('/api/admin/stats')
-      .then(setStats)
-      .catch(() => setMissing(true))
+      .then((s) => {
+        setStats(s)
+        setState('ok')
+      })
+      .catch((e) => {
+        setState(e instanceof ApiError && e.status === 404 ? 'missing' : 'error')
+      })
   }, [])
 
   return (
@@ -35,8 +42,12 @@ export default function Admin() {
         <Link to="/">[ your desk ]</Link>
       </div>
       <div className="pub-wrap">
-        {missing && <div className="faint">( nothing published here )</div>}
-        {stats && (
+        {state === 'loading' && <div className="faint">…</div>}
+        {state === 'missing' && <div className="faint">( nothing published here )</div>}
+        {state === 'error' && (
+          <div className="faint">( the back room isn't answering — try again in a moment )</div>
+        )}
+        {state === 'ok' && stats && (
           <>
             <h1 className="pub-title">the back room</h1>
             <div className="faint">how the house is doing.</div>
@@ -56,8 +67,15 @@ export default function Admin() {
                 <span className="faint">({nice(stats.published)} published)</span>
               </div>
               <div>
-                {nice(stats.words)} words written{' '}
-                <span className="faint">— about {Math.max(1, Math.round(stats.words / 90000))} novel{Math.round(stats.words / 90000) > 1 ? 's' : ''}</span>
+                {nice(stats.words)} words written
+                {(() => {
+                  const novels = Math.round(stats.words / 90000)
+                  return novels >= 1 ? (
+                    <span className="faint">
+                      {' '}— about {novels} novel{novels === 1 ? '' : 's'}
+                    </span>
+                  ) : null
+                })()}
               </div>
             </div>
             <div className="ascii-rule">~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</div>
@@ -72,9 +90,7 @@ export default function Admin() {
                     day: 'numeric',
                   })}
                 </div>
-                <div className="u-title">
-                  <Link to={`/u/${u.username}`}>{u.username}</Link>
-                </div>
+                <div className="u-title">{u.username}</div>
                 <div className="u-note">{u.email}</div>
               </div>
             ))}
