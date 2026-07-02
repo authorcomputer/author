@@ -235,9 +235,6 @@ export default function Landing() {
         <Logo word />
         <div className="spacer" />
         <Link to="/updates">updates</Link>
-        <a href={REPO_URL} target="_blank" rel="noreferrer">
-          github
-        </a>
         <Link to="/login">[ sign in ]</Link>
       </header>
 
