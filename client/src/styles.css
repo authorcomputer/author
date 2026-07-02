@@ -654,17 +654,6 @@ input, textarea {
 .profile-links { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 12px; }
 .profile-chart { margin-top: 24px; }
 
-/* the article peek pops up in the left gutter of the centered column,
-   mirroring the desk peek (which sits in the right gutter) */
-.desk-peek.peek-left {
-  left: auto;
-  right: calc(50% + 320px + 48px);
-  transform: rotate(-0.4deg);
-}
-@media (max-width: 1240px) {
-  .desk-peek.peek-left { display: none; }
-}
-
 .contrib-grid { display: flex; gap: 3px; }
 .contrib-col { display: flex; flex-direction: column; gap: 3px; }
 .contrib-cell { width: 8px; height: 8px; border-radius: 1px; background: var(--wash); }
