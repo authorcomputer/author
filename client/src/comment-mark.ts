@@ -38,4 +38,15 @@ export const CommentMark = Mark.create({
           commands.setMark(this.name, { id }),
     }
   },
+
+  // editor-scoped so it only fires when the page has focus, and Mod- so it
+  // works on every platform (⌥⌘M on mac, ctrl+alt+M elsewhere)
+  addKeyboardShortcuts() {
+    return {
+      'Mod-Alt-m': () => {
+        window.dispatchEvent(new CustomEvent('author:comment'))
+        return true
+      },
+    }
+  },
 })
