@@ -360,10 +360,11 @@ input, textarea {
 .reply-box {
   width: 100%;
   font-size: 11px;
-  border-bottom: 1px solid var(--fainter);
+  border: 1px dashed var(--fainter);
   margin-top: 10px;
-  padding-bottom: 2px;
+  padding: 6px 9px;
 }
+.reply-box:focus { border: 1px solid var(--accent); }
 
 /* the floating comment card — composer and thread both */
 .comment-pop {
@@ -606,7 +607,16 @@ input, textarea {
   100% { background: #f8efdc; }
 }
 
-.comment-card .byline { color: var(--faint); font-size: 11px; }
+/* each comment is a card with clear roles: colored byline, serif prose for
+   what people wrote, a boxed old→new block for suggested edits, a dashed
+   input for replies, and bracketed buttons like everywhere else */
+.comment-card {
+  border: 1px solid var(--wash);
+  border-left: 2px solid var(--fainter);
+  padding: 12px 14px;
+  margin: 14px 0;
+}
+.comment-card .byline { color: var(--faint); font-size: 11px; margin-bottom: 4px; }
 .comment-card .quote {
   font-family: var(--serif);
   font-style: italic;
@@ -616,7 +626,46 @@ input, textarea {
   margin: 6px 0;
   cursor: pointer;
 }
-.comment-card.resolved { opacity: 0.45; }
+.comment-card .quote:hover { color: var(--accent); }
+/* the words people wrote read as prose, not interface */
+.comment-card .body,
+.comment-pop .body {
+  font-family: var(--serif);
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 6px 0;
+}
+.comment-card .row-actions { margin-top: 12px; display: flex; gap: 16px; }
+.comment-card .row-actions .primary,
+.comment-pop .primary { color: var(--accent); }
+.comment-card.resolved { opacity: 0.55; }
+/* the card the clicked passage belongs to */
+.comment-card.focus {
+  border-color: var(--accent);
+  border-left-color: var(--accent);
+  background: #fdf3e7;
+  animation: issue-flash 1.1s ease;
+}
+
+/* a suggested edit, boxed: what they'd strike over what they'd write */
+.sugg-block {
+  background: var(--wash);
+  padding: 8px 10px;
+  margin: 8px 0;
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.sugg-block .sugg-old {
+  display: block;
+  color: var(--faint);
+  font-style: italic;
+  cursor: pointer;
+}
+.sugg-block .sugg-old:hover { color: var(--accent); }
+.sugg-block .sugg-new { display: block; margin-top: 2px; }
+/* the kind tag wears the comment gold */
+.byline .kind { color: #b8860b; }
 
 .title-idea { cursor: pointer; font-family: var(--serif); font-size: 15px; }
 .title-idea:hover { color: var(--accent); }

@@ -201,6 +201,8 @@ function EditorInner({ id }: { id: string }) {
   const [openPop, setOpenPop] = useState<{ id: string; x: number; y: number; yTop: number } | null>(
     null
   )
+  // the card lit up in the sidebar — set by clicking a passage in the text
+  const [focusId, setFocusId] = useState<string | null>(null)
 
   const ydoc = useMemo(() => new Y.Doc(), [id])
   const provider = useMemo(() => {
@@ -652,17 +654,27 @@ function EditorInner({ id }: { id: string }) {
               'span.comment-mark'
             ) as HTMLElement | null
             const cid = mark?.dataset.commentId
-            if (!cid || !editor) return
-            // hang the card below the clicked line, never over it
-            const pos = editor.view.posAtCoords({ left: e.clientX, top: e.clientY })
-            const c = pos ? editor.view.coordsAtPos(pos.pos) : null
+            if (!cid || !editor) {
+              setFocusId(null)
+              return
+            }
             setComposer(null)
-            setOpenPop({
-              id: cid,
-              x: e.clientX,
-              y: c ? c.bottom : e.clientY,
-              yTop: c ? c.top : e.clientY,
-            })
+            setFocusId(cid)
+            if (panel === 'comments') {
+              // the sidebar is the full view — light its card up instead of
+              // floating a second copy over the text
+              setOpenPop(null)
+            } else {
+              // hang the card below the clicked line, never over it
+              const pos = editor.view.posAtCoords({ left: e.clientX, top: e.clientY })
+              const c = pos ? editor.view.coordsAtPos(pos.pos) : null
+              setOpenPop({
+                id: cid,
+                x: e.clientX,
+                y: c ? c.bottom : e.clientY,
+                yTop: c ? c.top : e.clientY,
+              })
+            }
             // a mark can arrive over yjs before its body arrives over http
             if (!comments.some((c) => c.id === cid)) reloadComments()
           }}
@@ -722,6 +734,7 @@ function EditorInner({ id }: { id: string }) {
             onTitle={(t) => updateTitle(t)}
             comments={comments}
             reloadComments={reloadComments}
+            focusId={focusId}
           />
         )}
       </div>
@@ -1034,6 +1047,7 @@ function SidePanel({
   onTitle,
   comments,
   reloadComments,
+  focusId,
 }: {
   panel: Exclude<Panel, null>
   setPanel: (p: Panel) => void
@@ -1042,6 +1056,7 @@ function SidePanel({
   onTitle: (t: string) => void
   comments: Comment[]
   reloadComments: () => void
+  focusId: string | null
 }) {
   const openCount = comments.filter(isOpenRoot).length
   return (
@@ -1060,7 +1075,13 @@ function SidePanel({
         {panel === 'checks' && <ChecksPanel editor={editor} />}
         {panel === 'titles' && <TitlesPanel editor={editor} onTitle={onTitle} />}
         {panel === 'comments' && (
-          <CommentsPanel editor={editor} docId={docId} comments={comments} reload={reloadComments} />
+          <CommentsPanel
+            editor={editor}
+            docId={docId}
+            comments={comments}
+            reload={reloadComments}
+            focusId={focusId}
+          />
         )}
         {panel === 'versions' && <VersionsPanel editor={editor} docId={docId} />}
       </div>
@@ -1483,7 +1504,8 @@ function ReplyBox({
   return (
     <input
       className="reply-box"
-      placeholder="reply…"
+      placeholder="↩ reply…"
+      aria-label="reply to this thread"
       value={text}
       onChange={(e) => setText(e.target.value)}
       onKeyDown={(e) => {
@@ -1694,16 +1716,20 @@ function CommentPop({
       >
         <div className="byline">
           <span style={{ color: colorFor(comment.username) }}>{comment.username}</span>
-          {comment.suggestion?.trim() ? <span className="faint"> ↳ suggests an edit</span> : null}
+          {comment.suggestion?.trim() ? <span className="kind"> ↳ suggests an edit</span> : null}
         </div>
         {comment.suggestion?.trim() ? (
           <div style={{ margin: '6px 0 10px' }}>
-            <div className="quote sugg-old">“{comment.quote.slice(0, 120)}”</div>
-            <div className="sugg-new">↳ {comment.suggestion}</div>
-            {comment.text && <div className="faint" style={{ marginTop: 6 }}>{comment.text}</div>}
+            <div className="sugg-block">
+              <span className="sugg-old">{comment.quote.slice(0, 120)}</span>
+              <span className="sugg-new">↳ {comment.suggestion}</span>
+            </div>
+            {comment.text && <div className="body faint">{comment.text}</div>}
           </div>
         ) : (
-          <div style={{ margin: '6px 0 10px' }}>{comment.text}</div>
+          <div className="body" style={{ margin: '6px 0 10px' }}>
+            {comment.text}
+          </div>
         )}
         <Replies replies={replies} />
         {comment.resolved ? (
@@ -1734,7 +1760,7 @@ function CommentPop({
               onClose()
             }}
           >
-            {comment.suggestion?.trim() ? '✗ dismiss' : '✓ resolve'}
+            {comment.suggestion?.trim() ? '[ ✗ dismiss ]' : '[ ✓ resolve ]'}
           </button>
         </div>
         )}
@@ -1748,15 +1774,23 @@ function CommentsPanel({
   docId,
   comments,
   reload,
+  focusId,
 }: {
   editor: TiptapEditor
   docId: string
   comments: Comment[]
   reload: () => void
+  focusId: string | null
 }) {
   const open = comments.filter(isOpenRoot)
   const resolved = comments.filter((c) => c.resolved && isRoot(c))
   const repliesFor = (id: string) => comments.filter((c) => c.parent_id === id)
+
+  // bring the lit card into view when a passage is clicked in the text
+  useEffect(() => {
+    if (!focusId) return
+    document.getElementById(`cc-${focusId}`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [focusId])
 
   return (
     <div>
@@ -1780,48 +1814,61 @@ function CommentsPanel({
           ( no open comments )
         </div>
       )}
-      {open.map((c) => (
-        <div className="comment-card" key={c.id}>
-          <div className="byline">
-            <span style={{ color: colorFor(c.username) }}>{c.username}</span>
-            {c.suggestion?.trim() ? <span className="faint"> ↳ suggests an edit</span> : null}
-          </div>
-          {c.quote && (
-            <div
-              className={c.suggestion?.trim() ? 'quote sugg-old' : 'quote'}
-              onClick={() => {
-                const range = commentRange(editor, c)
-                if (range) selectRange(editor, range)
-              }}
-            >
-              “{c.quote.slice(0, 120)}”
+      {open.map((c) => {
+        const jump = () => {
+          const range = commentRange(editor, c)
+          if (range) selectRange(editor, range)
+        }
+        return (
+          <div
+            className={focusId === c.id ? 'comment-card focus' : 'comment-card'}
+            id={`cc-${c.id}`}
+            key={c.id}
+          >
+            <div className="byline">
+              <span style={{ color: colorFor(c.username) }}>{c.username}</span>
+              {c.suggestion?.trim() ? <span className="kind"> ↳ suggests an edit</span> : null}
             </div>
-          )}
-          {c.suggestion?.trim() && <div className="sugg-new">↳ {c.suggestion}</div>}
-          {c.text && <div className={c.suggestion?.trim() ? 'faint' : ''}>{c.text}</div>}
-          <Replies replies={repliesFor(c.id)} />
-          <ReplyBox docId={docId} parentId={c.id} onPosted={reload} />
-          <div className="row-actions">
-            {c.suggestion?.trim() && (
-              <button
-                onClick={() => applySuggestion(editor, c, reload)}
-                title="replace the passage with their words"
-              >
-                ✓ apply edit
-              </button>
+            {c.suggestion?.trim() ? (
+              <div className="sugg-block">
+                <span className="sugg-old" onClick={jump} title="show me in the page">
+                  {c.quote.slice(0, 120)}
+                </span>
+                <span className="sugg-new">↳ {c.suggestion}</span>
+              </div>
+            ) : (
+              c.quote && (
+                <div className="quote" onClick={jump} title="show me in the page">
+                  “{c.quote.slice(0, 120)}”
+                </div>
+              )
             )}
-            <button
-              className="faint"
-              onClick={async () => {
-                await resolveComment(editor, c.id)
-                reload()
-              }}
-            >
-              {c.suggestion?.trim() ? '✗ dismiss' : '✓ resolve'}
-            </button>
+            {c.text && <div className="body">{c.text}</div>}
+            <Replies replies={repliesFor(c.id)} />
+            <ReplyBox docId={docId} parentId={c.id} onPosted={reload} />
+            <div className="row-actions">
+              {c.suggestion?.trim() && (
+                <button
+                  className="primary"
+                  onClick={() => applySuggestion(editor, c, reload)}
+                  title="replace the passage with their words"
+                >
+                  [ ✓ apply edit ]
+                </button>
+              )}
+              <button
+                className="faint"
+                onClick={async () => {
+                  await resolveComment(editor, c.id)
+                  reload()
+                }}
+              >
+                {c.suggestion?.trim() ? '[ ✗ dismiss ]' : '[ ✓ resolve ]'}
+              </button>
+            </div>
           </div>
-        </div>
-      ))}
+        )
+      })}
       {resolved.length > 0 && (
         <>
           <div className="hint" style={{ marginTop: 20 }}>
@@ -1831,11 +1878,17 @@ function CommentsPanel({
             <div className="comment-card resolved" key={c.id}>
               <div className="byline">
                 {c.username}
-                {c.suggestion?.trim() ? ' ↳ suggested an edit' : ''}
+                {c.suggestion?.trim() ? <span className="kind"> ↳ suggested an edit</span> : null}
               </div>
-              {c.quote && <div className="quote">“{c.quote.slice(0, 120)}”</div>}
-              {c.suggestion?.trim() && <div className="sugg-new">↳ {c.suggestion}</div>}
-              {c.text && <div>{c.text}</div>}
+              {c.suggestion?.trim() ? (
+                <div className="sugg-block">
+                  <span className="sugg-old">{c.quote.slice(0, 120)}</span>
+                  <span className="sugg-new">↳ {c.suggestion}</span>
+                </div>
+              ) : (
+                c.quote && <div className="quote">“{c.quote.slice(0, 120)}”</div>
+              )}
+              {c.text && <div className="body">{c.text}</div>}
               <Replies replies={repliesFor(c.id)} />
             </div>
           ))}
