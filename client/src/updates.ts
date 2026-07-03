@@ -18,8 +18,9 @@ export const UPDATES: UpdateDay[] = [
     title: 'the door opens for readers',
     blocks: [
       {
-        kind: 'p',
-        text: 'send someone your draft link and a name is enough — no signup, no password. they can write with you, leave notes, and suggest edits, all signed with the name they gave. sharing now works without an account on either end.',
+        kind: 'bullet',
+        head: 'a name is enough',
+        text: 'send someone your draft link and they can write with you, leave notes, and suggest edits — no signup, no password, just a name at the door. sharing works without an account on either end.',
       },
     ],
   },
