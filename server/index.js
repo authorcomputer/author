@@ -703,19 +703,28 @@ app.get('/api/admin/stats', requireFullUser, (req, res) => {
   const ghosts = db
     .prepare('SELECT COUNT(*) c FROM user WHERE isAnonymous = 1').get().c
   const members = db.prepare('SELECT COUNT(*) c FROM profiles WHERE member = 1').get().c
+  // regulars: a desk of their own, but not (yet) paying for it
+  const regulars = db
+    .prepare(
+      `SELECT COUNT(*) c FROM user u
+       WHERE u.isAnonymous IS NOT 1
+         AND NOT EXISTS (SELECT 1 FROM profiles p WHERE p.user_id = u.id AND p.member = 1)`
+    )
+    .get().c
   const pages = db.prepare('SELECT COUNT(*) c FROM docs').get().c
   const published = db.prepare('SELECT COUNT(*) c FROM docs WHERE published = 1').get().c
 
   const recent = db
     .prepare(
-      `SELECT username, email, createdAt FROM user
-       WHERE isAnonymous IS NOT 1 ORDER BY createdAt DESC LIMIT 20`
+      `SELECT u.username, u.email, u.createdAt, COALESCE(p.member, 0) member
+       FROM user u LEFT JOIN profiles p ON p.user_id = u.id
+       WHERE u.isAnonymous IS NOT 1 ORDER BY u.createdAt DESC LIMIT 20`
     )
     .all()
 
   // emails in the body — keep it out of every cache
   res.set('Cache-Control', 'no-store, private')
-  res.json({ writers, ghosts, members, pages, published, words: totalWords(), recent })
+  res.json({ writers, ghosts, members, regulars, pages, published, words: totalWords(), recent })
 })
 
 app.get('/api/profile/:username', (req, res) => {

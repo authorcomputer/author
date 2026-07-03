@@ -7,10 +7,11 @@ type Stats = {
   writers: number
   ghosts: number
   members: number
+  regulars: number
   pages: number
   published: number
   words: number
-  recent: { username: string; email: string; createdAt: string }[]
+  recent: { username: string; email: string; createdAt: string; member: 0 | 1 }[]
 }
 
 const nice = (n: number) => n.toLocaleString('en-US')
@@ -59,6 +60,7 @@ export default function Admin() {
                 {nice(stats.writers)} writer{stats.writers === 1 ? '' : 's'}{' '}
                 <span className="faint">
                   ({nice(stats.members)} member{stats.members === 1 ? '' : 's'} ·{' '}
+                  {nice(stats.regulars)} regular{stats.regulars === 1 ? '' : 's'} ·{' '}
                   {nice(stats.ghosts)} ghost{stats.ghosts === 1 ? '' : 's'})
                 </span>
               </div>
@@ -90,7 +92,10 @@ export default function Admin() {
                     day: 'numeric',
                   })}
                 </div>
-                <div className="u-title">{u.username}</div>
+                <div className="u-title">
+                  {u.username}
+                  {u.member === 1 && <span className="faint"> ✦ member</span>}
+                </div>
                 <div className="u-note">{u.email}</div>
               </div>
             ))}
