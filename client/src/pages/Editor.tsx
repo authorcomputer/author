@@ -22,6 +22,7 @@ import AccountModal from '../AccountModal'
 import MembershipModal from '../MembershipModal'
 import Scribble from '../Scribble'
 import { Checkmarks, setMarks, clearMarks, MarkItem } from '../checkmarks'
+import { CoWritten } from '../co-written'
 
 function needsAccount(e: unknown) {
   return (e as any)?.code === 'account_required'
@@ -241,6 +242,7 @@ function EditorInner({ id }: { id: string }) {
       CommentMark,
       Embed,
       Checkmarks,
+      CoWritten,
     ],
     editorProps: {
       handlePaste: (view, event) => {

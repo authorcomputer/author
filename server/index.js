@@ -896,7 +896,7 @@ server.on('upgrade', (req, socket, head) => {
         return socket.destroy()
       }
       wss.handleUpgrade(req, socket, head, (ws) => {
-        setupCollab(ws, docId)
+        setupCollab(ws, docId, user.username)
       })
     })
     .catch(() => socket.destroy())

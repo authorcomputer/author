@@ -1,10 +1,12 @@
 // Minimal Yjs websocket sync server (y-websocket wire protocol) with SQLite persistence.
+import crypto from 'node:crypto'
 import * as Y from 'yjs'
 import * as syncProtocol from 'y-protocols/sync.js'
 import * as awarenessProtocol from 'y-protocols/awareness.js'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
-import { loadYDoc, saveYDoc } from './db.js'
+import { yDocToProsemirrorJSON } from 'y-prosemirror'
+import { db, loadYDoc, saveYDoc } from './db.js'
 
 const MESSAGE_SYNC = 0
 const MESSAGE_AWARENESS = 1
@@ -27,7 +29,16 @@ function getRoom(docId) {
   const awareness = new awarenessProtocol.Awareness(ydoc)
   awareness.setLocalState(null)
 
-  room = { id: docId, ydoc, awareness, conns: new Map(), saveTimer: null, destroyTimer: null }
+  room = {
+    id: docId,
+    ydoc,
+    awareness,
+    conns: new Map(),
+    names: new Map(), // ws -> username, for the co-editing snapshot below
+    lastAutoSnap: 0,
+    saveTimer: null,
+    destroyTimer: null,
+  }
 
   awareness.on('update', ({ added, updated, removed }) => {
     const changed = added.concat(updated, removed)
@@ -84,12 +95,42 @@ function scheduleSave(room) {
   }, 1500)
 }
 
+// versions are the safety net for co-editing: the moment a second writer
+// joins, quietly keep "before X joined" so the solo text is one click away
+// if a merge ever goes semantically wrong. throttled so two people trading
+// the doc back and forth all afternoon don't fill the panel.
+const AUTO_SNAP_GAP = 10 * 60 * 1000
+
+function snapshotBeforeCompany(room, incumbent, joiner) {
+  const now = Date.now()
+  if (now - room.lastAutoSnap < AUTO_SNAP_GAP) return
+  try {
+    const content = yDocToProsemirrorJSON(room.ydoc, 'default')
+    const hasText = (n) => (n.text || '').trim() || (n.content || []).some(hasText)
+    if (!hasText(content)) return
+    room.lastAutoSnap = now
+    db.prepare(
+      'INSERT INTO versions (id, doc_id, name, username, content, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(
+      'v_' + crypto.randomBytes(8).toString('hex'),
+      room.id,
+      `before ${joiner} joined`,
+      incumbent,
+      JSON.stringify(content),
+      now
+    )
+  } catch (e) {
+    console.error('auto snapshot failed', room.id, e)
+  }
+}
+
 function closeConn(room, ws) {
   const clientIds = room.conns.get(ws)
   if (clientIds) {
     room.conns.delete(ws)
     awarenessProtocol.removeAwarenessStates(room.awareness, Array.from(clientIds), null)
   }
+  room.names.delete(ws)
   try {
     ws.close()
   } catch {}
@@ -106,12 +147,19 @@ function closeConn(room, ws) {
   }
 }
 
-export function setupCollab(ws, docId) {
+export function setupCollab(ws, docId, username) {
   const room = getRoom(docId)
   if (room.destroyTimer) {
     clearTimeout(room.destroyTimer)
     room.destroyTimer = null
   }
+  // a second distinct writer arriving is the co-editing boundary — same
+  // person in two tabs doesn't count
+  const present = new Set(room.names.values())
+  if (username && present.size === 1 && !present.has(username)) {
+    snapshotBeforeCompany(room, [...present][0], username)
+  }
+  if (username) room.names.set(ws, username)
   room.conns.set(ws, new Set())
   ws.binaryType = 'arraybuffer'
 

@@ -646,6 +646,26 @@ a:has(> .logo) {
 .pub-body img, .tiptap img { max-width: 100%; height: auto; display: block; margin: 0 auto 1em; }
 .tiptap img.ProseMirror-selectednode { outline: 2px solid var(--accent); }
 
+/* two pens rewrote this paragraph at the same time — a quiet margin note */
+.tiptap .co-written { position: relative; }
+.tiptap .co-written::after {
+  content: '✽ written twice';
+  position: absolute;
+  left: 100%;
+  margin-left: 28px;
+  top: 3px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent);
+  white-space: nowrap;
+  opacity: 0.75;
+  pointer-events: none;
+}
+@media (max-width: 900px) {
+  /* no margin to live in — sit above the paragraph's right edge instead */
+  .tiptap .co-written::after { left: auto; right: 0; top: -13px; margin-left: 0; }
+}
+
 /* embedded players — video is 16:9, audio/social get their natural heights.
    keyed off data-provider (not class) because the publish-time sanitizer keeps
    data-provider but strips class, so this must match on the public page too */
