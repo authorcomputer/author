@@ -50,23 +50,13 @@ export const UPDATES: UpdateDay[] = [
       },
       {
         kind: 'bullet',
-        head: 'comments, front and center',
-        text: 'select any text to ☞ leave a note or ↳ write the edit yourself (⌥⌘M). replies thread, and commented lines wear marks in the gutter.',
+        head: 'comments & suggested edits',
+        text: 'select any text to ☞ leave a note or ↳ write the edit yourself (⌥⌘M) — and “apply edit” swaps in the reviewer’s exact words, no model in between.',
       },
       {
         kind: 'bullet',
-        head: 'edits you can take at their word',
-        text: '“apply edit” swaps in the reviewer’s exact words — no model in between, ever.',
-      },
-      {
-        kind: 'bullet',
-        head: 'a version as company arrives',
-        text: 'when a second writer joins, the text as-it-was is kept in versions — and paragraphs two pens rewrote wear a “✽ written twice” note.',
-      },
-      {
-        kind: 'bullet',
-        head: 'versions you can lean on',
-        text: 'restoring keeps your current text as its own version first — never a one-way door.',
+        head: 'versions',
+        text: 'a second writer joining saves the text as-it-was, restoring keeps your current text as its own version first, and twice-rewritten paragraphs wear a “✽ written twice” note.',
       },
       {
         kind: 'bullet',
