@@ -177,6 +177,17 @@ function EditorInner({ id }: { id: string }) {
   const [headerUrl, setHeaderUrl] = useState<string | null>(null)
   const [others, setOthers] = useState<{ name: string; color: string }[]>([])
   const [connected, setConnected] = useState(false)
+  // comments are first-class: the editor owns the list so the margin, the
+  // top-bar count, the popovers, and the panel all read the same state
+  const [comments, setComments] = useState<Comment[]>([])
+  const [composer, setComposer] = useState<{
+    from: number
+    to: number
+    quote: string
+    x: number
+    y: number
+  } | null>(null)
+  const [openPop, setOpenPop] = useState<{ id: string; x: number; y: number } | null>(null)
 
   const ydoc = useMemo(() => new Y.Doc(), [id])
   const provider = useMemo(() => {
@@ -436,6 +447,55 @@ function EditorInner({ id }: { id: string }) {
     return () => window.removeEventListener('beforeunload', h)
   }, [isGhost, editor])
 
+  // ---------- comments ----------
+  async function reloadComments() {
+    try {
+      setComments(await api(`/api/docs/${id}/comments`))
+    } catch {
+      /* transient — the poll will retry */
+    }
+  }
+  useEffect(() => {
+    reloadComments()
+    const t = setInterval(reloadComments, 4000)
+    const onChanged = () => reloadComments()
+    window.addEventListener('author:comments-changed', onChanged)
+    return () => {
+      clearInterval(t)
+      window.removeEventListener('author:comments-changed', onChanged)
+    }
+  }, [id])
+
+  function openComposer() {
+    if (!editor) return
+    const { from, to } = editor.state.selection
+    if (to <= from) return
+    const quote = editor.state.doc.textBetween(from, to, ' ')
+    const coords = editor.view.coordsAtPos(to)
+    setOpenPop(null)
+    setComposer({ from, to, quote, x: coords.left, y: coords.bottom })
+  }
+
+  useEffect(() => {
+    if (!editor) return
+    const onKey = (e: KeyboardEvent) => {
+      // ⌥⌘M — the comment shortcut Docs and Lex both use
+      if (e.metaKey && e.altKey && e.code === 'KeyM') {
+        e.preventDefault()
+        openComposer()
+      }
+    }
+    const onOpen = () => openComposer()
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('author:comment', onOpen)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('author:comment', onOpen)
+    }
+  }, [editor])
+
+  const openComments = comments.filter((c) => !c.resolved)
+
   const words = editor ? editor.storage.characterCount.words() : 0
 
   // reopening returns to the last tab; versions still needs a desk
@@ -480,6 +540,15 @@ function EditorInner({ id }: { id: string }) {
         </div>
         <div className="spacer" />
         <span className="faint">{words} words</span>
+        {openComments.length > 0 && (
+          <button
+            className={panel === 'comments' ? 'on comment-count' : 'comment-count'}
+            onClick={() => (panel === 'comments' ? setPanel(null) : openPanel('comments'))}
+            title="open comments"
+          >
+            ❞ {openComments.length}
+          </button>
+        )}
         <button
           className={panel ? 'on' : ''}
           onClick={() => (panel ? setPanel(null) : openPanel(lastTab))}
@@ -525,6 +594,17 @@ function EditorInner({ id }: { id: string }) {
             if (t.classList.contains('ed-scroll') || t.classList.contains('ed-page')) {
               e.preventDefault()
               editor?.chain().focus('end').run()
+            }
+          }}
+          onClick={(e) => {
+            // clicking a commented passage floats its thread right there
+            const mark = (e.target as HTMLElement).closest?.(
+              'span.comment-mark'
+            ) as HTMLElement | null
+            const cid = mark?.dataset.commentId
+            if (cid && comments.some((c) => c.id === cid && !c.resolved)) {
+              setComposer(null)
+              setOpenPop({ id: cid, x: e.clientX, y: e.clientY })
             }
           }}
         >
@@ -581,10 +661,36 @@ function EditorInner({ id }: { id: string }) {
             editor={editor}
             docId={id}
             onTitle={(t) => updateTitle(t)}
+            comments={comments}
+            reloadComments={reloadComments}
           />
         )}
       </div>
       {editor && <CommandBar editor={editor} setPanel={setPanel} />}
+      {composer && editor && (
+        <CommentComposer
+          editor={editor}
+          docId={id}
+          draft={composer}
+          onClose={() => setComposer(null)}
+          onPosted={reloadComments}
+        />
+      )}
+      {openPop &&
+        editor &&
+        (() => {
+          const c = comments.find((cc) => cc.id === openPop.id && !cc.resolved)
+          return c ? (
+            <CommentPop
+              editor={editor}
+              comment={c}
+              at={openPop}
+              setPanel={openPanel}
+              onClose={() => setOpenPop(null)}
+              onChanged={reloadComments}
+            />
+          ) : null
+        })()}
       {modalReason && (
         <AccountModal reason={modalReason} onClose={() => setModalReason(null)} />
       )}
@@ -651,6 +757,7 @@ function FormatBubble({ editor }: { editor: TiptapEditor }) {
         {item('“quote”', editor.isActive('blockquote'), () => editor.chain().focus().toggleBlockquote().run(), 'quote')}
         <span className="fmt-sep">·</span>
         {item('link', editor.isActive('link'), setLink, 'link', 'add or edit link')}
+        {item('❞ comment', editor.isActive('comment'), () => window.dispatchEvent(new CustomEvent('author:comment')), 'comment', 'comment ⌥⌘M')}
         {item('✎ ai', false, () => window.dispatchEvent(new CustomEvent('author:open-cmdk')), 'ai', 'rewrite with ⌘K')}
       </div>
     </BubbleMenu>
@@ -697,7 +804,8 @@ function SharePop({
           <div className="share-h">✎ write together</div>
           <div className="hint">
             send this link. whoever opens it signs in once and lands in the draft
-            with you — live, cursors and all.
+            with you — they can write, leave comments on any passage, and you can
+            incorporate their notes with one click.
           </div>
           <div className="share-link">{writeUrl}</div>
           <button onClick={() => copy(writeUrl, 'write')}>
@@ -756,9 +864,83 @@ type CommandResult = {
   sourceText: string
   text: string
   running: boolean
+  commentId?: string // set when this run is incorporating a comment
 }
 
 let commandResultBus: { set?: (r: CommandResult | null) => void } = {}
+
+// the one way to run the pen: stream a rewrite into the ask panel, where
+// [replace]/[insert] live. ⌘K and "incorporate this comment" both land here.
+async function runAiCommand(
+  editor: TiptapEditor,
+  setPanel: (p: Panel) => void,
+  inst: string,
+  range: { from: number; to: number } | null,
+  commentId?: string
+) {
+  setPanel('ai')
+  const hasSel = !!(range && range.to > range.from)
+  const selection = hasSel ? editor.state.doc.textBetween(range!.from, range!.to, '\n\n') : ''
+  if (hasSel && range) {
+    setMarks(editor, 'pending', [{ from: range.from, to: range.to, cls: 'pen-hover' }])
+  }
+  // wait a tick for the panel to mount and register the bus
+  await new Promise((r) => setTimeout(r, 50))
+  const update = (partial: Partial<{ text: string; running: boolean }>) => {
+    commandResultBus.set?.({
+      instruction: inst,
+      range: hasSel ? range : null,
+      sourceText: selection,
+      text: current.text,
+      running: current.running,
+      commentId,
+      ...partial,
+    })
+  }
+  const current = { text: '', running: true }
+  update({})
+  try {
+    await apiStream(
+      '/api/ai/command',
+      { instruction: inst, selection, context: docText(editor) },
+      (chunk) => {
+        current.text += chunk
+        update({ text: current.text })
+      }
+    )
+  } catch (e: any) {
+    if (needsAccount(e)) promptAccount()
+    else if (needsMembership(e)) promptMembership()
+    else current.text += `\n✗ ${e.message}`
+  } finally {
+    current.running = false
+    update({ text: current.text, running: false })
+  }
+}
+
+// where a comment's passage lives now: its mark if it survives, else the
+// quote hunted down by text
+function commentRange(editor: TiptapEditor, c: Comment) {
+  let range: { from: number; to: number } | null = null
+  editor.state.doc.descendants((node, pos) => {
+    if (range) return
+    const m = node.marks.find((mk) => mk.type.name === 'comment' && mk.attrs.id === c.id)
+    if (m) range = { from: pos, to: pos + node.nodeSize }
+  })
+  return range || findRange(editor, c.quote)
+}
+
+function incorporateComment(editor: TiptapEditor, setPanel: (p: Panel) => void, c: Comment) {
+  const range = commentRange(editor, c)
+  track('comment: incorporate', { found: !!range })
+  runAiCommand(
+    editor,
+    setPanel,
+    `${c.username} left this comment on the passage: “${c.text}”. revise the passage to incorporate it — keep the author's voice, change only what the comment asks.`,
+    range,
+    c.id
+  )
+}
 
 function SidePanel({
   panel,
@@ -766,19 +948,24 @@ function SidePanel({
   editor,
   docId,
   onTitle,
+  comments,
+  reloadComments,
 }: {
   panel: Exclude<Panel, null>
   setPanel: (p: Panel) => void
   editor: TiptapEditor
   docId: string
   onTitle: (t: string) => void
+  comments: Comment[]
+  reloadComments: () => void
 }) {
+  const openCount = comments.filter((c) => !c.resolved).length
   return (
     <div className="panel">
       <div className="panel-tabs">
         {(['ai', 'checks', 'titles', 'comments', 'versions'] as const).map((p) => (
           <button key={p} className={panel === p ? 'on' : ''} onClick={() => setPanel(p)}>
-            {p === 'ai' ? 'ask' : p}
+            {p === 'comments' && openCount > 0 ? `comments·${openCount}` : p === 'ai' ? 'ask' : p}
           </button>
         ))}
         <div style={{ flex: 1 }} />
@@ -788,7 +975,14 @@ function SidePanel({
         {panel === 'ai' && <AskPanel editor={editor} />}
         {panel === 'checks' && <ChecksPanel editor={editor} />}
         {panel === 'titles' && <TitlesPanel editor={editor} onTitle={onTitle} />}
-        {panel === 'comments' && <CommentsPanel editor={editor} docId={docId} />}
+        {panel === 'comments' && (
+          <CommentsPanel
+            editor={editor}
+            setPanel={setPanel}
+            comments={comments}
+            reload={reloadComments}
+          />
+        )}
         {panel === 'versions' && <VersionsPanel editor={editor} docId={docId} />}
       </div>
     </div>
@@ -910,6 +1104,13 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
     } else {
       const end = Math.min(cmd.range ? cmd.range.to : docSize, editor.state.doc.content.size)
       editor.chain().focus().insertContentAt(end, textToHtml(text)).run()
+    }
+    // an applied incorporation settles its comment
+    if (cmd.commentId) {
+      track('comment: resolved', { via: 'incorporate' })
+      api(`/api/comments/${cmd.commentId}/resolve`, { method: 'POST' }).catch(() => {})
+      removeCommentMark(editor, cmd.commentId)
+      window.dispatchEvent(new CustomEvent('author:comments-changed'))
     }
     setCmd(null)
   }
@@ -1175,79 +1376,171 @@ function TitlesPanel({ editor, onTitle }: { editor: TiptapEditor; onTitle: (t: s
   )
 }
 
-function CommentsPanel({ editor, docId }: { editor: TiptapEditor; docId: string }) {
-  const [comments, setComments] = useState<Comment[]>([])
-  const [draft, setDraft] = useState<{ from: number; to: number; quote: string } | null>(null)
+async function resolveComment(editor: TiptapEditor, cid: string) {
+  track('comment: resolved')
+  await api(`/api/comments/${cid}/resolve`, { method: 'POST' }).catch(() => {})
+  removeCommentMark(editor, cid)
+}
+
+// the floating card where a comment is written — appears at the selection,
+// so leaving a note never means leaving the page
+function CommentComposer({
+  editor,
+  docId,
+  draft,
+  onClose,
+  onPosted,
+}: {
+  editor: TiptapEditor
+  docId: string
+  draft: { from: number; to: number; quote: string; x: number; y: number }
+  onClose: () => void
+  onPosted: () => void
+}) {
   const [text, setText] = useState('')
 
-  async function load() {
-    setComments(await api(`/api/docs/${docId}/comments`))
-  }
-  useEffect(() => {
-    load()
-    const t = setInterval(load, 4000)
-    return () => clearInterval(t)
-  }, [docId])
-
-  function startDraft() {
-    const { from, to } = editor.state.selection
-    if (to <= from) {
-      alert('select some text to comment on first')
+  async function post() {
+    if (!text.trim()) return
+    const cid = 'c_' + Math.random().toString(36).slice(2, 12)
+    try {
+      await api(`/api/docs/${docId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ id: cid, text, quote: draft.quote }),
+      })
+    } catch (e) {
+      if (needsAccount(e)) promptAccount()
       return
     }
-    setDraft({ from, to, quote: editor.state.doc.textBetween(from, to, ' ') })
-  }
-
-  async function submit() {
-    if (!draft || !text.trim()) return
-    const cid = 'c_' + Math.random().toString(36).slice(2, 12)
-    await api(`/api/docs/${docId}/comments`, {
-      method: 'POST',
-      body: JSON.stringify({ id: cid, text, quote: draft.quote }),
-    })
-    track('comment: posted')
+    track('comment: posted', { via: 'inline' })
     editor.chain().setTextSelection(draft).setComment(cid).setTextSelection(draft.to).run()
-    setDraft(null)
-    setText('')
-    load()
+    onPosted()
+    onClose()
   }
 
-  async function resolve(cid: string) {
-    track('comment: resolved')
-    await api(`/api/comments/${cid}/resolve`, { method: 'POST' })
-    removeCommentMark(editor, cid)
-    load()
-  }
+  return (
+    <>
+      <div className="share-backdrop" onClick={onClose} />
+      <div
+        className="comment-pop"
+        style={{
+          left: Math.min(draft.x, window.innerWidth - 320),
+          top: Math.min(draft.y + 8, window.innerHeight - 160),
+        }}
+      >
+        <div className="quote">“{draft.quote.slice(0, 120)}”</div>
+        <textarea
+          className="ask-box"
+          autoFocus
+          placeholder="say the thing…"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault()
+              post()
+            }
+            if (e.key === 'Escape') onClose()
+          }}
+        />
+        <div className="ai-actions">
+          <button onClick={post}>[ post ]</button>
+          <button className="faint" onClick={onClose}>
+            never mind
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
 
+// click a commented passage and its thread floats up beside it
+function CommentPop({
+  editor,
+  comment,
+  at,
+  setPanel,
+  onClose,
+  onChanged,
+}: {
+  editor: TiptapEditor
+  comment: Comment
+  at: { x: number; y: number }
+  setPanel: (p: Panel) => void
+  onClose: () => void
+  onChanged: () => void
+}) {
+  return (
+    <>
+      <div className="share-backdrop" onClick={onClose} />
+      <div
+        className="comment-pop"
+        style={{
+          left: Math.min(at.x, window.innerWidth - 320),
+          top: Math.min(at.y + 10, window.innerHeight - 180),
+        }}
+      >
+        <div className="byline">
+          <span style={{ color: colorFor(comment.username) }}>{comment.username}</span>
+        </div>
+        <div style={{ margin: '6px 0 10px' }}>{comment.text}</div>
+        <div className="ai-actions">
+          <button
+            onClick={() => {
+              onClose()
+              incorporateComment(editor, setPanel, comment)
+            }}
+            title="let the pen revise the passage to address this"
+          >
+            [ ✎ incorporate ]
+          </button>
+          <button
+            className="faint"
+            onClick={async () => {
+              await resolveComment(editor, comment.id)
+              onChanged()
+              onClose()
+            }}
+          >
+            ✓ resolve
+          </button>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function CommentsPanel({
+  editor,
+  setPanel,
+  comments,
+  reload,
+}: {
+  editor: TiptapEditor
+  setPanel: (p: Panel) => void
+  comments: Comment[]
+  reload: () => void
+}) {
   const open = comments.filter((c) => !c.resolved)
   const resolved = comments.filter((c) => c.resolved)
 
   return (
     <div>
-      {!draft && (
-        <button onClick={startDraft}>[ comment on selection ]</button>
-      )}
-      {draft && (
-        <div style={{ marginBottom: 16 }}>
-          <div className="comment-card" style={{ borderBottom: 'none', padding: 0 }}>
-            <div className="quote">“{draft.quote.slice(0, 120)}”</div>
-          </div>
-          <textarea
-            className="ask-box"
-            autoFocus
-            placeholder="say the thing…"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-          />
-          <div className="ai-actions">
-            <button onClick={submit}>[ post ]</button>
-            <button className="faint" onClick={() => setDraft(null)}>
-              never mind
-            </button>
-          </div>
-        </div>
-      )}
-      {open.length === 0 && !draft && (
+      <button
+        onClick={() => {
+          const { from, to } = editor.state.selection
+          if (to <= from) {
+            alert('select some text to comment on first')
+            return
+          }
+          window.dispatchEvent(new CustomEvent('author:comment'))
+        }}
+      >
+        [ ❞ comment on selection ]
+      </button>
+      <div className="hint" style={{ marginTop: 6 }}>
+        or select text anywhere and hit ⌥⌘M
+      </div>
+      {open.length === 0 && (
         <div className="hint" style={{ marginTop: 16 }}>
           ( no open comments )
         </div>
@@ -1261,15 +1554,7 @@ function CommentsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
             <div
               className="quote"
               onClick={() => {
-                let range: { from: number; to: number } | null = null
-                editor.state.doc.descendants((node, pos) => {
-                  if (range) return
-                  const m = node.marks.find(
-                    (mk) => mk.type.name === 'comment' && mk.attrs.id === c.id
-                  )
-                  if (m) range = { from: pos, to: pos + node.nodeSize }
-                })
-                if (!range) range = findRange(editor, c.quote)
+                const range = commentRange(editor, c)
                 if (range) selectRange(editor, range)
               }}
             >
@@ -1278,7 +1563,19 @@ function CommentsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
           )}
           <div>{c.text}</div>
           <div className="row-actions">
-            <button className="faint" onClick={() => resolve(c.id)}>
+            <button
+              onClick={() => incorporateComment(editor, setPanel, c)}
+              title="let the pen revise the passage to address this"
+            >
+              ✎ incorporate
+            </button>
+            <button
+              className="faint"
+              onClick={async () => {
+                await resolveComment(editor, c.id)
+                reload()
+              }}
+            >
               ✓ resolve
             </button>
           </div>
@@ -1416,46 +1713,7 @@ function CommandBar({
       preset: PRESETS.includes(inst) ? inst : 'custom',
     })
     setOpen(false)
-    setPanel('ai')
-    const range = selRef.current
-    const hasSel = !!(range && range.to > range.from)
-    const selection = hasSel
-      ? editor.state.doc.textBetween(range!.from, range!.to, '\n\n')
-      : ''
-    if (hasSel && range) {
-      setMarks(editor, 'pending', [{ from: range.from, to: range.to, cls: 'pen-hover' }])
-    }
-    // wait a tick for the panel to mount and register the bus
-    await new Promise((r) => setTimeout(r, 50))
-    const update = (partial: Partial<{ text: string; running: boolean }>) => {
-      commandResultBus.set?.({
-        instruction: inst,
-        range: hasSel ? range : null,
-        sourceText: selection,
-        text: current.text,
-        running: current.running,
-        ...partial,
-      })
-    }
-    const current = { text: '', running: true }
-    update({})
-    try {
-      await apiStream(
-        '/api/ai/command',
-        { instruction: inst, selection, context: docText(editor) },
-        (chunk) => {
-          current.text += chunk
-          update({ text: current.text })
-        }
-      )
-    } catch (e: any) {
-      if (needsAccount(e)) promptAccount()
-      else if (needsMembership(e)) promptMembership()
-      else current.text += `\n✗ ${e.message}`
-    } finally {
-      current.running = false
-      update({ text: current.text, running: false })
-    }
+    await runAiCommand(editor, setPanel, inst, selRef.current)
   }
 
   if (!open) return null
