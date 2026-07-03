@@ -181,14 +181,19 @@ function EditorInner({ id }: { id: string }) {
   // comments are first-class: the editor owns the list so the margin, the
   // top-bar count, the popovers, and the panel all read the same state
   const [comments, setComments] = useState<Comment[]>([])
+  // y is the clicked line's bottom, yTop its top — cards hang below the
+  // line, or flip above it when the viewport runs out
   const [composer, setComposer] = useState<{
     from: number
     to: number
     quote: string
     x: number
     y: number
+    yTop: number
   } | null>(null)
-  const [openPop, setOpenPop] = useState<{ id: string; x: number; y: number } | null>(null)
+  const [openPop, setOpenPop] = useState<{ id: string; x: number; y: number; yTop: number } | null>(
+    null
+  )
 
   const ydoc = useMemo(() => new Y.Doc(), [id])
   const provider = useMemo(() => {
@@ -484,7 +489,7 @@ function EditorInner({ id }: { id: string }) {
     const quote = editor.state.doc.textBetween(from, to, ' ')
     const coords = editor.view.coordsAtPos(to)
     setOpenPop(null)
-    setComposer({ from, to, quote, x: coords.left, y: coords.bottom })
+    setComposer({ from, to, quote, x: coords.left, y: coords.bottom, yTop: coords.top })
   }
 
   useEffect(() => {
@@ -618,9 +623,17 @@ function EditorInner({ id }: { id: string }) {
               'span.comment-mark'
             ) as HTMLElement | null
             const cid = mark?.dataset.commentId
-            if (!cid) return
+            if (!cid || !editor) return
+            // hang the card below the clicked line, never over it
+            const pos = editor.view.posAtCoords({ left: e.clientX, top: e.clientY })
+            const c = pos ? editor.view.coordsAtPos(pos.pos) : null
             setComposer(null)
-            setOpenPop({ id: cid, x: e.clientX, y: e.clientY })
+            setOpenPop({
+              id: cid,
+              x: e.clientX,
+              y: c ? c.bottom : e.clientY,
+              yTop: c ? c.top : e.clientY,
+            })
             // a mark can arrive over yjs before its body arrives over http
             if (!comments.some((c) => c.id === cid)) reloadComments()
           }}
@@ -1445,7 +1458,7 @@ function CommentComposer({
 }: {
   editor: TiptapEditor
   docId: string
-  draft: { from: number; to: number; quote: string; x: number; y: number }
+  draft: { from: number; to: number; quote: string; x: number; y: number; yTop: number }
   onClose: () => void
   onPosted: () => void
 }) {
@@ -1496,7 +1509,10 @@ function CommentComposer({
         className="comment-pop"
         style={{
           left: Math.min(draft.x, window.innerWidth - 320),
-          top: Math.min(draft.y + 8, window.innerHeight - 160),
+          // below the line — above it only when the viewport runs out
+          ...(draft.y + 260 > window.innerHeight
+            ? { top: draft.yTop - 8, transform: 'translateY(-100%)' }
+            : { top: draft.y + 8 }),
         }}
       >
         <div className="mode-row">
@@ -1564,7 +1580,7 @@ function CommentPop({
 }: {
   editor: TiptapEditor
   comment: Comment
-  at: { x: number; y: number }
+  at: { x: number; y: number; yTop: number }
   setPanel: (p: Panel) => void
   onClose: () => void
   onChanged: () => void
@@ -1592,7 +1608,10 @@ function CommentPop({
         className="comment-pop"
         style={{
           left: Math.min(at.x, window.innerWidth - 320),
-          top: Math.min(at.y + 10, window.innerHeight - 180),
+          // below the line — above it only when the viewport runs out
+          ...(at.y + 220 > window.innerHeight
+            ? { top: at.yTop - 8, transform: 'translateY(-100%)' }
+            : { top: at.y + 8 }),
         }}
       >
         <div className="byline">
