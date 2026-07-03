@@ -49,4 +49,27 @@ const after = await (
 ).json()
 if (!after.find((x) => x.id === cid)?.resolved) throw new Error('FAIL: resolve did not stick')
 console.log('PASS: resolve sticks')
+
+// the ghost suggests an edit — proposed words, no note required
+const sid = 'c_suggtest' + run
+await post(
+  `/api/docs/${docId}/comments`,
+  { id: sid, text: '', suggestion: 'the ending lands', quote: 'the ending drags' },
+  ghostCookie
+)
+const withSugg = await (
+  await fetch(`${BASE}/api/docs/${docId}/comments`, { headers: { Cookie: ownerCookie } })
+).json()
+const s = withSugg.find((x) => x.id === sid)
+if (!s || s.suggestion !== 'the ending lands') throw new Error('FAIL: suggestion not stored')
+console.log('PASS: suggested edit round-trips')
+
+// neither a note nor an edit is nothing
+const empty = await fetch(`${BASE}/api/docs/${docId}/comments`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Origin: BASE, Cookie: ghostCookie },
+  body: JSON.stringify({ text: '', suggestion: '  ', quote: 'x' }),
+})
+if (empty.status !== 400) throw new Error('FAIL: empty comment accepted')
+console.log('PASS: empty comments refused')
 process.exit(0)

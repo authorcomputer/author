@@ -24,7 +24,7 @@ import { ySyncPluginKey } from 'y-prosemirror'
 const WINDOW = 30_000
 
 type CoState = {
-  synced: boolean // the first yjs transaction is the doc loading, not a pen
+  others: number // collaborators actually present — no second pen, no note
   local: Map<PMNode, number> // block -> when my pen last touched it
   remote: Map<PMNode, number> // block -> when their pen last touched it
   marked: Map<PMNode, number> // block -> when the pens last collided
@@ -82,57 +82,64 @@ export function coWrittenPlugin() {
     key: coWrittenKey,
     state: {
       init: () => ({
-        synced: false,
+        others: 0,
         local: new Map(),
         remote: new Map(),
         marked: new Map(),
         decos: DecorationSet.empty,
       }),
       apply(tr, prev) {
+        // the editor tells us who's here via awareness
+        const presence = tr.getMeta(coWrittenKey)
+        if (presence !== undefined) return { ...prev, others: presence.others }
         if (!tr.docChanged) return prev
 
         const now = Date.now()
-        // remote = a collaborator's change arriving through yjs; my own
-        // undo/redo also travels through yjs but is still my pen
         const meta = tr.getMeta(ySyncPluginKey)
-        const isRemote = !!meta?.isChangeOrigin && !meta?.isUndoRedoOperation
 
         const { fresh, pairs } = diffBlocks(tr.before, tr.doc)
         const alive = new Set(children(tr.doc))
         const local = carry(prev.local, pairs, alive)
         const remote = carry(prev.remote, pairs, alive)
         const marked = carry(prev.marked, pairs, alive)
+        const next = (m: Map<PMNode, number>) => ({
+          others: prev.others,
+          local,
+          remote,
+          marked: m,
+          decos: markDecos(tr.doc, m),
+        })
 
-        // the first yjs delivery is the stored doc arriving — nobody's pen
-        if (isRemote && !prev.synced) {
-          return { synced: true, local, remote, marked, decos: markDecos(tr.doc, marked) }
-        }
+        // re-renders (initial bind, plugin re-registration) arrive flagged
+        // isChangeOrigin like collaborator edits, but carry the binding and
+        // rebuild every node — they are nobody's pen. real remote changes
+        // carry isUndoRedoOperation instead of binding.
+        if (meta?.binding) return next(marked)
+        // remote = a collaborator's change arriving through yjs; my own
+        // undo/redo also travels through yjs but is still my pen
+        const isRemote = !!meta?.isChangeOrigin && !meta?.isUndoRedoOperation
 
         const mine = isRemote ? remote : local
         const theirs = isRemote ? local : remote
         for (const node of fresh) {
           const t = theirs.get(node)
-          if (t !== undefined && now - t < WINDOW) {
+          if (t !== undefined && now - t < WINDOW && prev.others > 0) {
             marked.set(node, now) // colliding: place the note, or refresh its clock
           } else {
             const m = marked.get(node)
             // the collision went quiet and someone wrote here again — fade
             if (m !== undefined && now - m > WINDOW) marked.delete(node)
           }
-          mine.set(node, now)
+          // with nobody else connected there is no "their pen" — a remote-
+          // flagged change while alone is plumbing, not a person
+          if (!isRemote || prev.others > 0) mine.set(node, now)
         }
 
         // let old whispers expire so the maps stay small
         for (const m of [local, remote])
           for (const [node, t] of m) if (now - t > WINDOW) m.delete(node)
 
-        return {
-          synced: prev.synced || isRemote,
-          local,
-          remote,
-          marked,
-          decos: markDecos(tr.doc, marked),
-        }
+        return next(marked)
       },
     },
     props: {

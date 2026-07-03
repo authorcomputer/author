@@ -365,6 +365,18 @@ input, textarea {
 }
 .comment-pop .byline { color: var(--faint); font-size: 11px; }
 .comment-pop textarea { width: 100%; }
+.comment-pop .mode-row { display: flex; gap: 10px; margin-bottom: 10px; font-size: 11px; }
+.comment-pop .mode-row button.on { color: var(--accent); }
+.comment-pop .sugg-note {
+  width: 100%;
+  font-size: 11px;
+  border-bottom: 1px solid var(--fainter);
+  margin-bottom: 8px;
+}
+
+/* a suggested edit: what they'd strike, then what they'd write */
+.sugg-old { text-decoration: line-through; text-decoration-color: #d8a848; }
+.sugg-new { margin: 4px 0 2px; }
 
 /* the top-bar count wears the comment gold */
 .ed-top .comment-count { color: #b8860b; }

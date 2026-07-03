@@ -394,12 +394,15 @@ app.get('/api/docs/:id/comments', requireUser, (req, res) => {
 })
 
 app.post('/api/docs/:id/comments', requireUser, (req, res) => {
-  const { text, quote, id } = req.body || {}
-  if (!text || !text.trim()) return res.status(400).json({ error: 'empty comment' })
+  const { text, quote, suggestion, id } = req.body || {}
+  const note = String(text || '').trim()
+  const sugg = String(suggestion || '').slice(0, 5000)
+  // a note, a suggested edit, or both — but not neither
+  if (!note && !sugg.trim()) return res.status(400).json({ error: 'empty comment' })
   const cid = id || uid('c')
   db.prepare(
-    'INSERT INTO comments (id, doc_id, user_id, username, quote, text, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(cid, req.params.id, req.user.id, req.user.username, String(quote || '').slice(0, 500), text.trim(), Date.now())
+    'INSERT INTO comments (id, doc_id, user_id, username, quote, text, suggestion, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(cid, req.params.id, req.user.id, req.user.username, String(quote || '').slice(0, 500), note, sugg, Date.now())
   res.json({ id: cid })
 })
 

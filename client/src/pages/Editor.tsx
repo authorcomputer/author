@@ -22,7 +22,7 @@ import AccountModal from '../AccountModal'
 import MembershipModal from '../MembershipModal'
 import Scribble from '../Scribble'
 import { Checkmarks, setMarks, clearMarks, MarkItem } from '../checkmarks'
-import { CoWritten } from '../co-written'
+import { CoWritten, coWrittenKey } from '../co-written'
 
 function needsAccount(e: unknown) {
   return (e as any)?.code === 'account_required'
@@ -93,6 +93,7 @@ type Comment = {
   username: string
   quote: string
   text: string
+  suggestion?: string
   resolved: boolean
   created_at: number
 }
@@ -494,6 +495,13 @@ function EditorInner({ id }: { id: string }) {
     window.addEventListener('author:comment', onOpen)
     return () => window.removeEventListener('author:comment', onOpen)
   }, [editor])
+
+  // the "written twice" note needs to know whether anyone else is here
+  useEffect(() => {
+    if (editor && !editor.isDestroyed) {
+      editor.view.dispatch(editor.state.tr.setMeta(coWrittenKey, { others: others.length }))
+    }
+  }, [others, editor])
 
   const openComments = comments.filter((c) => !c.resolved)
   // the pop can outlive a click on a mark whose body hasn't polled in yet —
@@ -950,6 +958,32 @@ function incorporateComment(editor: TiptapEditor, setPanel: (p: Panel) => void, 
     // applying it auto-resolve a comment whose feedback never landed
     range ? c.id : undefined
   )
+}
+
+// a suggested edit applies itself — the reviewer already wrote the words.
+// no model involved: the mark's span (or the hunted-down quote) is replaced
+// with exactly what they proposed
+async function applySuggestion(editor: TiptapEditor, c: Comment, onDone: () => void) {
+  const r = commentRange(editor, c)
+  if (!r) {
+    alert('couldn’t find the passage this edit refers to — it may have been rewritten')
+    return
+  }
+  const text = (c.suggestion || '').trim()
+  track('comment: suggestion applied')
+  if (/\n{2,}/.test(text)) {
+    editor.chain().focus().deleteRange(r).insertContentAt(r.from, textToHtml(text)).run()
+  } else {
+    editor
+      .chain()
+      .focus()
+      .command(({ tr }) => {
+        tr.insertText(text, r.from, r.to)
+        return true
+      })
+      .run()
+  }
+  if (await resolveComment(editor, c.id, 'suggestion')) onDone()
 }
 
 async function resolveComment(editor: TiptapEditor, cid: string, via?: string) {
@@ -1415,15 +1449,19 @@ function CommentComposer({
   onClose: () => void
   onPosted: () => void
 }) {
+  const [mode, setMode] = useState<'note' | 'edit'>('note')
   const [text, setText] = useState('')
+  const [sugg, setSugg] = useState(draft.quote)
 
   async function post() {
-    if (!text.trim()) return
+    const note = text.trim()
+    const suggestion = mode === 'edit' ? sugg.trim() : ''
+    if (mode === 'note' ? !note : !suggestion) return
     const cid = 'c_' + Math.random().toString(36).slice(2, 12)
     try {
       await api(`/api/docs/${docId}/comments`, {
         method: 'POST',
-        body: JSON.stringify({ id: cid, text, quote: draft.quote }),
+        body: JSON.stringify({ id: cid, text: note, suggestion, quote: draft.quote }),
       })
     } catch (e) {
       if (needsAccount(e)) promptAccount()
@@ -1431,7 +1469,7 @@ function CommentComposer({
       else alert('couldn’t post that — give it another try')
       return
     }
-    track('comment: posted', { via: 'inline' })
+    track('comment: posted', { via: 'inline', kind: mode })
     // the page may have moved while the note was typed (a collaborator, an
     // upload) — only mark positions that still hold the quoted text, else
     // hunt the quote down; a comment with no anchor still lives in the
@@ -1461,13 +1499,23 @@ function CommentComposer({
           top: Math.min(draft.y + 8, window.innerHeight - 160),
         }}
       >
-        <div className="quote">“{draft.quote.slice(0, 120)}”</div>
+        <div className="mode-row">
+          <button className={mode === 'note' ? 'on' : ''} onClick={() => setMode('note')}>
+            [ ❞ note ]
+          </button>
+          <button className={mode === 'edit' ? 'on' : ''} onClick={() => setMode('edit')}>
+            [ ✎ suggest an edit ]
+          </button>
+        </div>
+        <div className={mode === 'edit' ? 'quote sugg-old' : 'quote'}>
+          “{draft.quote.slice(0, 120)}”
+        </div>
         <textarea
           className="ask-box"
           autoFocus
-          placeholder="say the thing…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
+          placeholder={mode === 'note' ? 'say the thing…' : 'rewrite it as you’d have it…'}
+          value={mode === 'note' ? text : sugg}
+          onChange={(e) => (mode === 'note' ? setText(e.target.value) : setSugg(e.target.value))}
           onKeyDown={(e) => {
             // isComposing: an IME Enter confirms the candidate, not the post
             if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -1477,8 +1525,23 @@ function CommentComposer({
             if (e.key === 'Escape') onClose()
           }}
         />
+        {mode === 'edit' && (
+          <input
+            className="sugg-note"
+            placeholder="why? ( optional )"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                e.preventDefault()
+                post()
+              }
+              if (e.key === 'Escape') onClose()
+            }}
+          />
+        )}
         <div className="ai-actions">
-          <button onClick={post}>[ post ]</button>
+          <button onClick={post}>{mode === 'note' ? '[ post ]' : '[ suggest ]'}</button>
           <button className="faint" onClick={onClose}>
             never mind
           </button>
@@ -1534,18 +1597,39 @@ function CommentPop({
       >
         <div className="byline">
           <span style={{ color: colorFor(comment.username) }}>{comment.username}</span>
+          {comment.suggestion?.trim() ? <span className="faint"> suggests an edit</span> : null}
         </div>
-        <div style={{ margin: '6px 0 10px' }}>{comment.text}</div>
+        {comment.suggestion?.trim() ? (
+          <div style={{ margin: '6px 0 10px' }}>
+            <div className="quote sugg-old">“{comment.quote.slice(0, 120)}”</div>
+            <div className="sugg-new">↳ {comment.suggestion}</div>
+            {comment.text && <div className="faint" style={{ marginTop: 6 }}>{comment.text}</div>}
+          </div>
+        ) : (
+          <div style={{ margin: '6px 0 10px' }}>{comment.text}</div>
+        )}
         <div className="ai-actions">
-          <button
-            onClick={() => {
-              onClose()
-              incorporateComment(editor, setPanel, comment)
-            }}
-            title="let the pen revise the passage to address this"
-          >
-            [ ✎ incorporate ]
-          </button>
+          {comment.suggestion?.trim() ? (
+            <button
+              onClick={() => {
+                onClose()
+                applySuggestion(editor, comment, onChanged)
+              }}
+              title="replace the passage with their words"
+            >
+              [ ✓ apply edit ]
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                onClose()
+                incorporateComment(editor, setPanel, comment)
+              }}
+              title="let the pen revise the passage to address this"
+            >
+              [ ✎ incorporate ]
+            </button>
+          )}
           <button
             className="faint"
             onClick={async () => {
@@ -1554,7 +1638,7 @@ function CommentPop({
               onClose()
             }}
           >
-            ✓ resolve
+            {comment.suggestion?.trim() ? '✗ dismiss' : '✓ resolve'}
           </button>
         </div>
       </div>
@@ -1591,7 +1675,7 @@ function CommentsPanel({
         [ ❞ comment on selection ]
       </button>
       <div className="hint" style={{ marginTop: 6 }}>
-        or select text anywhere and hit ⌥⌘M
+        select text and hit ⌥⌘M — leave a note, or write the edit yourself
       </div>
       {open.length === 0 && (
         <div className="hint" style={{ marginTop: 16 }}>
@@ -1602,10 +1686,11 @@ function CommentsPanel({
         <div className="comment-card" key={c.id}>
           <div className="byline">
             <span style={{ color: colorFor(c.username) }}>{c.username}</span>
+            {c.suggestion?.trim() ? <span className="faint"> suggests an edit</span> : null}
           </div>
           {c.quote && (
             <div
-              className="quote"
+              className={c.suggestion?.trim() ? 'quote sugg-old' : 'quote'}
               onClick={() => {
                 const range = commentRange(editor, c)
                 if (range) selectRange(editor, range)
@@ -1614,14 +1699,24 @@ function CommentsPanel({
               “{c.quote.slice(0, 120)}”
             </div>
           )}
-          <div>{c.text}</div>
+          {c.suggestion?.trim() && <div className="sugg-new">↳ {c.suggestion}</div>}
+          {c.text && <div className={c.suggestion?.trim() ? 'faint' : ''}>{c.text}</div>}
           <div className="row-actions">
-            <button
-              onClick={() => incorporateComment(editor, setPanel, c)}
-              title="let the pen revise the passage to address this"
-            >
-              ✎ incorporate
-            </button>
+            {c.suggestion?.trim() ? (
+              <button
+                onClick={() => applySuggestion(editor, c, reload)}
+                title="replace the passage with their words"
+              >
+                ✓ apply edit
+              </button>
+            ) : (
+              <button
+                onClick={() => incorporateComment(editor, setPanel, c)}
+                title="let the pen revise the passage to address this"
+              >
+                ✎ incorporate
+              </button>
+            )}
             <button
               className="faint"
               onClick={async () => {
@@ -1629,7 +1724,7 @@ function CommentsPanel({
                 reload()
               }}
             >
-              ✓ resolve
+              {c.suggestion?.trim() ? '✗ dismiss' : '✓ resolve'}
             </button>
           </div>
         </div>
