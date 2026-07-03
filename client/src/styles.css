@@ -427,6 +427,9 @@ input, textarea {
   padding: 1px 3px;
 }
 .fmt-bubble .fmt-sep { color: var(--fainter); user-select: none; }
+/* the bubble yields while the ⌘K panel is up — the two float over the same
+   selection and would otherwise overlap */
+body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
 
 /* the waiting pen */
 .scribble { margin-top: 14px; }
