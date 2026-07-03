@@ -39,6 +39,31 @@ export const UPDATES: UpdateDay[] = [
         text: 'top to bottom now — name, links, your writing chart, then your pages. hovering an article floats a preview card in the margin.',
       },
       {
+        kind: 'bullet',
+        head: 'comments, front and center',
+        text: 'select any text and a small card floats right there — ☞ leave a note, or ↳ write the edit yourself (⌥⌘M). replies thread underneath, commented lines wear their marks in the gutter, and clicking a passage lights up its card in the margin.',
+      },
+      {
+        kind: 'bullet',
+        head: 'edits you can take at their word',
+        text: 'a suggested edit shows as the struck original over the proposed line, and “apply edit” swaps in the reviewer’s exact words — no model in between, ever.',
+      },
+      {
+        kind: 'bullet',
+        head: 'a version as company arrives',
+        text: 'the moment a second writer joins your page, the text as-it-was is kept quietly in versions — and paragraphs two pens rewrote at once wear a small “✽ written twice” note until someone writes there again.',
+      },
+      {
+        kind: 'bullet',
+        head: 'versions you can lean on',
+        text: 'restoring now keeps your current text as its own version first — never a one-way door — and the whole loop (save, restore, sync, survive a reload) sits under a real test.',
+      },
+      {
+        kind: 'bullet',
+        head: 'this page, day by day',
+        text: 'the updates page reads as one entry per day now, and links to it unfurl with their own card.',
+      },
+      {
         kind: 'aside',
         text: 'under the floorboards: the writing backs up continuously to separate storage, restorable onto fresh hardware in minutes. the site moved to the west coast along the way.',
       },
