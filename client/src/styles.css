@@ -334,7 +334,7 @@ input, textarea {
 
 /* the gutter ledger: what each paragraph holds — ☜ notes, ↳ suggested
    edits, counts when there's more than one. click to open the panel. */
-.tiptap > :has(.comment-gutter) { position: relative; }
+.tiptap :has(> .comment-gutter) { position: relative; }
 .comment-gutter {
   position: absolute;
   left: 100%;

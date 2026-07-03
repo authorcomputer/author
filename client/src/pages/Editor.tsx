@@ -99,6 +99,11 @@ type Comment = {
   resolved: boolean
   created_at: number
 }
+// the one definition of a visible thread root — badge, tab, panel, and
+// gutter sweeps all lean on it
+const isRoot = (c: Comment) => !c.parent_id
+const isOpenRoot = (c: Comment) => !c.resolved && isRoot(c)
+
 type Issue = { excerpt: string; kind: string; note: string; suggestion: string }
 type Version = { id: string; name: string; username: string; created_at: number }
 type Panel = 'ai' | 'checks' | 'titles' | 'comments' | 'versions' | null
@@ -509,6 +514,24 @@ function EditorInner({ id }: { id: string }) {
     }
   }, [editor])
 
+  // marks belong to open threads: when the poll says a comment settled,
+  // sweep its mark out of the shared doc (idempotent — any client may do it)
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+    const settled = new Set(comments.filter((c) => c.resolved).map((c) => c.id))
+    if (settled.size === 0) return
+    const { doc, schema } = editor.state
+    const tr = editor.state.tr
+    doc.descendants((node, pos) => {
+      node.marks.forEach((m) => {
+        if (m.type.name === 'comment' && settled.has(m.attrs.id)) {
+          tr.removeMark(pos, pos + node.nodeSize, schema.marks.comment)
+        }
+      })
+    })
+    if (tr.steps.length) editor.view.dispatch(tr)
+  }, [comments, editor])
+
   // the "written twice" note needs to know whether anyone else is here
   useEffect(() => {
     if (editor && !editor.isDestroyed) {
@@ -516,12 +539,10 @@ function EditorInner({ id }: { id: string }) {
     }
   }, [others, editor])
 
-  const openComments = comments.filter((c) => !c.resolved && !c.parent_id)
+  const openComments = comments.filter(isOpenRoot)
   // the pop can outlive a click on a mark whose body hasn't polled in yet —
   // it renders the moment the comment arrives
-  const popComment = openPop
-    ? (comments.find((c) => c.id === openPop.id && !c.resolved) ?? null)
-    : null
+  const popComment = openPop ? (comments.find((c) => c.id === openPop.id) ?? null) : null
 
   const words = editor ? editor.storage.characterCount.words() : 0
 
@@ -1022,7 +1043,7 @@ function SidePanel({
   comments: Comment[]
   reloadComments: () => void
 }) {
-  const openCount = comments.filter((c) => !c.resolved && !c.parent_id).length
+  const openCount = comments.filter(isOpenRoot).length
   return (
     <div className="panel">
       <div className="panel-tabs">
@@ -1449,7 +1470,10 @@ function ReplyBox({
     } catch (e) {
       if (needsAccount(e)) promptAccount()
       else if (needsMembership(e)) promptMembership()
+      else if ((e as Error)?.message === 'that thread is settled')
+        alert('this thread settled while you were writing')
       else alert('couldn’t post that — give it another try')
+      onPosted() // the list may have moved under us — refresh either way
       return
     }
     track('comment: replied')
@@ -1641,7 +1665,11 @@ function CommentPop({
       if (!ref.current?.contains(e.target as Node)) onClose()
     }
     const esc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
+      if (e.key !== 'Escape' || e.isComposing) return
+      // a drafted reply survives a stray Escape — close by clicking away
+      const a = document.activeElement as HTMLInputElement | null
+      if (a && ref.current?.contains(a) && a.value) return
+      onClose()
     }
     document.addEventListener('mousedown', away)
     document.addEventListener('keydown', esc)
@@ -1678,7 +1706,14 @@ function CommentPop({
           <div style={{ margin: '6px 0 10px' }}>{comment.text}</div>
         )}
         <Replies replies={replies} />
-        <ReplyBox docId={docId} parentId={comment.id} onPosted={onChanged} />
+        {comment.resolved ? (
+          <div className="hint" style={{ marginTop: 8 }}>
+            ( this thread is settled )
+          </div>
+        ) : (
+          <ReplyBox docId={docId} parentId={comment.id} onPosted={onChanged} />
+        )}
+        {!comment.resolved && (
         <div className="ai-actions">
           {comment.suggestion?.trim() && (
             <button
@@ -1702,6 +1737,7 @@ function CommentPop({
             {comment.suggestion?.trim() ? '✗ dismiss' : '✓ resolve'}
           </button>
         </div>
+        )}
       </div>
     </>
   )
@@ -1718,8 +1754,8 @@ function CommentsPanel({
   comments: Comment[]
   reload: () => void
 }) {
-  const open = comments.filter((c) => !c.resolved && !c.parent_id)
-  const resolved = comments.filter((c) => c.resolved && !c.parent_id)
+  const open = comments.filter(isOpenRoot)
+  const resolved = comments.filter((c) => c.resolved && isRoot(c))
   const repliesFor = (id: string) => comments.filter((c) => c.parent_id === id)
 
   return (
@@ -1793,8 +1829,14 @@ function CommentsPanel({
           </div>
           {resolved.map((c) => (
             <div className="comment-card resolved" key={c.id}>
-              <div className="byline">{c.username}</div>
-              <div>{c.text}</div>
+              <div className="byline">
+                {c.username}
+                {c.suggestion?.trim() ? ' ↳ suggested an edit' : ''}
+              </div>
+              {c.quote && <div className="quote">“{c.quote.slice(0, 120)}”</div>}
+              {c.suggestion?.trim() && <div className="sugg-new">↳ {c.suggestion}</div>}
+              {c.text && <div>{c.text}</div>}
+              <Replies replies={repliesFor(c.id)} />
             </div>
           ))}
         </>

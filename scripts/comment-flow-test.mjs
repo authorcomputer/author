@@ -73,6 +73,25 @@ const reply = withReply.find((x) => x.parent_id === sid)
 if (!reply || reply.text !== 'ha, fair — applying') throw new Error('FAIL: reply not threaded')
 console.log('PASS: replies thread under their parent')
 
+// one level only — a reply can't parent another reply
+const nested = await fetch(`${BASE}/api/docs/${docId}/comments`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Origin: BASE, Cookie: ownerCookie },
+  body: JSON.stringify({ text: 'deeper still', parent_id: reply.id }),
+})
+if (nested.status !== 400) throw new Error('FAIL: nested reply accepted')
+console.log('PASS: nested replies refused')
+
+// and settled threads take no more replies
+await post(`/api/comments/${sid}/resolve`, {}, ownerCookie)
+const late = await fetch(`${BASE}/api/docs/${docId}/comments`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Origin: BASE, Cookie: ghostCookie },
+  body: JSON.stringify({ text: 'one more thing', parent_id: sid }),
+})
+if (late.status !== 400) throw new Error('FAIL: reply to settled thread accepted')
+console.log('PASS: settled threads take no more replies')
+
 // a reply to a thread that isn't there is refused
 const orphan = await fetch(`${BASE}/api/docs/${docId}/comments`, {
   method: 'POST',

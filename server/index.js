@@ -401,10 +401,14 @@ app.post('/api/docs/:id/comments', requireUser, (req, res) => {
   const sugg = parent ? '' : String(suggestion || '').slice(0, 5000)
   if (!note && !sugg.trim()) return res.status(400).json({ error: 'empty comment' })
   if (parent) {
+    // one level deep, and only while the thread is still open — a reply
+    // accepted anywhere else would be invisible in every view
     const p = db
-      .prepare('SELECT id FROM comments WHERE id = ? AND doc_id = ?')
+      .prepare(
+        "SELECT id FROM comments WHERE id = ? AND doc_id = ? AND parent_id = '' AND resolved = 0"
+      )
       .get(parent, req.params.id)
-    if (!p) return res.status(400).json({ error: 'no such thread' })
+    if (!p) return res.status(400).json({ error: 'that thread is settled' })
   }
   const cid = id || uid('c')
   db.prepare(
