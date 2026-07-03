@@ -14,6 +14,35 @@ export type UpdateDay = { date: string; title: string; blocks: UpdateBlock[] }
 
 export const UPDATES: UpdateDay[] = [
   {
+    date: 'july 3, 2026',
+    title: 'the door opens for readers',
+    blocks: [
+      {
+        kind: 'p',
+        text: 'you could always start writing here without an account. now the people you write for can answer the same way.',
+      },
+      {
+        kind: 'bullet',
+        head: 'a name is enough',
+        text: 'send someone your draft link and they land at a small door: leave a name, step inside. no signup, no password — they can write with you, leave notes on any passage, and suggest edits you can apply with one click, all signed with the name they gave.',
+      },
+      {
+        kind: 'bullet',
+        head: 'their name, everywhere it matters',
+        text: 'the name at the door follows them through the page — on their live cursor, in the margin, on every note and suggested edit. and if they later take a desk, the page and everything they left on it come along.',
+      },
+      {
+        kind: 'bullet',
+        head: 'sharing, account or not',
+        text: 'the share button now shows for ghosts too — so a piece written without an account can still go out for notes. the loop needs no signup on either end.',
+      },
+      {
+        kind: 'aside',
+        text: 'under the floorboards: a pen name can’t wear the handle of someone with a desk here, and only a page’s owner can publish it — small locks on a door that’s now open wider.',
+      },
+    ],
+  },
+  {
     date: 'july 2, 2026',
     title: 'the page grows richer',
     blocks: [
