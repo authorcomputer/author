@@ -3,7 +3,7 @@ import { Mark, mergeAttributes } from '@tiptap/core'
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     comment: {
-      setComment: (id: string) => ReturnType
+      setComment: (id: string, kind?: 'note' | 'edit') => ReturnType
     }
   }
 }
@@ -19,6 +19,12 @@ export const CommentMark = Mark.create({
         parseHTML: (el) => el.getAttribute('data-comment-id'),
         renderHTML: (attrs) => (attrs.id ? { 'data-comment-id': attrs.id } : {}),
       },
+      // a note (☞) or a suggested edit (↳) — the gutter tells them apart
+      kind: {
+        default: 'note',
+        parseHTML: (el) => el.getAttribute('data-comment-kind') || 'note',
+        renderHTML: (attrs) => (attrs.kind ? { 'data-comment-kind': attrs.kind } : {}),
+      },
     }
   },
 
@@ -33,9 +39,9 @@ export const CommentMark = Mark.create({
   addCommands() {
     return {
       setComment:
-        (id: string) =>
+        (id: string, kind: 'note' | 'edit' = 'note') =>
         ({ commands }) =>
-          commands.setMark(this.name, { id }),
+          commands.setMark(this.name, { id, kind }),
     }
   },
 

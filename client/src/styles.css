@@ -332,10 +332,11 @@ input, textarea {
 }
 .comment-mark:hover { background: #f7e6c3; }
 
-/* a commented paragraph wears a small quill in the gutter */
+/* a commented paragraph wears its mark in the gutter: a manicule points at
+   notes, the becomes-arrow at suggested edits (edits win when both) */
 .tiptap > :has(.comment-mark) { position: relative; }
 .tiptap > :has(.comment-mark)::before {
-  content: '❞';
+  content: '☜';
   position: absolute;
   left: 100%;
   margin-left: 10px;
@@ -344,6 +345,7 @@ input, textarea {
   font-size: 13px;
   pointer-events: none;
 }
+.tiptap > :has(.comment-mark[data-comment-kind='edit'])::before { content: '↳'; }
 
 /* the floating comment card — composer and thread both */
 .comment-pop {

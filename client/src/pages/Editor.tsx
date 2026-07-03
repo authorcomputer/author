@@ -565,7 +565,7 @@ function EditorInner({ id }: { id: string }) {
             onClick={() => (panel === 'comments' ? setPanel(null) : openPanel('comments'))}
             title="open comments"
           >
-            ❞ {openComments.length}
+            ☞ {openComments.length}
           </button>
         )}
         <button
@@ -781,7 +781,7 @@ function FormatBubble({ editor }: { editor: TiptapEditor }) {
         {item('“quote”', editor.isActive('blockquote'), () => editor.chain().focus().toggleBlockquote().run(), 'quote')}
         <span className="fmt-sep">·</span>
         {item('link', editor.isActive('link'), setLink, 'link', 'add or edit link')}
-        {item('❞ comment', editor.isActive('comment'), () => window.dispatchEvent(new CustomEvent('author:comment')), 'comment', 'comment ⌥⌘M')}
+        {item('☞ comment', editor.isActive('comment'), () => window.dispatchEvent(new CustomEvent('author:comment')), 'comment', 'comment ⌥⌘M')}
         {item('✎ ai', false, () => window.dispatchEvent(new CustomEvent('author:open-cmdk')), 'ai', 'rewrite with ⌘K')}
       </div>
     </BubbleMenu>
@@ -1466,7 +1466,14 @@ function CommentComposer({
       const found = findRange(editor, draft.quote)
       r = found && found.to - found.from === draft.quote.length ? found : null
     }
-    if (r) editor.chain().focus().setTextSelection(r).setComment(cid).setTextSelection(r.to).run()
+    if (r)
+      editor
+        .chain()
+        .focus()
+        .setTextSelection(r)
+        .setComment(cid, mode)
+        .setTextSelection(r.to)
+        .run()
     else editor.commands.focus()
     onPosted()
     onClose()
@@ -1487,10 +1494,10 @@ function CommentComposer({
       >
         <div className="mode-row">
           <button className={mode === 'note' ? 'on' : ''} onClick={() => setMode('note')}>
-            [ ❞ note ]
+            [ ☞ note ]
           </button>
           <button className={mode === 'edit' ? 'on' : ''} onClick={() => setMode('edit')}>
-            [ ✎ suggest an edit ]
+            [ ↳ suggest an edit ]
           </button>
         </div>
         <div className={mode === 'edit' ? 'quote sugg-old' : 'quote'}>
@@ -1584,7 +1591,7 @@ function CommentPop({
       >
         <div className="byline">
           <span style={{ color: colorFor(comment.username) }}>{comment.username}</span>
-          {comment.suggestion?.trim() ? <span className="faint"> suggests an edit</span> : null}
+          {comment.suggestion?.trim() ? <span className="faint"> ↳ suggests an edit</span> : null}
         </div>
         {comment.suggestion?.trim() ? (
           <div style={{ margin: '6px 0 10px' }}>
@@ -1647,7 +1654,7 @@ function CommentsPanel({
           window.dispatchEvent(new CustomEvent('author:comment'))
         }}
       >
-        [ ❞ comment on selection ]
+        [ ☞ comment on selection ]
       </button>
       <div className="hint" style={{ marginTop: 6 }}>
         select text and hit ⌥⌘M — leave a note, or write the edit yourself
@@ -1661,7 +1668,7 @@ function CommentsPanel({
         <div className="comment-card" key={c.id}>
           <div className="byline">
             <span style={{ color: colorFor(c.username) }}>{c.username}</span>
-            {c.suggestion?.trim() ? <span className="faint"> suggests an edit</span> : null}
+            {c.suggestion?.trim() ? <span className="faint"> ↳ suggests an edit</span> : null}
           </div>
           {c.quote && (
             <div
