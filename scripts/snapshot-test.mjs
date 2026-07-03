@@ -4,8 +4,8 @@ import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import WebSocket from 'ws'
 
-const BASE = 'http://localhost:4999'
-const WS = 'ws://localhost:4999/ws'
+const BASE = process.env.AUTHOR_BASE || 'http://localhost:3001'
+const WS = BASE.replace(/^http/, 'ws') + '/ws'
 const run = Date.now().toString(36)
 
 async function signup(name) {

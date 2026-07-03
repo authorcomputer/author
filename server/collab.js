@@ -110,8 +110,12 @@ function snapshotOnCompany(room, joiner) {
     const now = Date.now()
     if (now - room.lastAutoSnap < AUTO_SNAP_GAP) return
     try {
+      // throttle against our own snapshots only — a manual save minutes ago
+      // doesn't capture the state at THIS join, which is the whole point
       const latest = db
-        .prepare('SELECT MAX(created_at) AS t FROM versions WHERE doc_id = ?')
+        .prepare(
+          "SELECT MAX(created_at) AS t FROM versions WHERE doc_id = ? AND name LIKE 'as % joined'"
+        )
         .get(room.id)
       if (latest?.t && now - latest.t < AUTO_SNAP_GAP) return
       const content = yDocToProsemirrorJSON(room.ydoc, 'default')

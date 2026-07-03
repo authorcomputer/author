@@ -1920,11 +1920,25 @@ function VersionsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
   }
 
   async function restore(vid: string) {
-    if (!confirm('Restore this version? Current text is replaced (save a version first if unsure).'))
-      return
-    track('version: restored')
+    if (!confirm('Restore this version? The current text is kept as its own version first.')) return
     const v = await api(`/api/versions/${vid}`)
-    editor.commands.setContent(v.content)
+    // a restore is never a one-way door: keep what's on the page right now
+    await api(`/api/docs/${docId}/versions`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: `before restoring “${String(v.name).slice(0, 60)}”`,
+        content: editor.getJSON(),
+      }),
+    }).catch(() => {})
+    try {
+      editor.commands.setContent(v.content)
+    } catch {
+      alert('couldn’t restore this version — it may predate the current page format')
+      load()
+      return
+    }
+    track('version: restored')
+    load()
   }
 
   return (
