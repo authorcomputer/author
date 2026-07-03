@@ -588,6 +588,12 @@ input, textarea {
   line-height: 1;
   letter-spacing: -0.02em;
 }
+/* the mark is small — give links that wrap it a generous invisible tap area */
+a:has(> .logo) {
+  display: inline-block;
+  padding: 14px;
+  margin: -14px;
+}
 
 /* share popover */
 .share-anchor { position: relative; }
