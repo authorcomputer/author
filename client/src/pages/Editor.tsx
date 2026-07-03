@@ -23,6 +23,7 @@ import MembershipModal from '../MembershipModal'
 import Scribble from '../Scribble'
 import { Checkmarks, setMarks, clearMarks, MarkItem } from '../checkmarks'
 import { CoWritten, coWrittenKey } from '../co-written'
+import { CommentGutter } from '../comment-gutter'
 
 function needsAccount(e: unknown) {
   return (e as any)?.code === 'account_required'
@@ -94,6 +95,7 @@ type Comment = {
   quote: string
   text: string
   suggestion?: string
+  parent_id?: string
   resolved: boolean
   created_at: number
 }
@@ -260,6 +262,7 @@ function EditorInner({ id }: { id: string }) {
       Embed,
       Checkmarks,
       CoWritten,
+      CommentGutter,
     ],
     editorProps: {
       handlePaste: (view, event) => {
@@ -497,8 +500,13 @@ function EditorInner({ id }: { id: string }) {
     // the shortcut itself (⌥⌘M / ctrl+alt+M) lives in the CommentMark
     // extension, editor-scoped; the bubble and panel dispatch this event
     const onOpen = () => openComposer()
+    const onOpenPanel = () => openPanel('comments')
     window.addEventListener('author:comment', onOpen)
-    return () => window.removeEventListener('author:comment', onOpen)
+    window.addEventListener('author:open-comments', onOpenPanel)
+    return () => {
+      window.removeEventListener('author:comment', onOpen)
+      window.removeEventListener('author:open-comments', onOpenPanel)
+    }
   }, [editor])
 
   // the "written twice" note needs to know whether anyone else is here
@@ -508,7 +516,7 @@ function EditorInner({ id }: { id: string }) {
     }
   }, [others, editor])
 
-  const openComments = comments.filter((c) => !c.resolved)
+  const openComments = comments.filter((c) => !c.resolved && !c.parent_id)
   // the pop can outlive a click on a mark whose body hasn't polled in yet —
   // it renders the moment the comment arrives
   const popComment = openPop
@@ -709,7 +717,9 @@ function EditorInner({ id }: { id: string }) {
       {popComment && editor && (
         <CommentPop
           editor={editor}
+          docId={id}
           comment={popComment}
+          replies={comments.filter((c) => c.parent_id === popComment.id)}
           at={openPop!}
           onClose={() => setOpenPop(null)}
           onChanged={reloadComments}
@@ -1012,7 +1022,7 @@ function SidePanel({
   comments: Comment[]
   reloadComments: () => void
 }) {
-  const openCount = comments.filter((c) => !c.resolved).length
+  const openCount = comments.filter((c) => !c.resolved && !c.parent_id).length
   return (
     <div className="panel">
       <div className="panel-tabs">
@@ -1029,7 +1039,7 @@ function SidePanel({
         {panel === 'checks' && <ChecksPanel editor={editor} />}
         {panel === 'titles' && <TitlesPanel editor={editor} onTitle={onTitle} />}
         {panel === 'comments' && (
-          <CommentsPanel editor={editor} comments={comments} reload={reloadComments} />
+          <CommentsPanel editor={editor} docId={docId} comments={comments} reload={reloadComments} />
         )}
         {panel === 'versions' && <VersionsPanel editor={editor} docId={docId} />}
       </div>
@@ -1417,6 +1427,67 @@ function TitlesPanel({ editor, onTitle }: { editor: TiptapEditor; onTitle: (t: s
   )
 }
 
+// one line, one reply — threads stay conversations, not documents
+function ReplyBox({
+  docId,
+  parentId,
+  onPosted,
+}: {
+  docId: string
+  parentId: string
+  onPosted: () => void
+}) {
+  const [text, setText] = useState('')
+  async function send() {
+    const t = text.trim()
+    if (!t) return
+    try {
+      await api(`/api/docs/${docId}/comments`, {
+        method: 'POST',
+        body: JSON.stringify({ text: t, parent_id: parentId }),
+      })
+    } catch (e) {
+      if (needsAccount(e)) promptAccount()
+      else if (needsMembership(e)) promptMembership()
+      else alert('couldn’t post that — give it another try')
+      return
+    }
+    track('comment: replied')
+    setText('')
+    onPosted()
+  }
+  return (
+    <input
+      className="reply-box"
+      placeholder="reply…"
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+          e.preventDefault()
+          send()
+        }
+      }}
+    />
+  )
+}
+
+function Replies({ replies }: { replies: Comment[] }) {
+  if (replies.length === 0) return null
+  return (
+    <>
+      {replies.map((r) => (
+        <div className="reply" key={r.id}>
+          <span className="byline" style={{ color: colorFor(r.username) }}>
+            {r.username}
+          </span>{' '}
+          {r.text}
+        </div>
+      ))}
+    </>
+  )
+}
+
 // the floating card where a comment is written — appears at the selection,
 // so leaving a note never means leaving the page
 function CommentComposer({
@@ -1549,13 +1620,17 @@ function CommentComposer({
 // else (or Escape) puts it away
 function CommentPop({
   editor,
+  docId,
   comment,
+  replies,
   at,
   onClose,
   onChanged,
 }: {
   editor: TiptapEditor
+  docId: string
   comment: Comment
+  replies: Comment[]
   at: { x: number; y: number; yTop: number }
   onClose: () => void
   onChanged: () => void
@@ -1602,6 +1677,8 @@ function CommentPop({
         ) : (
           <div style={{ margin: '6px 0 10px' }}>{comment.text}</div>
         )}
+        <Replies replies={replies} />
+        <ReplyBox docId={docId} parentId={comment.id} onPosted={onChanged} />
         <div className="ai-actions">
           {comment.suggestion?.trim() && (
             <button
@@ -1632,15 +1709,18 @@ function CommentPop({
 
 function CommentsPanel({
   editor,
+  docId,
   comments,
   reload,
 }: {
   editor: TiptapEditor
+  docId: string
   comments: Comment[]
   reload: () => void
 }) {
-  const open = comments.filter((c) => !c.resolved)
-  const resolved = comments.filter((c) => c.resolved)
+  const open = comments.filter((c) => !c.resolved && !c.parent_id)
+  const resolved = comments.filter((c) => c.resolved && !c.parent_id)
+  const repliesFor = (id: string) => comments.filter((c) => c.parent_id === id)
 
   return (
     <div>
@@ -1683,6 +1763,8 @@ function CommentsPanel({
           )}
           {c.suggestion?.trim() && <div className="sugg-new">↳ {c.suggestion}</div>}
           {c.text && <div className={c.suggestion?.trim() ? 'faint' : ''}>{c.text}</div>}
+          <Replies replies={repliesFor(c.id)} />
+          <ReplyBox docId={docId} parentId={c.id} onPosted={reload} />
           <div className="row-actions">
             {c.suggestion?.trim() && (
               <button

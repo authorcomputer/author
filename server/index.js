@@ -394,15 +394,32 @@ app.get('/api/docs/:id/comments', requireUser, (req, res) => {
 })
 
 app.post('/api/docs/:id/comments', requireUser, (req, res) => {
-  const { text, quote, suggestion, id } = req.body || {}
+  const { text, quote, suggestion, parent_id, id } = req.body || {}
   const note = String(text || '').trim()
-  const sugg = String(suggestion || '').slice(0, 5000)
-  // a note, a suggested edit, or both — but not neither
+  const parent = String(parent_id || '')
+  // replies are words only; a top-level comment may instead be an edit
+  const sugg = parent ? '' : String(suggestion || '').slice(0, 5000)
   if (!note && !sugg.trim()) return res.status(400).json({ error: 'empty comment' })
+  if (parent) {
+    const p = db
+      .prepare('SELECT id FROM comments WHERE id = ? AND doc_id = ?')
+      .get(parent, req.params.id)
+    if (!p) return res.status(400).json({ error: 'no such thread' })
+  }
   const cid = id || uid('c')
   db.prepare(
-    'INSERT INTO comments (id, doc_id, user_id, username, quote, text, suggestion, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(cid, req.params.id, req.user.id, req.user.username, String(quote || '').slice(0, 500), note, sugg, Date.now())
+    'INSERT INTO comments (id, doc_id, user_id, username, quote, text, suggestion, parent_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(
+    cid,
+    req.params.id,
+    req.user.id,
+    req.user.username,
+    parent ? '' : String(quote || '').slice(0, 500),
+    note,
+    sugg,
+    parent,
+    Date.now()
+  )
   res.json({ id: cid })
 })
 

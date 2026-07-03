@@ -64,6 +64,24 @@ const s = withSugg.find((x) => x.id === sid)
 if (!s || s.suggestion !== 'the ending lands') throw new Error('FAIL: suggestion not stored')
 console.log('PASS: suggested edit round-trips')
 
+// the owner replies to the suggestion — a thread
+await post(`/api/docs/${docId}/comments`, { text: 'ha, fair — applying', parent_id: sid }, ownerCookie)
+const withReply = await (
+  await fetch(`${BASE}/api/docs/${docId}/comments`, { headers: { Cookie: ownerCookie } })
+).json()
+const reply = withReply.find((x) => x.parent_id === sid)
+if (!reply || reply.text !== 'ha, fair — applying') throw new Error('FAIL: reply not threaded')
+console.log('PASS: replies thread under their parent')
+
+// a reply to a thread that isn't there is refused
+const orphan = await fetch(`${BASE}/api/docs/${docId}/comments`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Origin: BASE, Cookie: ownerCookie },
+  body: JSON.stringify({ text: 'hello?', parent_id: 'c_nowhere' }),
+})
+if (orphan.status !== 400) throw new Error('FAIL: orphan reply accepted')
+console.log('PASS: orphan replies refused')
+
 // neither a note nor an edit is nothing
 const empty = await fetch(`${BASE}/api/docs/${docId}/comments`, {
   method: 'POST',

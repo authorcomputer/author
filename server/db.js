@@ -99,6 +99,8 @@ addColumn('invite_codes', 'max_uses INTEGER DEFAULT 25')
 addColumn('profiles', 'member INTEGER DEFAULT 0')
 // a comment can carry a proposed replacement for its quoted passage
 addColumn('comments', "suggestion TEXT DEFAULT ''")
+// replies thread under a parent comment
+addColumn('comments', "parent_id TEXT DEFAULT ''")
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL')
 
 // seed two invite codes: one personal, one to hand to friends

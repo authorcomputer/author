@@ -332,20 +332,38 @@ input, textarea {
 }
 .comment-mark:hover { background: #f7e6c3; }
 
-/* a commented paragraph wears its mark in the gutter: a manicule points at
-   notes, the becomes-arrow at suggested edits (edits win when both) */
-.tiptap > :has(.comment-mark) { position: relative; }
-.tiptap > :has(.comment-mark)::before {
-  content: '☜';
+/* the gutter ledger: what each paragraph holds — ☜ notes, ↳ suggested
+   edits, counts when there's more than one. click to open the panel. */
+.tiptap > :has(.comment-gutter) { position: relative; }
+.comment-gutter {
   position: absolute;
   left: 100%;
   margin-left: 10px;
   top: 2px;
   color: #d8a848;
-  font-size: 13px;
-  pointer-events: none;
+  font-family: var(--mono);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
 }
-.tiptap > :has(.comment-mark[data-comment-kind='edit'])::before { content: '↳'; }
+.comment-gutter:hover { color: var(--accent); }
+
+/* threaded replies under a comment */
+.reply {
+  margin: 8px 0 0 8px;
+  border-left: 2px solid var(--wash);
+  padding-left: 8px;
+  font-size: 12px;
+}
+.reply .byline { font-size: 11px; }
+.reply-box {
+  width: 100%;
+  font-size: 11px;
+  border-bottom: 1px solid var(--fainter);
+  margin-top: 10px;
+  padding-bottom: 2px;
+}
 
 /* the floating comment card — composer and thread both */
 .comment-pop {
