@@ -413,12 +413,22 @@ function EditorInner({ id }: { id: string }) {
   // ---------- publish ----------
   async function togglePublish() {
     if (!editor || !meta) return
-    const res = await api(`/api/docs/${id}/publish`, {
-      method: 'POST',
-      body: JSON.stringify({ publish: !meta.published, html: editor.getHTML() }),
-    })
-    track(res.published ? 'doc: published' : 'doc: unpublished')
-    setMeta({ ...meta, published: res.published, slug: res.slug })
+    try {
+      const res = await api(`/api/docs/${id}/publish`, {
+        method: 'POST',
+        body: JSON.stringify({ publish: !meta.published, html: editor.getHTML() }),
+      })
+      track(res.published ? 'doc: published' : 'doc: unpublished')
+      setMeta({ ...meta, published: res.published, slug: res.slug })
+    } catch (e: any) {
+      if (e?.code === 'account_required') {
+        setShareOpen(false)
+        track('account prompt: shown', { reason: 'publish' })
+        setModalReason('publishing needs a desk — take one and this page comes with you')
+        return
+      }
+      throw e
+    }
   }
 
   async function toggleOnProfile() {
@@ -452,16 +462,31 @@ function EditorInner({ id }: { id: string }) {
 
   useEffect(() => {
     if (!isGhost || !editor) return
+    let stayTimer: ReturnType<typeof setTimeout>
     const h = (e: BeforeUnloadEvent) => {
       if (localStorage.getItem('author.ghost-nagged')) return
       if (editor.isDestroyed || editor.storage.characterCount.words() === 0) return
       localStorage.setItem('author.ghost-nagged', '1')
       e.preventDefault()
       e.returnValue = ''
+      // a custom modal can't interrupt an unload — but if they choose to
+      // stay, the tab survives and we can make the pitch properly. if they
+      // leave anyway, this timer dies with the page.
+      stayTimer = setTimeout(() => {
+        track('account prompt: shown', { reason: 'before leaving' })
+        setModalReason(
+          meta && !meta.mine
+            ? 'before you drift off — save this page to your desk?'
+            : 'before you drift off — this page only exists in this tab'
+        )
+      }, 400)
     }
     window.addEventListener('beforeunload', h)
-    return () => window.removeEventListener('beforeunload', h)
-  }, [isGhost, editor])
+    return () => {
+      clearTimeout(stayTimer)
+      window.removeEventListener('beforeunload', h)
+    }
+  }, [isGhost, editor, meta])
 
   // ---------- comments ----------
   const lastCommentsJson = useRef('')
@@ -606,34 +631,37 @@ function EditorInner({ id }: { id: string }) {
         >
           [ editor ]
         </button>
-        {isGhost ? (
+        {isGhost && (
           <button
             className="accent"
             onClick={() => {
               track('account prompt: shown', { reason: 'save to desk' })
-              setModalReason('keep this page — it only exists in this tab for now')
+              setModalReason(
+                meta && !meta.mine
+                  ? 'save this page to your desk — your notes come with you'
+                  : 'keep this page — it only exists in this tab for now'
+              )
             }}
           >
             [ save to a desk ]
           </button>
-        ) : (
-          <div className="share-anchor">
-            <button
-              className={shareOpen || meta?.published ? 'on' : ''}
-              onClick={() => meta && setShareOpen(!shareOpen)}
-            >
-              {meta?.published ? '✽ share' : '[ share ]'}
-            </button>
-            {shareOpen && meta && (
-              <SharePop
-                meta={meta}
-                onToggle={togglePublish}
-                onProfileToggle={toggleOnProfile}
-                onClose={() => setShareOpen(false)}
-              />
-            )}
-          </div>
         )}
+        <div className="share-anchor">
+          <button
+            className={shareOpen || meta?.published ? 'on' : ''}
+            onClick={() => meta && setShareOpen(!shareOpen)}
+          >
+            {meta?.published ? '✽ share' : '[ share ]'}
+          </button>
+          {shareOpen && meta && (
+            <SharePop
+              meta={meta}
+              onToggle={togglePublish}
+              onProfileToggle={toggleOnProfile}
+              onClose={() => setShareOpen(false)}
+            />
+          )}
+        </div>
       </div>
       <div className="ed-body">
         <div
@@ -871,9 +899,9 @@ function SharePop({
         <div className="share-sec">
           <div className="share-h">✎ write together</div>
           <div className="hint">
-            send this link. whoever opens it signs in once and lands in the draft
-            with you — they can write, leave notes on any passage, or suggest
-            edits you can apply with one click.
+            send this link. whoever opens it just leaves a name — no account —
+            and lands in the draft with you. they can write, leave notes on any
+            passage, or suggest edits you can apply with one click.
           </div>
           <div className="share-link">{writeUrl}</div>
           <button onClick={() => copy(writeUrl, 'write')}>

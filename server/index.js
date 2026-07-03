@@ -107,9 +107,12 @@ async function getUser(headers) {
   const session = await auth.api.getSession({ headers: fromNodeHeaders(headers) })
   if (!session?.user) return null
   const u = session.user
+  // a ghost who signed their name at the door (shared-link reviewers) is
+  // known by it; the plugin's default "Anonymous" stays the plain 'ghost'
+  const penName = u.isAnonymous && u.name && u.name !== 'Anonymous' ? u.name : null
   return {
     id: u.id,
-    username: u.username || u.displayUsername || 'ghost',
+    username: penName || u.username || u.displayUsername || 'ghost',
     anon: !!u.isAnonymous,
   }
 }
@@ -203,6 +206,23 @@ app.post('/api/handle', requireFullUser, (req, res) => {
   db.prepare('UPDATE comments SET username = ? WHERE user_id = ?').run(uname, req.user.id)
   db.prepare('UPDATE versions SET username = ? WHERE username = ?').run(uname, old)
   res.json({ username: uname })
+})
+
+// a ghost arriving through a shared link signs with a pen name — no account,
+// no uniqueness; it lives in user.name until they take a desk (the signup
+// migration then restamps their comments with the real handle)
+app.post('/api/name', requireUser, rateLimit(10, 60_000), (req, res) => {
+  if (!req.user.anon)
+    return res.status(400).json({ error: 'you already have a handle — rename in settings' })
+  const name = String((req.body || {}).name || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 32)
+  if (!name) return res.status(400).json({ error: 'a name to sign with, any name' })
+  db.prepare('UPDATE user SET name = ? WHERE id = ?').run(name, req.user.id)
+  // notes they already left follow the name
+  db.prepare('UPDATE comments SET username = ? WHERE user_id = ?').run(name, req.user.id)
+  res.json({ username: name })
 })
 
 app.post('/api/password', requireFullUser, async (req, res) => {

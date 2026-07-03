@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import Login from './pages/Login'
 import Home from './pages/Home'
 import Editor from './pages/Editor'
+import GhostDoor from './pages/GhostDoor'
 import Public from './pages/Public'
 import Landing from './pages/Landing'
 import Profile from './pages/Profile'
@@ -21,16 +22,6 @@ function ScrollToTop() {
     if (!hash) window.scrollTo(0, 0)
   }, [pathname, hash])
   return null
-}
-
-// ghosts (anonymous sessions) may write; full pages require an account
-function RequireSession({ children }: { children: JSX.Element }) {
-  const location = useLocation()
-  if (!me()) {
-    const dest = location.pathname + location.search + location.hash
-    return <Navigate to={`/login?next=${encodeURIComponent(dest)}`} replace />
-  }
-  return children
 }
 
 function RequireAccount({ children }: { children: JSX.Element }) {
@@ -87,9 +78,9 @@ export default function App() {
         <Route
           path="/d/:id"
           element={
-            <RequireSession>
+            <GhostDoor>
               <Editor />
-            </RequireSession>
+            </GhostDoor>
           }
         />
         <Route path="*" element={<Navigate to="/" replace />} />

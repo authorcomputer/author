@@ -45,7 +45,8 @@ export default function AccountModal({
       <form className="cmdk account-modal" onClick={(e) => e.stopPropagation()} onSubmit={submit}>
         <div className="cmdk-head">{reason}</div>
         <div className="hint" style={{ marginBottom: 14 }}>
-          take a desk — everything you've written as a ghost comes with you.
+          take a desk — this page, your notes, and everything you've written
+          come with you.
         </div>
         <div className="field">
           <input
