@@ -19,26 +19,7 @@ export const UPDATES: UpdateDay[] = [
     blocks: [
       {
         kind: 'p',
-        text: 'you could always start writing here without an account. now the people you write for can answer the same way.',
-      },
-      {
-        kind: 'bullet',
-        head: 'a name is enough',
-        text: 'send someone your draft link and they land at a small door: leave a name, step inside. no signup, no password — they can write with you, leave notes on any passage, and suggest edits you can apply with one click, all signed with the name they gave.',
-      },
-      {
-        kind: 'bullet',
-        head: 'their name, everywhere it matters',
-        text: 'the name at the door follows them through the page — on their live cursor, in the margin, on every note and suggested edit. and if they later take a desk, the page and everything they left on it come along.',
-      },
-      {
-        kind: 'bullet',
-        head: 'sharing, account or not',
-        text: 'the share button now shows for ghosts too — so a piece written without an account can still go out for notes. the loop needs no signup on either end.',
-      },
-      {
-        kind: 'aside',
-        text: 'under the floorboards: a pen name can’t wear the handle of someone with a desk here, and only a page’s owner can publish it — small locks on a door that’s now open wider.',
+        text: 'send someone your draft link and a name is enough — no signup, no password. they can write with you, leave notes, and suggest edits, all signed with the name they gave. sharing now works without an account on either end.',
       },
     ],
   },
@@ -50,51 +31,51 @@ export const UPDATES: UpdateDay[] = [
       {
         kind: 'bullet',
         head: 'embeds',
-        text: 'paste a youtube, vimeo, loom, spotify, or tweet link on its own line and it becomes a player — in the editor and on the published page.',
+        text: 'paste a youtube, vimeo, loom, spotify, or tweet link on its own line and it becomes a player.',
       },
       {
         kind: 'bullet',
         head: 'images',
-        text: 'paste or drag one straight into your writing. it uploads quietly and lands where you dropped it.',
+        text: 'paste or drag one straight into your writing and it lands where you dropped it.',
       },
       {
         kind: 'bullet',
         head: 'truer publishing',
-        text: 'headings keep their size and the “· · ·” divider carries over, so the published piece looks like the one you wrote.',
+        text: 'headings keep their size and the “· · ·” divider carries over to the published page.',
       },
       {
         kind: 'bullet',
         head: 'profiles, rearranged',
-        text: 'top to bottom now — name, links, your writing chart, then your pages. hovering an article floats a preview card in the margin.',
+        text: 'name, links, chart, then pages — and hovering an article floats a preview card.',
       },
       {
         kind: 'bullet',
         head: 'comments, front and center',
-        text: 'select any text and a small card floats right there — ☞ leave a note, or ↳ write the edit yourself (⌥⌘M). replies thread underneath, commented lines wear their marks in the gutter, and clicking a passage lights up its card in the margin.',
+        text: 'select any text to ☞ leave a note or ↳ write the edit yourself (⌥⌘M). replies thread, and commented lines wear marks in the gutter.',
       },
       {
         kind: 'bullet',
         head: 'edits you can take at their word',
-        text: 'a suggested edit shows as the struck original over the proposed line, and “apply edit” swaps in the reviewer’s exact words — no model in between, ever.',
+        text: '“apply edit” swaps in the reviewer’s exact words — no model in between, ever.',
       },
       {
         kind: 'bullet',
         head: 'a version as company arrives',
-        text: 'the moment a second writer joins your page, the text as-it-was is kept quietly in versions — and paragraphs two pens rewrote at once wear a small “✽ written twice” note until someone writes there again.',
+        text: 'when a second writer joins, the text as-it-was is kept in versions — and paragraphs two pens rewrote wear a “✽ written twice” note.',
       },
       {
         kind: 'bullet',
         head: 'versions you can lean on',
-        text: 'restoring now keeps your current text as its own version first — never a one-way door — and the whole loop (save, restore, sync, survive a reload) sits under a real test.',
+        text: 'restoring keeps your current text as its own version first — never a one-way door.',
       },
       {
         kind: 'bullet',
         head: 'this page, day by day',
-        text: 'the updates page reads as one entry per day now, and links to it unfurl with their own card.',
+        text: 'the updates page reads as one entry per day, and links to it unfurl with a card.',
       },
       {
         kind: 'aside',
-        text: 'under the floorboards: the writing backs up continuously to separate storage, restorable onto fresh hardware in minutes. the site moved to the west coast along the way.',
+        text: 'under the floorboards: continuous backups to separate storage, restorable in minutes — and the site moved to the west coast.',
       },
     ],
   },
@@ -106,27 +87,27 @@ export const UPDATES: UpdateDay[] = [
       {
         kind: 'bullet',
         head: 'the first word',
-        text: 'live multiplayer editing with named cursors, an editor you can ask things of — feedback, checks, titles, ⌘K rewrites — comments in the margin, versions, and one-click publishing.',
+        text: 'live multiplayer editing with named cursors, ⌘K rewrites and feedback, margin comments, versions, and one-click publishing.',
       },
       {
         kind: 'bullet',
         head: 'the doors open',
-        text: 'invite codes retired; a desk costs an email and a password. ghosts welcome too — write with no account at all, and it all comes with you if you take a desk later.',
+        text: 'invite codes retired; a desk costs an email and a password, and ghosts can write with no account at all.',
       },
       {
         kind: 'bullet',
         head: 'a place of your own',
-        text: 'public profiles at /u/you with contribution charts, social links, header images — and .md import that turns your old word processor’s files into pages, formatting intact.',
+        text: 'public profiles at /u/you with contribution charts, social links, header images — and .md import, formatting intact.',
       },
       {
         kind: 'bullet',
         head: 'small kindnesses',
-        text: 'the formatting bubble (bold, italic, links, a shortcut into ⌘K), click anywhere to start typing, ⌘U underlines, and a chart that keeps your own timezone.',
+        text: 'the formatting bubble, click anywhere to start typing, ⌘U underlines, and a chart in your own timezone.',
       },
       {
         kind: 'bullet',
         head: 'locks on the doors',
-        text: 'hashed passwords, rate-limited sign-in, expiring sessions — and cookie-free analytics that never follow you home.',
+        text: 'hashed passwords, rate-limited sign-in, expiring sessions, cookie-free analytics.',
       },
       { kind: 'aside', text: 'and by nightfall, a home at author.computer.' },
     ],
