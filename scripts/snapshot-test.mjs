@@ -71,8 +71,8 @@ const versions = await (
 ).json()
 console.log('versions:', JSON.stringify(versions, null, 2))
 
-const snap = versions.find((v) => v.name === `before quill${run} joined`)
-if (!snap) throw new Error('FAIL: no auto snapshot')
+const snap = versions.find((v) => v.name === `as quill${run} joined`)
+if (!snap) throw new Error('FAIL: no auto snapshot: ' + JSON.stringify(versions))
 const body = await (
   await fetch(`${BASE}/api/versions/${snap.id}`, { headers: { Cookie: cookieA } })
 ).json()

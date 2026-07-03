@@ -96,32 +96,55 @@ function scheduleSave(room) {
 }
 
 // versions are the safety net for co-editing: the moment a second writer
-// joins, quietly keep "before X joined" so the solo text is one click away
-// if a merge ever goes semantically wrong. throttled so two people trading
-// the doc back and forth all afternoon don't fill the panel.
+// joins, quietly keep "as X joined" so the text of that moment is one click
+// away if a merge ever goes semantically wrong. throttled against the
+// versions table itself (rooms unload after 30s idle and on deploys, so an
+// in-memory clock alone would forget) — any version in the last stretch,
+// manual or automatic, is restore point enough.
 const AUTO_SNAP_GAP = 10 * 60 * 1000
 
-function snapshotBeforeCompany(room, incumbent, joiner) {
-  const now = Date.now()
-  if (now - room.lastAutoSnap < AUTO_SNAP_GAP) return
-  try {
-    const content = yDocToProsemirrorJSON(room.ydoc, 'default')
-    const hasText = (n) => (n.text || '').trim() || (n.content || []).some(hasText)
-    if (!hasText(content)) return
-    room.lastAutoSnap = now
-    db.prepare(
-      'INSERT INTO versions (id, doc_id, name, username, content, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(
-      'v_' + crypto.randomBytes(8).toString('hex'),
-      room.id,
-      `before ${joiner} joined`,
-      incumbent,
-      JSON.stringify(content),
-      now
-    )
-  } catch (e) {
-    console.error('auto snapshot failed', room.id, e)
-  }
+function snapshotOnCompany(room, joiner) {
+  // off the ws-upgrade path: the doc-to-JSON walk and the insert can wait
+  // until after the joiner's handshake
+  setImmediate(() => {
+    const now = Date.now()
+    if (now - room.lastAutoSnap < AUTO_SNAP_GAP) return
+    try {
+      const latest = db
+        .prepare('SELECT MAX(created_at) AS t FROM versions WHERE doc_id = ?')
+        .get(room.id)
+      if (latest?.t && now - latest.t < AUTO_SNAP_GAP) return
+      const content = yDocToProsemirrorJSON(room.ydoc, 'default')
+      // words count, and so do images and embeds — an all-media page is
+      // still a page worth keeping
+      const hasStuff = (n) =>
+        (n.text || '').trim() ||
+        n.type === 'image' ||
+        n.type === 'embed' ||
+        (n.content || []).some(hasStuff)
+      if (!hasStuff(content)) return
+      // credit the page's owner — "whose text this was" — not whoever's
+      // socket happened to open first
+      const owner = db
+        .prepare(
+          'SELECT u.username FROM user u JOIN docs d ON d.owner_id = u.id WHERE d.id = ?'
+        )
+        .get(room.id)
+      room.lastAutoSnap = now
+      db.prepare(
+        'INSERT INTO versions (id, doc_id, name, username, content, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+      ).run(
+        'v_' + crypto.randomBytes(8).toString('hex'),
+        room.id,
+        `as ${joiner} joined`,
+        owner?.username || 'author*',
+        JSON.stringify(content),
+        now
+      )
+    } catch (e) {
+      console.error('auto snapshot failed', room.id, e)
+    }
+  })
 }
 
 function closeConn(room, ws) {
@@ -147,19 +170,22 @@ function closeConn(room, ws) {
   }
 }
 
-export function setupCollab(ws, docId, username) {
+export function setupCollab(ws, docId, user) {
   const room = getRoom(docId)
   if (room.destroyTimer) {
     clearTimeout(room.destroyTimer)
     room.destroyTimer = null
   }
-  // a second distinct writer arriving is the co-editing boundary — same
-  // person in two tabs doesn't count
-  const present = new Set(room.names.values())
-  if (username && present.size === 1 && !present.has(username)) {
-    snapshotBeforeCompany(room, [...present][0], username)
+  // a second distinct writer arriving is the co-editing boundary. distinct
+  // means a different account (ghosts included — every anonymous session
+  // has its own id); the same person in two tabs doesn't count
+  if (user?.id) {
+    const ids = new Set([...room.names.values()].map((u) => u.id))
+    if (ids.size === 1 && !ids.has(user.id)) {
+      snapshotOnCompany(room, user.username)
+    }
+    room.names.set(ws, { id: user.id, username: user.username })
   }
-  if (username) room.names.set(ws, username)
   room.conns.set(ws, new Set())
   ws.binaryType = 'arraybuffer'
 
