@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { authClient } from '../auth-client'
 import { api, me, refreshMe } from '../api'
@@ -15,6 +15,14 @@ export default function GhostDoor({ children }: { children: JSX.Element }) {
   const [busy, setBusy] = useState(false)
   const [entered, setEntered] = useState(() => !!me())
 
+  // the local mirror can be stale (wiped on any 401) while the cookie is
+  // fine — someone already signed in shouldn't be asked to leave a name
+  useEffect(() => {
+    if (entered) return
+    refreshMe().then((m) => m && setEntered(true))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   async function enter(e: React.FormEvent) {
     e.preventDefault()
     const pen = name.replace(/\s+/g, ' ').trim()
@@ -24,14 +32,16 @@ export default function GhostDoor({ children }: { children: JSX.Element }) {
     try {
       // trust the cookie over the local mirror — a signed-in user with a
       // wiped mirror must not be demoted to a ghost
-      let m = await refreshMe()
+      const m = await refreshMe()
       if (!m) {
         const result = await authClient.signIn.anonymous()
         if (result.error) throw new Error(result.error.message)
-        m = await refreshMe()
         track('ghost: entered through a shared link')
       }
-      if (m?.anon) {
+      // a fresh mint is anonymous by definition — sign the name even if the
+      // mirror refresh above hiccupped, and let a failure surface as an error
+      // rather than silently entering unsigned
+      if (!m || m.anon) {
         await api('/api/name', { method: 'POST', body: JSON.stringify({ name: pen }) })
         await refreshMe()
       }

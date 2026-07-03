@@ -219,6 +219,17 @@ app.post('/api/name', requireUser, rateLimit(10, 60_000), (req, res) => {
     .trim()
     .slice(0, 32)
   if (!name) return res.status(400).json({ error: 'a name to sign with, any name' })
+  const flat = name.toLowerCase()
+  // the nameless defaults stay ours, and a pen name may not wear the handle
+  // of someone with a desk — same byline, same color, perfect impersonation
+  if (flat === 'ghost' || flat === 'anonymous')
+    return res.status(400).json({ error: 'that name belongs to the nameless — pick your own' })
+  if (
+    db
+      .prepare('SELECT id FROM user WHERE username = ? OR lower(displayUsername) = ?')
+      .get(flat, flat)
+  )
+    return res.status(409).json({ error: 'that name belongs to a desk here — pick another' })
   db.prepare('UPDATE user SET name = ? WHERE id = ?').run(name, req.user.id)
   // notes they already left follow the name
   db.prepare('UPDATE comments SET username = ? WHERE user_id = ?').run(name, req.user.id)
@@ -370,10 +381,12 @@ app.post('/api/docs/:id/profile', requireFullUser, (req, res) => {
   res.json({ on_profile: show })
 })
 
-// publishing is "keeping" — full accounts only
+// publishing is "keeping" — full accounts only, and only the owner decides
+// what of theirs becomes a public page
 app.post('/api/docs/:id/publish', requireFullUser, (req, res) => {
   const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
   if (!doc) return res.status(404).json({ error: 'no such doc' })
+  if (doc.owner_id !== req.user.id) return res.status(403).json({ error: 'not yours' })
   const publish = !!(req.body && req.body.publish)
   let slug = doc.slug
   if (publish && !slug) slug = crypto.randomBytes(5).toString('hex')

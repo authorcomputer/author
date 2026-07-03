@@ -460,6 +460,12 @@ function EditorInner({ id }: { id: string }) {
     }
   }, [])
 
+  // the leave handler reads meta through a ref so publish/profile toggles
+  // don't rebuild the listener (or cancel a pitch already ticking)
+  const metaRef = useRef(meta)
+  useEffect(() => {
+    metaRef.current = meta
+  }, [meta])
   useEffect(() => {
     if (!isGhost || !editor) return
     let stayTimer: ReturnType<typeof setTimeout>
@@ -473,9 +479,10 @@ function EditorInner({ id }: { id: string }) {
       // stay, the tab survives and we can make the pitch properly. if they
       // leave anyway, this timer dies with the page.
       stayTimer = setTimeout(() => {
+        const m = metaRef.current
         track('account prompt: shown', { reason: 'before leaving' })
         setModalReason(
-          meta && !meta.mine
+          m && !m.mine
             ? 'before you drift off — save this page to your desk?'
             : 'before you drift off — this page only exists in this tab'
         )
@@ -486,7 +493,7 @@ function EditorInner({ id }: { id: string }) {
       clearTimeout(stayTimer)
       window.removeEventListener('beforeunload', h)
     }
-  }, [isGhost, editor, meta])
+  }, [isGhost, editor])
 
   // ---------- comments ----------
   const lastCommentsJson = useRef('')
