@@ -1017,7 +1017,9 @@ for (const sig of ['SIGTERM', 'SIGINT']) {
     try {
       flushRooms()
     } catch (e) {
+      // a failed flush is not a clean shutdown — say so in the exit code
       console.error('shutdown flush failed', e)
+      process.exit(1)
     }
     process.exit(0)
   })

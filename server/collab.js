@@ -29,13 +29,6 @@ function getRoom(docId) {
   const awareness = new awarenessProtocol.Awareness(ydoc)
   awareness.setLocalState(null)
 
-  // when this doc last got a version, from any pen — the mid-flow clock
-  // below measures from here. a never-versioned doc starts its clock now,
-  // so a brand-new page isn't versioned on its first keystroke
-  const lastSnap =
-    db.prepare('SELECT MAX(created_at) AS t FROM versions WHERE doc_id = ?').get(docId)?.t ||
-    Date.now()
-
   room = {
     id: docId,
     ydoc,
@@ -46,7 +39,7 @@ function getRoom(docId) {
     saveTimer: null,
     idleTimer: null,
     lastEdit: 0,
-    lastSnap,
+    lastSnap: 0, // the mid-flow clock; reset at the start of each sitting
     editors: [], // who was at the desk when the last change landed
     destroyTimer: null,
   }
@@ -68,7 +61,7 @@ function getRoom(docId) {
     syncProtocol.writeUpdate(enc, update)
     broadcast(room, encoding.toUint8Array(enc))
     scheduleSave(room)
-    scheduleIdleSnap(room)
+    noteEdit(room)
   })
 
   rooms.set(docId, room)
@@ -125,8 +118,13 @@ const IDLE_SNAP_GAP = Number(process.env.AUTHOR_IDLE_SNAP_MS) || 5 * 60 * 1000
 // rested — notion cuts every 10 minutes of activity, and so do we
 const ACTIVE_SNAP_GAP = Number(process.env.AUTHOR_ACTIVE_SNAP_MS) || 10 * 60 * 1000
 
-function scheduleIdleSnap(room) {
+// every change lands here: it re-arms the idle timer, and while a sitting
+// stays unbroken it also keeps the mid-flow clock honest
+function noteEdit(room) {
   const now = Date.now()
+  // an edit within the idle gap of the previous one continues the sitting;
+  // anything later begins a new one
+  const flowing = now - room.lastEdit < IDLE_SNAP_GAP
   room.lastEdit = now
   // remember who was here for the change itself — by the time the timer
   // fires (or the room unloads and flushes), the writer may be gone
@@ -136,9 +134,15 @@ function scheduleIdleSnap(room) {
     room.idleTimer = null
     snapshotOnSettle(room)
   }, IDLE_SNAP_GAP)
-  if (now - room.lastSnap >= ACTIVE_SNAP_GAP) {
-    room.lastSnap = now // stamped before the walk so a dedupe-skip can't re-trigger every keystroke
-    snapshotOnSettle(room, 'while the ink flowed')
+  if (!flowing) {
+    // the first stroke after a break starts the flow clock — it is not,
+    // by itself, ten minutes of flow
+    room.lastSnap = Math.max(room.lastSnap, now)
+  } else if (now - room.lastSnap >= ACTIVE_SNAP_GAP) {
+    // stamped before the walk so a dedupe skip can't re-trigger per keystroke;
+    // deferred so the doc walk never blocks the message path
+    room.lastSnap = now
+    setImmediate(() => snapshotOnSettle(room, 'while the ink flowed'))
   }
 }
 
@@ -164,13 +168,16 @@ function snapshotOnSettle(room, name = 'as the ink dried') {
       )
       .get(room.id)
     if (latest) {
+      // any version written since we last looked moves the flow clock —
+      // a manual save counts as keeping the stretch
+      room.lastSnap = Math.max(room.lastSnap, latest.created_at)
+      // a mid-flow version only marks stretches nothing else kept
+      if (name === 'while the ink flowed' && Date.now() - latest.created_at < ACTIVE_SNAP_GAP)
+        return
       // a version kept after the last change (a manual save, mostly) already
       // holds this settled state — client and server serialize the same doc
       // slightly differently, so trust the clock, not just the bytes
-      if (latest.created_at >= room.lastEdit) {
-        room.lastSnap = Math.max(room.lastSnap, latest.created_at)
-        return
-      }
+      if (latest.created_at >= room.lastEdit) return
       if (latest.content === json) return
     }
     // credit whoever was at the desk for the change if it was one person
@@ -239,13 +246,7 @@ function closeConn(room, ws) {
     if (room.destroyTimer) clearTimeout(room.destroyTimer)
     room.destroyTimer = setTimeout(() => {
       if (room.conns.size === 0) {
-        persist(room)
-        // edits that never got their five quiet minutes get them now
-        if (room.idleTimer) {
-          clearTimeout(room.idleTimer)
-          room.idleTimer = null
-          snapshotOnSettle(room)
-        }
+        flushRoom(room)
         room.ydoc.destroy()
         rooms.delete(room.id)
       }
@@ -253,17 +254,20 @@ function closeConn(room, ws) {
   }
 }
 
-// deploys don't wait five minutes: on shutdown, write every room to disk
-// and give pending idle versions their moment before the process goes
-export function flushRooms() {
-  for (const room of rooms.values()) {
-    persist(room)
-    if (room.idleTimer) {
-      clearTimeout(room.idleTimer)
-      room.idleTimer = null
-      snapshotOnSettle(room)
-    }
+// a room's last duty, on unload and on shutdown alike: write the doc down,
+// and give a pending idle version its moment
+function flushRoom(room) {
+  persist(room)
+  if (room.idleTimer) {
+    clearTimeout(room.idleTimer)
+    room.idleTimer = null
+    snapshotOnSettle(room)
   }
+}
+
+// deploys don't wait five minutes
+export function flushRooms() {
+  for (const room of rooms.values()) flushRoom(room)
 }
 
 export function setupCollab(ws, docId, user) {

@@ -119,6 +119,15 @@ console.log('PASS: a fresh edit re-arms the timer')
 // the server; skipped when the env var is absent)
 const ACTIVE = Number(process.env.AUTHOR_ACTIVE_SNAP_MS)
 if (ACTIVE) {
+  // the first stroke after a break starts the flow clock — it must never
+  // count the silence before it as flow
+  await sleep(ACTIVE + 500)
+  write(a, 'a lone returning keystroke')
+  await sleep(600)
+  const early = (await versionsNow()).filter((v) => v.name === 'while the ink flowed')
+  if (early.length) throw new Error('FAIL: a single keystroke after a break minted a mid-flow version')
+  console.log('PASS: a return after a break is not mistaken for flow')
+
   const start = Date.now()
   let i = 0
   while (Date.now() - start < ACTIVE + 1000) {
@@ -137,7 +146,7 @@ if (ACTIVE) {
 // the idle timer must stand down instead of doubling it
 write(a, 'a third thought')
 await sleep(300)
-await fetch(`${BASE}/api/docs/${docId}/versions`, {
+const saved = await fetch(`${BASE}/api/docs/${docId}/versions`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json', Cookie: cookie },
   body: JSON.stringify({
@@ -145,12 +154,14 @@ await fetch(`${BASE}/api/docs/${docId}/versions`, {
     content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a third thought' }] }] },
   }),
 })
+if (!saved.ok) throw new Error(`FAIL: manual save refused: ${saved.status} ${await saved.text()}`)
 await sleep(GAP + 1000)
 versions = await versionsNow()
 // the flow phase (when run) legitimately adds trailing idle versions;
 // what must NOT appear is one minted after the manual save
-const manualAt = Math.max(...versions.filter((v) => v.name === 'kept by hand').map((v) => v.created_at))
-if (versions.some((v) => v.name === 'as the ink dried' && v.created_at > manualAt))
+const manual = versions.find((v) => v.name === 'kept by hand')
+if (!manual) throw new Error('FAIL: manual version missing from the list')
+if (versions.some((v) => v.name === 'as the ink dried' && v.created_at > manual.created_at))
   throw new Error('FAIL: idle snapshot duplicated a manual save')
 console.log('PASS: a manual save stands the idle timer down')
 
