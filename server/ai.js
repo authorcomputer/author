@@ -97,45 +97,29 @@ export async function aiCommand(req, res) {
   })
 }
 
-export async function aiTitles(req, res) {
-  const { text } = req.body || {}
-  if (!text || !text.trim()) return res.status(400).json({ error: 'empty draft' })
-  try {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 2000,
-      system: VOICE,
-      messages: [
-        {
-          role: 'user',
-          content: `<draft>\n${text.slice(0, 100000)}\n</draft>\n\nPropose 8 title ideas for this draft. Vary the register: some plain, some evocative, one or two risky.`,
-        },
-      ],
-      output_config: {
-        format: {
-          type: 'json_schema',
-          schema: {
-            type: 'object',
-            properties: {
-              titles: { type: 'array', items: { type: 'string' } },
-            },
-            required: ['titles'],
-            additionalProperties: false,
-          },
-        },
-      },
-    })
-    const block = response.content.find((b) => b.type === 'text')
-    res.json(JSON.parse(block.text))
-  } catch (e) {
-    console.error('ai titles error', e)
-    res.status(500).json({ error: e?.message || 'ai error' })
-  }
+// the proof reads for exactly what the writer asked — each check is its
+// own errand, and the schema only admits the kinds that were requested
+const PROOF_CHECKS = {
+  spelling: 'spelling errors and typos',
+  grammar: 'grammar problems — agreement, tense, punctuation',
+  repetition: 'repeated or leaned-on words and phrases',
+  cliche: 'clichés and tired phrasing',
+  clarity: 'confusing or convoluted sentences a reader would have to re-read',
+  brevity: 'needless words — places where fewer words would say more',
+  hedging: 'excessive hedging that saps confidence (maybe, I think, probably, sort of)',
 }
 
 export async function aiChecks(req, res) {
-  const { text } = req.body || {}
+  const { text, checks, custom } = req.body || {}
   if (!text || !text.trim()) return res.status(400).json({ error: 'empty draft' })
+  const picked = (Array.isArray(checks) ? checks : []).filter((c) => PROOF_CHECKS[c])
+  const ask = String(custom || '').trim().slice(0, 300)
+  if (!picked.length && !ask) return res.status(400).json({ error: 'pick something to read for' })
+  const errands = [
+    ...picked.map((c) => `- ${c}: ${PROOF_CHECKS[c]}`),
+    ...(ask ? [`- custom: ${ask}`] : []),
+  ].join('\n')
+  const kinds = [...picked, ...(ask ? ['custom'] : [])]
   try {
     const response = await client.messages.create({
       model: MODEL,
@@ -145,7 +129,7 @@ export async function aiChecks(req, res) {
       messages: [
         {
           role: 'user',
-          content: `<draft>\n${text.slice(0, 100000)}\n</draft>\n\nRun checks on this draft. Find spelling errors, grammar problems, repeated words, clichés, and confusing sentences. For each issue: quote the exact excerpt from the draft (short, verbatim so it can be found by search), classify it, explain the problem in a few words, and give a suggested fix. Report every real issue; skip stylistic nitpicks that are clearly intentional voice. If the draft is clean, return an empty list.`,
+          content: `<draft>\n${text.slice(0, 100000)}\n</draft>\n\nRead this draft for ONLY the following, and nothing else:\n${errands}\n\nFor each issue: quote the exact excerpt from the draft (short, verbatim so it can be found by search), classify it by the check name, explain the problem in a few words, and give a suggested fix. Report every real issue; skip stylistic nitpicks that are clearly intentional voice. If the draft is clean for these checks, return an empty list.`,
         },
       ],
       output_config: {
@@ -160,10 +144,7 @@ export async function aiChecks(req, res) {
                   type: 'object',
                   properties: {
                     excerpt: { type: 'string' },
-                    kind: {
-                      type: 'string',
-                      enum: ['spelling', 'grammar', 'repetition', 'cliche', 'clarity', 'other'],
-                    },
+                    kind: { type: 'string', enum: kinds },
                     note: { type: 'string' },
                     suggestion: { type: 'string' },
                   },

@@ -11,7 +11,7 @@ import { toNodeHandler, fromNodeHeaders } from 'better-auth/node'
 import { db, docExists } from './db.js'
 import { auth, runAuthMigrations, migrateLegacyUsers, TRUSTED_ORIGINS } from './auth.js'
 import { setupCollab, flushRooms, insertVersion } from './collab.js'
-import { aiFeedback, aiCommand, aiTitles, aiChecks } from './ai.js'
+import { aiFeedback, aiCommand, aiChecks } from './ai.js'
 
 const app = express()
 
@@ -836,7 +836,6 @@ function aiLimit(req, res, next) {
 
 app.post('/api/ai/feedback', requireUser, aiLimit, aiFeedback)
 app.post('/api/ai/command', requireUser, aiLimit, aiCommand)
-app.post('/api/ai/titles', requireUser, aiLimit, aiTitles)
 app.post('/api/ai/checks', requireUser, aiLimit, aiChecks)
 
 // ---------- static client ----------

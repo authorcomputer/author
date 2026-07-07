@@ -674,6 +674,28 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
 
 .version-row .v-meta { color: var(--faint); font-size: 11px; }
 
+/* the proof: bracket checkboxes, one errand per line, then one run button */
+.proof-row { margin-top: 9px; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.proof-row button { white-space: pre; }
+.proof-row button[aria-pressed='true'] { color: var(--accent); }
+.proof-row .desc { color: var(--faint); }
+.proof-custom {
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--fainter);
+  font-size: 12.5px;
+}
+.proof-custom:focus { border-color: var(--accent); }
+.proof-custom::placeholder { color: var(--fainter); }
+.proof-run {
+  margin-top: 14px;
+  border: 1px solid var(--ink);
+  padding: 7px 12px;
+}
+.proof-run:hover { border-color: var(--accent); }
+.proof-run:disabled { border-color: var(--fainter); }
+
 /* hovering a version floats a peek at that save, out over the page.
    fixed positioning so the panel's own scroll can't clip it */
 .v-preview {

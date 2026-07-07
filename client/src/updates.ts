@@ -19,6 +19,11 @@ export const UPDATES: UpdateDay[] = [
     blocks: [
       {
         kind: 'bullet',
+        head: 'the proof reads for what you pick',
+        text: 'checks became proof: choose exactly what the pen reads for — spelling, grammar, repetition, clichés, clarity, brevity, hedging, or a check in your own words — instead of everything at once. the titles tab retired; share copy tightened.',
+      },
+      {
+        kind: 'bullet',
         head: 'comments point both ways',
         text: 'clicking the glyph in the margin now lights up the comment it points at in the sidebar. comment cards always open where you can see them, and a thread takes as many replies as the conversation needs.',
       },

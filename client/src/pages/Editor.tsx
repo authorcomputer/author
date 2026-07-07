@@ -106,7 +106,7 @@ const isOpenRoot = (c: Comment) => !c.resolved && isRoot(c)
 
 type Issue = { excerpt: string; kind: string; note: string; suggestion: string }
 type Version = { id: string; name: string; username: string; created_at: number; kind: string }
-type Panel = 'ai' | 'checks' | 'titles' | 'comments' | 'versions' | null
+type Panel = 'ai' | 'checks' | 'comments' | 'versions' | null
 
 function docText(editor: TiptapEditor) {
   return editor.state.doc.textBetween(0, editor.state.doc.content.size, '\n\n')
@@ -649,7 +649,7 @@ function EditorInner({ id }: { id: string }) {
         <button
           className={panel ? 'on' : ''}
           onClick={() => (panel ? setPanel(null) : openPanel(lastTab))}
-          title="ask, checks, titles, comments, versions"
+          title="ask, proof, comments, versions"
         >
           [ editor ]
         </button>
@@ -781,7 +781,6 @@ function EditorInner({ id }: { id: string }) {
             setPanel={openPanel}
             editor={editor}
             docId={id}
-            onTitle={(t) => updateTitle(t)}
             comments={comments}
             reloadComments={reloadComments}
             focusId={focusId}
@@ -921,9 +920,8 @@ function SharePop({
         <div className="share-sec">
           <div className="share-h">✎ write together</div>
           <div className="hint">
-            send this link. whoever opens it just leaves a name — no account —
-            and lands in the draft with you. they can write, leave notes on any
-            passage, or suggest edits you can apply with one click.
+            send this link to people you want to be able to edit and comment
+            on your writing.
           </div>
           <div className="share-link">{writeUrl}</div>
           <button onClick={() => copy(writeUrl, 'write')}>
@@ -1094,7 +1092,6 @@ function SidePanel({
   setPanel,
   editor,
   docId,
-  onTitle,
   comments,
   reloadComments,
   focusId,
@@ -1103,7 +1100,6 @@ function SidePanel({
   setPanel: (p: Panel) => void
   editor: TiptapEditor
   docId: string
-  onTitle: (t: string) => void
   comments: Comment[]
   reloadComments: () => void
   focusId: string | null
@@ -1112,9 +1108,15 @@ function SidePanel({
   return (
     <div className="panel">
       <div className="panel-tabs">
-        {(['ai', 'checks', 'titles', 'comments', 'versions'] as const).map((p) => (
+        {(['ai', 'checks', 'comments', 'versions'] as const).map((p) => (
           <button key={p} className={panel === p ? 'on' : ''} onClick={() => setPanel(p)}>
-            {p === 'comments' && openCount > 0 ? `comments·${openCount}` : p === 'ai' ? 'ask' : p}
+            {p === 'comments' && openCount > 0
+              ? `comments·${openCount}`
+              : p === 'ai'
+                ? 'ask'
+                : p === 'checks'
+                  ? 'proof'
+                  : p}
           </button>
         ))}
         <div style={{ flex: 1 }} />
@@ -1123,7 +1125,6 @@ function SidePanel({
       <div className="panel-body">
         {panel === 'ai' && <AskPanel editor={editor} />}
         {panel === 'checks' && <ChecksPanel editor={editor} />}
-        {panel === 'titles' && <TitlesPanel editor={editor} onTitle={onTitle} />}
         {panel === 'comments' && (
           <CommentsPanel
             editor={editor}
@@ -1377,9 +1378,22 @@ function decorateIssues(editor: TiptapEditor, issues: Issue[]) {
   setMarks(editor, 'checks', items)
 }
 
+// each check is its own errand — the writer picks what the proof reads for
+const PROOF_CHECKS = [
+  { key: 'spelling', label: 'spelling', desc: 'typos and slips' },
+  { key: 'grammar', label: 'grammar', desc: 'agreement, tense, stray commas' },
+  { key: 'repetition', label: 'repetition', desc: 'words leaned on twice' },
+  { key: 'cliche', label: 'clichés', desc: 'phrases worn smooth' },
+  { key: 'clarity', label: 'clarity', desc: 'sentences a reader must re-read' },
+  { key: 'brevity', label: 'brevity', desc: 'words the sentence doesn’t need' },
+  { key: 'hedging', label: 'hedging', desc: 'confidence lost to maybes' },
+] as const
+
 function ChecksPanel({ editor }: { editor: TiptapEditor }) {
   const [issues, setIssues] = useState<Issue[] | null>(null)
   const [running, setRunning] = useState(false)
+  const [picked, setPicked] = useState<Set<string>>(new Set(['spelling', 'grammar']))
+  const [custom, setCustom] = useState('')
   const [err, setErr] = useState('')
   const [active, setActive] = useState<number | null>(null)
 
@@ -1403,7 +1417,22 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
     return () => dom.removeEventListener('click', onClick)
   }, [editor])
 
+  function toggle(key: string) {
+    setPicked((s) => {
+      const n = new Set(s)
+      if (n.has(key)) n.delete(key)
+      else n.add(key)
+      return n
+    })
+  }
+
   async function run() {
+    const checks = PROOF_CHECKS.map((c) => c.key).filter((k) => picked.has(k))
+    const ask = custom.trim()
+    if (!checks.length && !ask) {
+      setErr('pick at least one thing to read for')
+      return
+    }
     setRunning(true)
     setErr('')
     setIssues(null)
@@ -1412,11 +1441,15 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
     try {
       const res = await api('/api/ai/checks', {
         method: 'POST',
-        body: JSON.stringify({ text: docText(editor) }),
+        body: JSON.stringify({ text: docText(editor), checks, custom: ask }),
       })
       setIssues(res.issues || [])
       decorateIssues(editor, res.issues || [])
-      track('ai: checks ran', { issues: (res.issues || []).length })
+      track('ai: checks ran', {
+        checks: checks.join(','),
+        custom: !!ask,
+        issues: (res.issues || []).length,
+      })
     } catch (e: any) {
       if (needsAccount(e)) promptAccount()
       else if (needsMembership(e)) promptMembership()
@@ -1428,12 +1461,47 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
 
   return (
     <div>
-      <div className="hint" style={{ marginBottom: 8 }}>
-        spelling · grammar · repetition · clichés · clarity
+      <div className="hint" style={{ marginBottom: 4 }}>
+        a proof-read for exactly what you pick — nothing else.
       </div>
-      <button onClick={run} disabled={running}>
-        {running ? 'checking…' : '[ run checks ]'}
-      </button>
+      {PROOF_CHECKS.map((c) => (
+        <div className="proof-row" key={c.key}>
+          <button aria-pressed={picked.has(c.key)} onClick={() => toggle(c.key)}>
+            [{picked.has(c.key) ? '✓' : ' '}] {c.label}
+          </button>
+          <span className="desc"> — {c.desc}</span>
+        </div>
+      ))}
+      <div className="proof-row">
+        <button
+          aria-pressed={!!custom.trim()}
+          onClick={() => {
+            if (custom.trim()) setCustom('')
+            else document.getElementById('proof-custom')?.focus()
+          }}
+        >
+          [{custom.trim() ? '✓' : ' '}] custom
+        </button>
+        <span className="desc"> — your own check</span>
+      </div>
+      <input
+        id="proof-custom"
+        className="proof-custom"
+        placeholder="what should the pen read for?"
+        value={custom}
+        onChange={(e) => setCustom(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+            e.preventDefault()
+            run()
+          }
+        }}
+      />
+      <div>
+        <button className="proof-run" onClick={run} disabled={running}>
+          {running ? 'reading…' : '[ read the draft ]'}
+        </button>
+      </div>
       {running && <Scribble phrases={CHECK_PHRASES} />}
       {err && <div className="err">✗ {err}</div>}
       {issues && issues.length === 0 && (
@@ -1459,60 +1527,6 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
           </span>
           <div>{iss.note}</div>
           <div className="fix">→ {iss.suggestion}</div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function TitlesPanel({ editor, onTitle }: { editor: TiptapEditor; onTitle: (t: string) => void }) {
-  const [titles, setTitles] = useState<string[] | null>(null)
-  const [running, setRunning] = useState(false)
-  const [err, setErr] = useState('')
-
-  async function run() {
-    setRunning(true)
-    setErr('')
-    try {
-      const res = await api('/api/ai/titles', {
-        method: 'POST',
-        body: JSON.stringify({ text: docText(editor) }),
-      })
-      setTitles(res.titles || [])
-      track('ai: titles asked')
-    } catch (e: any) {
-      if (needsAccount(e)) promptAccount()
-      else if (needsMembership(e)) promptMembership()
-      else setErr(e.message)
-    } finally {
-      setRunning(false)
-    }
-  }
-
-  return (
-    <div>
-      <div className="hint" style={{ marginBottom: 8 }}>
-        one click, eight titles. click one to take it.
-      </div>
-      <button onClick={run} disabled={running}>
-        {running ? 'thinking…' : '[ suggest titles ]'}
-      </button>
-      {running && (
-        <Scribble
-          phrases={['weighing words…', 'trying names aloud…', 'rejecting the obvious ones…']}
-        />
-      )}
-      {err && <div className="err">✗ {err}</div>}
-      {titles?.map((t, i) => (
-        <div
-          className="title-idea"
-          key={i}
-          onClick={() => {
-            track('ai: title taken')
-            onTitle(t)
-          }}
-        >
-          {i + 1}. {t}
         </div>
       ))}
     </div>
