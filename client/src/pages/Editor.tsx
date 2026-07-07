@@ -1559,10 +1559,10 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
           <div className="fix">→ {iss.suggestion}</div>
           <div className="row-actions">
             {taken.has(i) ? (
-              <span className="hint">✓ taken</span>
+              <span className="hint">✓ incorporated</span>
             ) : (
               <button onClick={() => takeFix(iss, i)} title="replace the passage with the fix">
-                [ ✓ take the fix ]
+                [ ✓ incorporate ]
               </button>
             )}
           </div>
