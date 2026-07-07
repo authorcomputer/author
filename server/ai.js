@@ -144,7 +144,7 @@ export async function aiChecks(req, res) {
       messages: [
         {
           role: 'user',
-          content: `<draft>\n${text.slice(0, 100000)}\n</draft>\n\nRead this draft for ONLY the following, and nothing else:\n${errands}\n\nFor each issue: quote the exact excerpt from the draft (short, verbatim so it can be found by search), classify it by the check name, explain the problem in a few words, and give a suggested fix. Report every real issue; skip stylistic nitpicks that are clearly intentional voice. If the draft is clean for these checks, return an empty list.`,
+          content: `<draft>\n${text.slice(0, 100000)}\n</draft>\n\nRead this draft for ONLY the following, and nothing else:\n${errands}\n\nFor each issue: quote the exact excerpt from the draft (short, verbatim so it can be found by search), classify it by the check name, explain the problem in a few words, and give a suggested fix. Only report an issue when you are confident a careful copy editor would agree it is an error or clearly weaker than the fix — when something is debatable, a usage preference, or a matter of taste, let it stand. Name each problem for what it actually is: a usage or diction choice is not a "misspelling", and correctly spelled words are never a spelling error — if you recommend a change on usage grounds, say so plainly and word the note as a recommendation, not a verdict. Report every real issue; skip stylistic nitpicks that are clearly intentional voice. If the draft is clean for these checks, return an empty list.`,
         },
       ],
       output_config: {
