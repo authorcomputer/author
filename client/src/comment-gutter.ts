@@ -16,7 +16,7 @@ const key = new PluginKey<GutterState>('comment-gutter')
 
 type GutterState = { set: DecorationSet; sig: string }
 
-const makeEl = (text: string) => () => {
+const makeEl = (text: string, ids: string[]) => () => {
   const el = document.createElement('span')
   el.className = 'comment-gutter'
   el.textContent = text
@@ -26,7 +26,8 @@ const makeEl = (text: string) => () => {
   el.onmousedown = (e) => e.preventDefault()
   el.onclick = (e) => {
     e.preventDefault()
-    window.dispatchEvent(new CustomEvent('author:open-comments'))
+    // name the line's first comment so the panel can light its card up
+    window.dispatchEvent(new CustomEvent('author:open-comments', { detail: { id: ids[0] } }))
   }
   return el
 }
@@ -54,7 +55,7 @@ function build(doc: PMNode): GutterState {
       .join(' ')
     sigs.push(`${pos}:${text}`)
     decos.push(
-      Decoration.widget(pos + 1, makeEl(text), {
+      Decoration.widget(pos + 1, makeEl(text, [...kinds.keys()]), {
         side: -1,
         // keyed by contents, not position — edits elsewhere in the doc
         // shouldn't recreate the DOM node under the reader's cursor

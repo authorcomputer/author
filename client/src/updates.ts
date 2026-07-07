@@ -19,6 +19,11 @@ export const UPDATES: UpdateDay[] = [
     blocks: [
       {
         kind: 'bullet',
+        head: 'comments point both ways',
+        text: 'clicking the glyph in the margin now lights up the comment it points at in the sidebar. comment cards always open where you can see them, and a thread takes as many replies as the conversation needs.',
+      },
+      {
+        kind: 'bullet',
         head: 'versions save themselves',
         text: 'five quiet minutes after your last change — or every ten of unbroken writing — a version is kept automatically, listed by its date and time. hover any version to peek inside before restoring.',
       },

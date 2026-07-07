@@ -527,9 +527,19 @@ function EditorInner({ id }: { id: string }) {
   function openComposer() {
     if (!editor) return
     const { from, to } = editor.state.selection
-    if (to <= from) return
+    if (to <= from) {
+      // silence here read as "the button is broken" — say what's missing
+      alert('select some text to comment on first')
+      return
+    }
     const quote = editor.state.doc.textBetween(from, to, ' ')
-    const coords = editor.view.coordsAtPos(to)
+    // a stale selection can sit outside the viewport — the card must never
+    // open where the writer can't see it (its backdrop would eat the page)
+    let coords = editor.view.coordsAtPos(to)
+    if (coords.bottom < 0 || coords.top > window.innerHeight) {
+      editor.chain().focus().scrollIntoView().run()
+      coords = editor.view.coordsAtPos(to)
+    }
     setOpenPop(null)
     setComposer({ from, to, quote, x: coords.left, y: coords.bottom, yTop: coords.top })
   }
@@ -539,7 +549,12 @@ function EditorInner({ id }: { id: string }) {
     // the shortcut itself (⌥⌘M / ctrl+alt+M) lives in the CommentMark
     // extension, editor-scoped; the bubble and panel dispatch this event
     const onOpen = () => openComposer()
-    const onOpenPanel = () => openPanel('comments')
+    // the margin glyph names the comment it points at — light that card up
+    const onOpenPanel = (e: Event) => {
+      openPanel('comments')
+      const cid = (e as CustomEvent).detail?.id
+      if (cid) setFocusId(cid)
+    }
     window.addEventListener('author:comment', onOpen)
     window.addEventListener('author:open-comments', onOpenPanel)
     return () => {
@@ -1618,15 +1633,20 @@ function CommentComposer({
       const found = findRange(editor, draft.quote)
       r = found && found.to - found.from === draft.quote.length ? found : null
     }
-    if (r)
-      editor
-        .chain()
-        .focus()
-        .setTextSelection(r)
-        .setComment(cid, mode)
-        .setTextSelection(r.to)
-        .run()
-    else editor.commands.focus()
+    try {
+      if (r)
+        editor
+          .chain()
+          .focus()
+          .setTextSelection(r)
+          .setComment(cid, mode)
+          .setTextSelection(r.to)
+          .run()
+      else editor.commands.focus()
+    } catch {
+      // the comment is posted either way — a failed mark must not strand
+      // the card open as if nothing happened; the panel will show it
+    }
     onPosted()
     onClose()
   }
@@ -1637,11 +1657,13 @@ function CommentComposer({
       <div
         className="comment-pop"
         style={{
-          left: Math.min(draft.x, window.innerWidth - 320),
-          // below the line — above it only when the viewport runs out
+          left: Math.max(12, Math.min(draft.x, window.innerWidth - 320)),
+          // below the line — above it only when the viewport runs out; both
+          // arms clamped so the card can never open outside the viewport
+          // (invisible card + invisible backdrop = a page that ignores you)
           ...(draft.y + 260 > window.innerHeight
-            ? { top: draft.yTop - 8, transform: 'translateY(-100%)' }
-            : { top: draft.y + 8 }),
+            ? { top: Math.max(272, draft.yTop - 8), transform: 'translateY(-100%)' }
+            : { top: Math.max(12, draft.y + 8) }),
         }}
       >
         <div className="mode-row">
@@ -1742,11 +1764,12 @@ function CommentPop({
         ref={ref}
         className="comment-pop"
         style={{
-          left: Math.min(at.x, window.innerWidth - 320),
-          // below the line — above it only when the viewport runs out
+          left: Math.max(12, Math.min(at.x, window.innerWidth - 320)),
+          // below the line — above it only when the viewport runs out;
+          // clamped on-screen like the composer
           ...(at.y + 220 > window.innerHeight
-            ? { top: at.yTop - 8, transform: 'translateY(-100%)' }
-            : { top: at.y + 8 }),
+            ? { top: Math.max(232, at.yTop - 8), transform: 'translateY(-100%)' }
+            : { top: Math.max(12, at.y + 8) }),
         }}
       >
         <div className="byline">
