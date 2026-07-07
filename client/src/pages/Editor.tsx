@@ -1947,12 +1947,23 @@ function versionMoment(t: number) {
   return d.toLocaleString(undefined, opts).toLowerCase()
 }
 
+// deliberate saves wear their given name; automatic ones wear their moment
+const versionTitle = (v: Version) =>
+  v.kind === 'manual' && v.name ? v.name : versionMoment(v.created_at)
+
 type PreviewLine = { t: string; h?: boolean }
 
 // a glanceable reading of a stored version: first dozen blocks as text,
 // media as placeholders — enough to know which save is which
 function previewLines(doc: any): PreviewLine[] {
-  const textOf = (n: any): string => n.text || (n.content || []).map(textOf).join('')
+  // inline runs glue together (bold mid-word stays whole); block children
+  // of quotes and list items get a space so paragraphs don't run into
+  // each other
+  const textOf = (n: any): string =>
+    n.text ??
+    (n.content || [])
+      .map(textOf)
+      .join(n.type === 'paragraph' || n.type === 'heading' ? '' : ' ')
   const lines: PreviewLine[] = []
   for (const b of doc?.content || []) {
     if (lines.length >= 12) break
@@ -1992,6 +2003,19 @@ function VersionsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
     load()
   }, [docId])
 
+  // the popover is pinned to hover-time coordinates — scrolling the list or
+  // resizing the window would strand it, so any of those puts it away
+  useEffect(() => {
+    const hide = () => hidePreview()
+    window.addEventListener('scroll', hide, true)
+    window.addEventListener('resize', hide)
+    return () => {
+      window.removeEventListener('scroll', hide, true)
+      window.removeEventListener('resize', hide)
+      window.clearTimeout(hoverTimer.current)
+    }
+  }, [])
+
   async function save() {
     await api(`/api/docs/${docId}/versions`, {
       method: 'POST',
@@ -2021,7 +2045,7 @@ function VersionsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
       if (hoverId.current !== v.id) return
       setPreview({
         id: v.id,
-        top: Math.max(12, Math.min(rect.top, window.innerHeight - 320)),
+        top: Math.max(12, Math.min(rect.top, window.innerHeight - 340)),
         right: window.innerWidth - rect.left + 14,
         lines,
       })
@@ -2037,7 +2061,7 @@ function VersionsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
   async function restore(v: Version) {
     if (!confirm('Restore this version? The current text is kept as its own version first.')) return
     const full = await api(`/api/versions/${v.id}`)
-    const label = v.name || versionMoment(v.created_at)
+    const label = versionTitle(v)
     // a restore is never a one-way door: keep what's on the page right now
     await api(`/api/docs/${docId}/versions`, {
       method: 'POST',
@@ -2083,10 +2107,14 @@ function VersionsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
           onMouseEnter={(e) => showPreview(v, e.currentTarget)}
           onMouseLeave={hidePreview}
         >
-          <div>{v.name || versionMoment(v.created_at)}</div>
+          <div>{versionTitle(v)}</div>
           <div className="v-meta">
             {v.username}
-            {v.name ? ' · ' + versionMoment(v.created_at) : ''}
+            {v.kind === 'manual'
+              ? ' · ' + versionMoment(v.created_at)
+              : v.name
+                ? ' · ' + v.name
+                : ''}
           </div>
           <div className="row-actions">
             <button onClick={() => restore(v)}>↺ restore</button>

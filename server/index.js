@@ -10,7 +10,7 @@ import sanitizeHtml from 'sanitize-html'
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node'
 import { db, docExists } from './db.js'
 import { auth, runAuthMigrations, migrateLegacyUsers, TRUSTED_ORIGINS } from './auth.js'
-import { setupCollab, flushRooms } from './collab.js'
+import { setupCollab, flushRooms, insertVersion } from './collab.js'
 import { aiFeedback, aiCommand, aiTitles, aiChecks } from './ai.js'
 
 const app = express()
@@ -479,16 +479,15 @@ app.get('/api/docs/:id/versions', requireUser, (req, res) => {
 app.post('/api/docs/:id/versions', requireFullUser, (req, res) => {
   const { name, content } = req.body || {}
   if (!content) return res.status(400).json({ error: 'no content' })
-  const vid = uid('v')
-  db.prepare(
-    "INSERT INTO versions (id, doc_id, name, username, content, created_at, kind) VALUES (?, ?, ?, ?, ?, ?, 'manual')"
-  ).run(
-    vid,
+  // a deliberate save always wears a name, so it never blends in with the
+  // automatic ones the panel titles by time alone
+  const vid = insertVersion(
     req.params.id,
-    String(name || '').trim(),
+    String(name || '').trim() || 'unnamed version',
     req.user.username,
     JSON.stringify(content),
-    Date.now()
+    Date.now(),
+    'manual'
   )
   res.json({ id: vid })
 })

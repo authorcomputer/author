@@ -151,12 +151,15 @@ const ownerUsername = (docId) =>
     .prepare('SELECT u.username FROM user u JOIN docs d ON d.owner_id = u.id WHERE d.id = ?')
     .get(docId)?.username || 'author*'
 
-// auto versions carry no name — the panel shows them by their moment.
-// kind is the machine-readable marker: 'idle' | 'flow' | 'join' | 'manual'
-function insertVersion(docId, username, json, ts, kind) {
+// kind is the machine-readable marker: 'idle' | 'flow' | 'join' | 'manual'.
+// the client titles every non-manual version by its moment, so auto names
+// are pure metadata — idle/flow store none, join remembers who arrived
+export function insertVersion(docId, name, username, json, ts, kind) {
+  const id = 'v_' + crypto.randomBytes(8).toString('hex')
   db.prepare(
-    "INSERT INTO versions (id, doc_id, name, username, content, created_at, kind) VALUES (?, ?, '', ?, ?, ?, ?)"
-  ).run('v_' + crypto.randomBytes(8).toString('hex'), docId, username, json, ts, kind)
+    'INSERT INTO versions (id, doc_id, name, username, content, created_at, kind) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, docId, name, username, json, ts, kind)
+  return id
 }
 
 function snapshotOnSettle(room, kind = 'idle') {
@@ -187,7 +190,7 @@ function snapshotOnSettle(room, kind = 'idle') {
     const username =
       ids.size === 1 ? room.editors[0].username : ownerUsername(room.id)
     room.lastSnap = Date.now()
-    insertVersion(room.id, username, json, room.lastSnap, kind)
+    insertVersion(room.id, '', username, json, room.lastSnap, kind)
   } catch (e) {
     console.error('auto snapshot failed', room.id, e)
   }
@@ -201,7 +204,7 @@ function snapshotOnSettle(room, kind = 'idle') {
 // manual or automatic, is restore point enough.
 const AUTO_SNAP_GAP = 10 * 60 * 1000
 
-function snapshotOnCompany(room) {
+function snapshotOnCompany(room, joiner) {
   // off the ws-upgrade path: the doc-to-JSON walk and the insert can wait
   // until after the joiner's handshake
   setImmediate(() => {
@@ -222,7 +225,7 @@ function snapshotOnCompany(room) {
       room.lastSnap = Math.max(room.lastSnap, now)
       // credit the page's owner — "whose text this was" — not whoever's
       // socket happened to open first
-      insertVersion(room.id, ownerUsername(room.id), JSON.stringify(content), now, 'join')
+      insertVersion(room.id, `as ${joiner} joined`, ownerUsername(room.id), JSON.stringify(content), now, 'join')
     } catch (e) {
       console.error('auto snapshot failed', room.id, e)
     }
@@ -283,7 +286,7 @@ export function setupCollab(ws, docId, user) {
   if (user?.id) {
     const ids = new Set([...room.names.values()].map((u) => u.id))
     if (ids.size === 1 && !ids.has(user.id)) {
-      snapshotOnCompany(room)
+      snapshotOnCompany(room, user.username)
     }
     room.names.set(ws, { id: user.id, username: user.username })
   }

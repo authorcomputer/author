@@ -83,12 +83,14 @@ CREATE TABLE IF NOT EXISTS profiles (
 );
 `)
 
-// lightweight migrations for pre-existing databases
+// lightweight migrations for pre-existing databases. returns whether the
+// column was created just now, so one-time backfills can key on it
 function addColumn(table, ddl) {
   try {
     db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`)
+    return true
   } catch {
-    /* column already exists */
+    return false /* column already exists */
   }
 }
 addColumn('users', 'profile_public INTEGER DEFAULT 0')
@@ -99,13 +101,16 @@ addColumn('docs', 'header_image TEXT')
 addColumn('docs', 'on_profile INTEGER DEFAULT 1')
 addColumn('invite_codes', 'max_uses INTEGER DEFAULT 25')
 addColumn('profiles', 'member INTEGER DEFAULT 0')
-// versions carry a kind so names stay purely human: manual saves keep what
-// the writer typed, auto saves have no name and display as date and time.
-// the one-time backfill reads the old poetic names into kinds, then blanks them
-addColumn('versions', "kind TEXT DEFAULT 'manual'")
-db.exec(`UPDATE versions SET kind = 'join', name = '' WHERE kind = 'manual' AND name LIKE 'as % joined'`)
-db.exec(`UPDATE versions SET kind = 'idle', name = '' WHERE kind = 'manual' AND name = 'as the ink dried'`)
-db.exec(`UPDATE versions SET kind = 'flow', name = '' WHERE kind = 'manual' AND name = 'while the ink flowed'`)
+// versions carry a kind so the client can tell deliberate saves from auto
+// ones without leaning on display names. classified once, the moment the
+// column first appears, from the poetic names old rows were born with —
+// the names themselves are kept: they're history, and 'as X joined' is the
+// only record of who joined
+if (addColumn('versions', "kind TEXT DEFAULT 'manual'")) {
+  db.exec(`UPDATE versions SET kind = 'join' WHERE name LIKE 'as % joined'`)
+  db.exec(`UPDATE versions SET kind = 'idle' WHERE name = 'as the ink dried'`)
+  db.exec(`UPDATE versions SET kind = 'flow' WHERE name = 'while the ink flowed'`)
+}
 
 // a comment can carry a proposed replacement for its quoted passage
 addColumn('comments', "suggestion TEXT DEFAULT ''")

@@ -679,7 +679,7 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
    fixed positioning so the panel's own scroll can't clip it */
 .v-preview {
   position: fixed;
-  width: 280px;
+  width: min(280px, calc(100vw - 400px));
   max-height: 300px;
   overflow: hidden;
   background: var(--paper);
