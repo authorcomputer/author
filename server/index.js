@@ -10,7 +10,7 @@ import sanitizeHtml from 'sanitize-html'
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node'
 import { db, docExists } from './db.js'
 import { auth, runAuthMigrations, migrateLegacyUsers, TRUSTED_ORIGINS } from './auth.js'
-import { setupCollab } from './collab.js'
+import { setupCollab, flushRooms } from './collab.js'
 import { aiFeedback, aiCommand, aiTitles, aiChecks } from './ai.js'
 
 const app = express()
@@ -1009,3 +1009,16 @@ setInterval(sweepGhosts, 24 * 60 * 60 * 1000).unref()
 server.listen(PORT, () => {
   console.log(`author* listening on http://localhost:${PORT}`)
 })
+
+// a deploy is just a very abrupt way of leaving — write everything down
+// first (better-sqlite3 is synchronous, so this completes before exit)
+for (const sig of ['SIGTERM', 'SIGINT']) {
+  process.once(sig, () => {
+    try {
+      flushRooms()
+    } catch (e) {
+      console.error('shutdown flush failed', e)
+    }
+    process.exit(0)
+  })
+}

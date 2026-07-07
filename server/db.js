@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS versions (
   content TEXT NOT NULL,
   created_at INTEGER NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_versions_doc_created ON versions(doc_id, created_at);
 CREATE TABLE IF NOT EXISTS activity (
   user_id TEXT NOT NULL,
   day TEXT NOT NULL,

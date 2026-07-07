@@ -29,6 +29,13 @@ function getRoom(docId) {
   const awareness = new awarenessProtocol.Awareness(ydoc)
   awareness.setLocalState(null)
 
+  // when this doc last got a version, from any pen — the mid-flow clock
+  // below measures from here. a never-versioned doc starts its clock now,
+  // so a brand-new page isn't versioned on its first keystroke
+  const lastSnap =
+    db.prepare('SELECT MAX(created_at) AS t FROM versions WHERE doc_id = ?').get(docId)?.t ||
+    Date.now()
+
   room = {
     id: docId,
     ydoc,
@@ -38,6 +45,9 @@ function getRoom(docId) {
     lastAutoSnap: 0,
     saveTimer: null,
     idleTimer: null,
+    lastEdit: 0,
+    lastSnap,
+    editors: [], // who was at the desk when the last change landed
     destroyTimer: null,
   }
 
@@ -111,49 +121,67 @@ const hasStuff = (n) =>
 // that unloads with the timer still pending flushes early, since leaving
 // is the most settled a page gets.
 const IDLE_SNAP_GAP = Number(process.env.AUTHOR_IDLE_SNAP_MS) || 5 * 60 * 1000
+// a long unbroken session should not go unkept just because the pen never
+// rested — notion cuts every 10 minutes of activity, and so do we
+const ACTIVE_SNAP_GAP = Number(process.env.AUTHOR_ACTIVE_SNAP_MS) || 10 * 60 * 1000
 
 function scheduleIdleSnap(room) {
+  const now = Date.now()
+  room.lastEdit = now
+  // remember who was here for the change itself — by the time the timer
+  // fires (or the room unloads and flushes), the writer may be gone
+  room.editors = [...room.names.values()]
   if (room.idleTimer) clearTimeout(room.idleTimer)
   room.idleTimer = setTimeout(() => {
     room.idleTimer = null
     snapshotOnSettle(room)
   }, IDLE_SNAP_GAP)
+  if (now - room.lastSnap >= ACTIVE_SNAP_GAP) {
+    room.lastSnap = now // stamped before the walk so a dedupe-skip can't re-trigger every keystroke
+    snapshotOnSettle(room, 'while the ink flowed')
+  }
 }
 
-function snapshotOnSettle(room) {
+const ownerUsername = (docId) =>
+  db
+    .prepare('SELECT u.username FROM user u JOIN docs d ON d.owner_id = u.id WHERE d.id = ?')
+    .get(docId)?.username || 'author*'
+
+function insertVersion(docId, name, username, json, ts) {
+  db.prepare(
+    'INSERT INTO versions (id, doc_id, name, username, content, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run('v_' + crypto.randomBytes(8).toString('hex'), docId, name, username, json, ts)
+}
+
+function snapshotOnSettle(room, name = 'as the ink dried') {
   try {
     const content = yDocToProsemirrorJSON(room.ydoc, 'default')
     if (!hasStuff(content)) return
     const json = JSON.stringify(content)
-    // a title tweak or a change typed and then undone still ticks the yjs
-    // clock — only keep the version if the text itself moved
     const latest = db
-      .prepare('SELECT content FROM versions WHERE doc_id = ? ORDER BY created_at DESC LIMIT 1')
+      .prepare(
+        'SELECT content, created_at FROM versions WHERE doc_id = ? ORDER BY created_at DESC LIMIT 1'
+      )
       .get(room.id)
-    if (latest && latest.content === json) return
-    // credit whoever is at the desk if it's one person; otherwise the page's owner
-    const here = new Set([...room.names.values()].map((u) => u.username))
-    let username = here.size === 1 ? [...here][0] : null
-    if (!username) {
-      const owner = db
-        .prepare(
-          'SELECT u.username FROM user u JOIN docs d ON d.owner_id = u.id WHERE d.id = ?'
-        )
-        .get(room.id)
-      username = owner?.username || 'author*'
+    if (latest) {
+      // a version kept after the last change (a manual save, mostly) already
+      // holds this settled state — client and server serialize the same doc
+      // slightly differently, so trust the clock, not just the bytes
+      if (latest.created_at >= room.lastEdit) {
+        room.lastSnap = Math.max(room.lastSnap, latest.created_at)
+        return
+      }
+      if (latest.content === json) return
     }
-    db.prepare(
-      'INSERT INTO versions (id, doc_id, name, username, content, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(
-      'v_' + crypto.randomBytes(8).toString('hex'),
-      room.id,
-      'as the ink dried',
-      username,
-      json,
-      Date.now()
-    )
+    // credit whoever was at the desk for the change if it was one person
+    // (one account — pen names can repeat); otherwise the page's owner
+    const ids = new Set(room.editors.map((u) => u.id))
+    const username =
+      ids.size === 1 ? room.editors[0].username : ownerUsername(room.id)
+    room.lastSnap = Date.now()
+    insertVersion(room.id, name, username, json, room.lastSnap)
   } catch (e) {
-    console.error('idle snapshot failed', room.id, e)
+    console.error('auto snapshot failed', room.id, e)
   }
 }
 
@@ -182,24 +210,11 @@ function snapshotOnCompany(room, joiner) {
       if (latest?.t && now - latest.t < AUTO_SNAP_GAP) return
       const content = yDocToProsemirrorJSON(room.ydoc, 'default')
       if (!hasStuff(content)) return
+      room.lastAutoSnap = now
+      room.lastSnap = Math.max(room.lastSnap, now)
       // credit the page's owner — "whose text this was" — not whoever's
       // socket happened to open first
-      const owner = db
-        .prepare(
-          'SELECT u.username FROM user u JOIN docs d ON d.owner_id = u.id WHERE d.id = ?'
-        )
-        .get(room.id)
-      room.lastAutoSnap = now
-      db.prepare(
-        'INSERT INTO versions (id, doc_id, name, username, content, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-      ).run(
-        'v_' + crypto.randomBytes(8).toString('hex'),
-        room.id,
-        `as ${joiner} joined`,
-        owner?.username || 'author*',
-        JSON.stringify(content),
-        now
-      )
+      insertVersion(room.id, `as ${joiner} joined`, ownerUsername(room.id), JSON.stringify(content), now)
     } catch (e) {
       console.error('auto snapshot failed', room.id, e)
     }
@@ -218,7 +233,10 @@ function closeConn(room, ws) {
   } catch {}
   if (room.conns.size === 0) {
     persist(room)
-    // keep the doc warm briefly, then unload
+    // keep the doc warm briefly, then unload. clear any timer a double
+    // close ('error' then 'close') already armed — a stale one surviving
+    // past a reconnect could tear down a room that came back to life
+    if (room.destroyTimer) clearTimeout(room.destroyTimer)
     room.destroyTimer = setTimeout(() => {
       if (room.conns.size === 0) {
         persist(room)
@@ -232,6 +250,19 @@ function closeConn(room, ws) {
         rooms.delete(room.id)
       }
     }, 30_000)
+  }
+}
+
+// deploys don't wait five minutes: on shutdown, write every room to disk
+// and give pending idle versions their moment before the process goes
+export function flushRooms() {
+  for (const room of rooms.values()) {
+    persist(room)
+    if (room.idleTimer) {
+      clearTimeout(room.idleTimer)
+      room.idleTimer = null
+      snapshotOnSettle(room)
+    }
   }
 }
 

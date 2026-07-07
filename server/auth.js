@@ -12,14 +12,23 @@ export const TRUSTED_ORIGINS = [
 ]
 
 // the address the server believes it lives at is trusted by definition —
-// this is what lets test servers boot on whatever port happens to be free
-const self = (process.env.BETTER_AUTH_URL || '').replace(/\/$/, '')
-if (self && !TRUSTED_ORIGINS.includes(self)) TRUSTED_ORIGINS.push(self)
+// this is what lets test servers boot on whatever port happens to be free.
+// normalized down to a real origin so a baseURL with a path still matches
+// the browser's Origin header, and garbage never widens the allowlist
+try {
+  const self = new URL(process.env.BETTER_AUTH_URL || '').origin
+  if (self !== 'null' && !TRUSTED_ORIGINS.includes(self)) TRUSTED_ORIGINS.push(self)
+} catch {}
 
 const isProd = !!process.env.FLY_APP_NAME || process.env.NODE_ENV === 'production'
 if (isProd && (!process.env.BETTER_AUTH_SECRET || !process.env.BETTER_AUTH_URL)) {
   // never boot production on the dev secret or an http baseURL
   throw new Error('BETTER_AUTH_SECRET and BETTER_AUTH_URL must be set in production')
+}
+if (isProd && !String(process.env.BETTER_AUTH_URL).startsWith('https://')) {
+  // the comment above has always promised this — now the boot enforces it,
+  // since a plain-http baseURL would become a trusted (MITM-forgeable) origin
+  throw new Error('BETTER_AUTH_URL must be https in production')
 }
 
 // data a ghost produced follows them into their new account

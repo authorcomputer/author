@@ -114,5 +114,45 @@ const dried = versions.filter((v) => v.name === 'as the ink dried')
 if (dried.length !== 2) throw new Error('FAIL: expected 2 idle snapshots, got ' + dried.length)
 console.log('PASS: a fresh edit re-arms the timer')
 
+// 4) a long unbroken session gets kept mid-flow — write continuously past
+// the active gap without ever going idle (needs AUTHOR_ACTIVE_SNAP_MS on
+// the server; skipped when the env var is absent)
+const ACTIVE = Number(process.env.AUTHOR_ACTIVE_SNAP_MS)
+if (ACTIVE) {
+  const start = Date.now()
+  let i = 0
+  while (Date.now() - start < ACTIVE + 1000) {
+    write(a, `flow line ${i++}`)
+    await sleep(Math.min(400, GAP / 3))
+  }
+  await sleep(500)
+  versions = await versionsNow()
+  const flowed = versions.filter((v) => v.name === 'while the ink flowed')
+  if (flowed.length < 1) throw new Error('FAIL: no mid-flow snapshot during continuous writing')
+  console.log('PASS: a long session is kept mid-flow, credited to', flowed[0].username)
+  await sleep(GAP + 1000) // let the trailing idle version land before the next check
+}
+
+// 5) a manual save after the last edit already holds the settled state —
+// the idle timer must stand down instead of doubling it
+write(a, 'a third thought')
+await sleep(300)
+await fetch(`${BASE}/api/docs/${docId}/versions`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Cookie: cookie },
+  body: JSON.stringify({
+    name: 'kept by hand',
+    content: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'a third thought' }] }] },
+  }),
+})
+await sleep(GAP + 1000)
+versions = await versionsNow()
+// the flow phase (when run) legitimately adds trailing idle versions;
+// what must NOT appear is one minted after the manual save
+const manualAt = Math.max(...versions.filter((v) => v.name === 'kept by hand').map((v) => v.created_at))
+if (versions.some((v) => v.name === 'as the ink dried' && v.created_at > manualAt))
+  throw new Error('FAIL: idle snapshot duplicated a manual save')
+console.log('PASS: a manual save stands the idle timer down')
+
 a.provider.destroy()
 process.exit(0)
