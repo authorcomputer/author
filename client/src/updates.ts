@@ -14,6 +14,17 @@ export type UpdateDay = { date: string; title: string; blocks: UpdateBlock[] }
 
 export const UPDATES: UpdateDay[] = [
   {
+    date: 'july 7, 2026',
+    title: 'the page keeps itself',
+    blocks: [
+      {
+        kind: 'bullet',
+        head: 'versions save themselves',
+        text: 'five quiet minutes after your last change, a version is kept automatically — "as the ink dried" in your history, ready if you ever want the page back the way it was.',
+      },
+    ],
+  },
+  {
     date: 'july 3, 2026',
     title: 'the door opens for readers',
     blocks: [

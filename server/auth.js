@@ -11,6 +11,11 @@ export const TRUSTED_ORIGINS = [
   'https://www.author.computer',
 ]
 
+// the address the server believes it lives at is trusted by definition —
+// this is what lets test servers boot on whatever port happens to be free
+const self = (process.env.BETTER_AUTH_URL || '').replace(/\/$/, '')
+if (self && !TRUSTED_ORIGINS.includes(self)) TRUSTED_ORIGINS.push(self)
+
 const isProd = !!process.env.FLY_APP_NAME || process.env.NODE_ENV === 'production'
 if (isProd && (!process.env.BETTER_AUTH_SECRET || !process.env.BETTER_AUTH_URL)) {
   // never boot production on the dev secret or an http baseURL

@@ -37,6 +37,7 @@ function getRoom(docId) {
     names: new Map(), // ws -> username, for the co-editing snapshot below
     lastAutoSnap: 0,
     saveTimer: null,
+    idleTimer: null,
     destroyTimer: null,
   }
 
@@ -57,6 +58,7 @@ function getRoom(docId) {
     syncProtocol.writeUpdate(enc, update)
     broadcast(room, encoding.toUint8Array(enc))
     scheduleSave(room)
+    scheduleIdleSnap(room)
   })
 
   rooms.set(docId, room)
@@ -95,6 +97,66 @@ function scheduleSave(room) {
   }, 1500)
 }
 
+// words count, and so do images and embeds — an all-media page is
+// still a page worth keeping
+const hasStuff = (n) =>
+  (n.text || '').trim() ||
+  n.type === 'image' ||
+  n.type === 'embed' ||
+  (n.content || []).some(hasStuff)
+
+// five minutes without a change means the writer stopped somewhere
+// deliberate — that settled state is worth keeping. the timer resets on
+// every edit, so versions land at the pauses, not mid-sentence; a room
+// that unloads with the timer still pending flushes early, since leaving
+// is the most settled a page gets.
+const IDLE_SNAP_GAP = Number(process.env.AUTHOR_IDLE_SNAP_MS) || 5 * 60 * 1000
+
+function scheduleIdleSnap(room) {
+  if (room.idleTimer) clearTimeout(room.idleTimer)
+  room.idleTimer = setTimeout(() => {
+    room.idleTimer = null
+    snapshotOnSettle(room)
+  }, IDLE_SNAP_GAP)
+}
+
+function snapshotOnSettle(room) {
+  try {
+    const content = yDocToProsemirrorJSON(room.ydoc, 'default')
+    if (!hasStuff(content)) return
+    const json = JSON.stringify(content)
+    // a title tweak or a change typed and then undone still ticks the yjs
+    // clock — only keep the version if the text itself moved
+    const latest = db
+      .prepare('SELECT content FROM versions WHERE doc_id = ? ORDER BY created_at DESC LIMIT 1')
+      .get(room.id)
+    if (latest && latest.content === json) return
+    // credit whoever is at the desk if it's one person; otherwise the page's owner
+    const here = new Set([...room.names.values()].map((u) => u.username))
+    let username = here.size === 1 ? [...here][0] : null
+    if (!username) {
+      const owner = db
+        .prepare(
+          'SELECT u.username FROM user u JOIN docs d ON d.owner_id = u.id WHERE d.id = ?'
+        )
+        .get(room.id)
+      username = owner?.username || 'author*'
+    }
+    db.prepare(
+      'INSERT INTO versions (id, doc_id, name, username, content, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(
+      'v_' + crypto.randomBytes(8).toString('hex'),
+      room.id,
+      'as the ink dried',
+      username,
+      json,
+      Date.now()
+    )
+  } catch (e) {
+    console.error('idle snapshot failed', room.id, e)
+  }
+}
+
 // versions are the safety net for co-editing: the moment a second writer
 // joins, quietly keep "as X joined" so the text of that moment is one click
 // away if a merge ever goes semantically wrong. throttled against the
@@ -119,13 +181,6 @@ function snapshotOnCompany(room, joiner) {
         .get(room.id)
       if (latest?.t && now - latest.t < AUTO_SNAP_GAP) return
       const content = yDocToProsemirrorJSON(room.ydoc, 'default')
-      // words count, and so do images and embeds — an all-media page is
-      // still a page worth keeping
-      const hasStuff = (n) =>
-        (n.text || '').trim() ||
-        n.type === 'image' ||
-        n.type === 'embed' ||
-        (n.content || []).some(hasStuff)
       if (!hasStuff(content)) return
       // credit the page's owner — "whose text this was" — not whoever's
       // socket happened to open first
@@ -167,6 +222,12 @@ function closeConn(room, ws) {
     room.destroyTimer = setTimeout(() => {
       if (room.conns.size === 0) {
         persist(room)
+        // edits that never got their five quiet minutes get them now
+        if (room.idleTimer) {
+          clearTimeout(room.idleTimer)
+          room.idleTimer = null
+          snapshotOnSettle(room)
+        }
         room.ydoc.destroy()
         rooms.delete(room.id)
       }
