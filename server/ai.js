@@ -112,9 +112,20 @@ const PROOF_CHECKS = {
 export async function aiChecks(req, res) {
   const { text, checks, custom } = req.body || {}
   if (!text || !text.trim()) return res.status(400).json({ error: 'empty draft' })
-  const picked = (Array.isArray(checks) ? checks : []).filter((c) => PROOF_CHECKS[c])
-  const ask = String(custom || '').trim().slice(0, 300)
-  if (!picked.length && !ask) return res.status(400).json({ error: 'pick something to read for' })
+  // one line, no matter what arrives — the errand list below is line-shaped,
+  // so a newline in the ask must not smuggle in a second errand
+  const ask = String(custom || '').replace(/\s+/g, ' ').trim().slice(0, 300)
+  const sent = Array.isArray(checks) ? checks : null
+  let picked = [...new Set((sent || []).filter((c) => PROOF_CHECKS[c]))]
+  if (sent === null && !ask) {
+    // a client from before the picker (a tab that outlived a deploy) sends
+    // no checks field at all — give it the full read it was built for
+    picked = Object.keys(PROOF_CHECKS)
+  }
+  if (!picked.length && !ask)
+    // an explicit-but-empty or unrecognized pick is a real error — naming a
+    // check the server doesn't know must fail loudly, not pass as "clean"
+    return res.status(400).json({ error: 'pick something to read for' })
   const errands = [
     ...picked.map((c) => `- ${c}: ${PROOF_CHECKS[c]}`),
     ...(ask ? [`- custom: ${ask}`] : []),

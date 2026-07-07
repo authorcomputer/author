@@ -1105,18 +1105,14 @@ function SidePanel({
   focusId: string | null
 }) {
   const openCount = comments.filter(isOpenRoot).length
+  // internal keys keep their history; these are the names on the door
+  const TAB_LABELS: Record<string, string> = { ai: 'ask', checks: 'proof' }
   return (
     <div className="panel">
       <div className="panel-tabs">
         {(['ai', 'checks', 'comments', 'versions'] as const).map((p) => (
           <button key={p} className={panel === p ? 'on' : ''} onClick={() => setPanel(p)}>
-            {p === 'comments' && openCount > 0
-              ? `comments·${openCount}`
-              : p === 'ai'
-                ? 'ask'
-                : p === 'checks'
-                  ? 'proof'
-                  : p}
+            {p === 'comments' && openCount > 0 ? `comments·${openCount}` : (TAB_LABELS[p] ?? p)}
           </button>
         ))}
         <div style={{ flex: 1 }} />
@@ -1394,6 +1390,7 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
   const [running, setRunning] = useState(false)
   const [picked, setPicked] = useState<Set<string>>(new Set(['spelling', 'grammar']))
   const [custom, setCustom] = useState('')
+  const [customOn, setCustomOn] = useState(false)
   const [err, setErr] = useState('')
   const [active, setActive] = useState<number | null>(null)
 
@@ -1427,8 +1424,9 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
   }
 
   async function run() {
+    if (running) return // enter in the custom field must not double-run
     const checks = PROOF_CHECKS.map((c) => c.key).filter((k) => picked.has(k))
-    const ask = custom.trim()
+    const ask = customOn ? custom.trim() : ''
     if (!checks.length && !ask) {
       setErr('pick at least one thing to read for')
       return
@@ -1474,13 +1472,17 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
       ))}
       <div className="proof-row">
         <button
-          aria-pressed={!!custom.trim()}
+          aria-pressed={customOn && !!custom.trim()}
           onClick={() => {
-            if (custom.trim()) setCustom('')
-            else document.getElementById('proof-custom')?.focus()
+            // toggling the box never touches the words in it
+            if (customOn) setCustomOn(false)
+            else {
+              setCustomOn(true)
+              if (!custom.trim()) document.getElementById('proof-custom')?.focus()
+            }
           }}
         >
-          [{custom.trim() ? '✓' : ' '}] custom
+          [{customOn && custom.trim() ? '✓' : ' '}] custom
         </button>
         <span className="desc"> — your own check</span>
       </div>
@@ -1488,8 +1490,12 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
         id="proof-custom"
         className="proof-custom"
         placeholder="what should the pen read for?"
+        maxLength={300}
         value={custom}
-        onChange={(e) => setCustom(e.target.value)}
+        onChange={(e) => {
+          setCustom(e.target.value)
+          if (e.target.value.trim()) setCustomOn(true)
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
             e.preventDefault()

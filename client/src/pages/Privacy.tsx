@@ -44,7 +44,7 @@ export default function Privacy() {
           </p>
           <h2>the model</h2>
           <p>
-            When you invoke <em>ask</em>, <em>checks</em>, <em>titles</em>, or ⌘K, the
+            When you invoke <em>ask</em>, <em>proof</em>, or ⌘K, the
             relevant draft text is sent to Anthropic's API to produce the response, and
             never otherwise. We don't train anything on your writing. Anthropic's own
             data handling is governed by{' '}
@@ -61,7 +61,7 @@ export default function Privacy() {
           <h2>analytics</h2>
           <p>
             We use Seline, a cookie-free analytics service: page views and product
-            events (like "someone ran checks"), no advertising identifiers, no
+            events (like "someone ran the proof"), no advertising identifiers, no
             cross-site tracking. Editor page addresses are masked in your browser
             before anything is sent, and we never send your email anywhere.
           </p>

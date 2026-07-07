@@ -12,7 +12,7 @@ Live at **[author.computer](https://author.computer)**.
 
 ```
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-  ghost writing · live cursors · ⌘K rewrites · checks · titles
+  ghost writing · live cursors · ⌘K rewrites · the proof
   comments · versions · publishing · profiles · .md import
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ```
@@ -26,9 +26,10 @@ Live at **[author.computer](https://author.computer)**.
   five model requests a month are free, membership lifts the limit.
 - **live collaboration** — Yjs CRDTs over WebSockets; share a writing link
   and whoever opens it lands in the draft with you, named cursors and all
-- **an editor on call** — *ask* streams feedback on the draft, *checks*
-  returns clickable proofreading issues, *titles* offers eight on demand,
-  and **⌘K** rewrites any selection to instruction
+- **an editor on call** — *ask* streams feedback on the draft, the *proof*
+  reads for exactly the checks you pick (spelling, grammar, clichés,
+  hedging, your own…) with every issue clickable, and **⌘K** rewrites any
+  selection to instruction
 - **formatting** — select text for the floating toolbar (bold, italic,
   underline, strike, code, headings, quotes, links), or type markdown and
   watch it convert; the usual ⌘B/⌘I/⌘U shortcuts all work

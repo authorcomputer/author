@@ -441,8 +441,15 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
 }
 .scribble .hint { margin-top: 2px; font-style: italic; }
 
-/* the editor's pen: markup over the text, never in it */
-.check-mark { cursor: help; }
+/* the editor's pen: markup over the text, never in it. the base rule keeps
+   every kind visible — including ones added later — before the per-kind
+   colors dress them up */
+.check-mark {
+  cursor: help;
+  text-decoration: underline dotted var(--faint);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
 .check-spelling {
   text-decoration: underline wavy var(--accent);
   text-decoration-thickness: 1px;
@@ -465,8 +472,18 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
-.check-other {
-  text-decoration: underline dotted var(--faint);
+.check-brevity {
+  background: #eef1e3;
+  box-decoration-break: clone;
+}
+.check-hedging {
+  text-decoration: underline dashed #a16207;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.check-custom {
+  text-decoration: underline dotted var(--ink);
+  text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
 .pen-hover {
@@ -583,7 +600,7 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
   background: #fff;
 }
 
-.issue, .comment-card, .version-row, .title-idea {
+.issue, .comment-card, .version-row {
   padding: 12px 0;
   border-bottom: 1px solid var(--wash);
 }
@@ -669,8 +686,6 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
 /* the kind tag wears the comment gold */
 .byline .kind { color: #b8860b; }
 
-.title-idea { cursor: pointer; font-family: var(--serif); font-size: 15px; }
-.title-idea:hover { color: var(--accent); }
 
 .version-row .v-meta { color: var(--faint); font-size: 11px; }
 

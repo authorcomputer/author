@@ -30,9 +30,9 @@ const FEATURES = [
   },
   {
     glyph: '✓',
-    name: 'checks',
+    name: 'proof',
     blurb:
-      'spelling, grammar, repetition, clichés, clarity — each issue clickable, each with a suggested fix.',
+      'a proof-read for exactly what you pick — spelling, grammar, clichés, hedging, or a check in your own words. each issue clickable, each with a fix.',
   },
   {
     glyph: '↺',
