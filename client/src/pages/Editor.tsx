@@ -2200,17 +2200,19 @@ function CommandBar({
         </div>
         <input
           autoFocus
-          placeholder="tell the pen what to do…"
+          aria-label="instruction for the pen"
+          placeholder="tell the pen what to do… ↵"
           value={instruction}
           onChange={(e) => setInstruction(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') run(instruction)
           }}
         />
+        <div className="cmdk-or">or try one of these</div>
         <div className="presets">
           {PRESETS.map((p) => (
             <button key={p} onClick={() => run(p)}>
-              [{p}]
+              {p}
             </button>
           ))}
         </div>

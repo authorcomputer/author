@@ -45,7 +45,6 @@ button:disabled { color: var(--fainter); cursor: default; }
 .panel-tabs button,
 .ai-actions button,
 .row-actions button,
-.presets button,
 .home-head button,
 .corner-nav button,
 .corner-nav a,
@@ -727,12 +726,27 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
   background: var(--paper);
   border: 1px solid var(--ink);
   box-shadow: 4px 4px 0 rgba(28, 26, 23, 0.15);
-  padding: 14px 16px;
+  padding: 16px;
 }
-.cmdk .cmdk-head { color: var(--faint); font-size: 11px; margin-bottom: 8px; }
-.cmdk input { width: 100%; font-size: 14px; }
-.cmdk .presets { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; color: var(--faint); font-size: 12px; }
-.cmdk .presets button:hover { color: var(--accent); }
+.cmdk .cmdk-head { color: var(--faint); font-size: 11px; margin-bottom: 10px; }
+/* three tiers: faint context line, a boxed field that says "type here",
+   then bordered chips that say "press me" */
+.cmdk input {
+  width: 100%;
+  font-size: 14px;
+  background: var(--wash);
+  border: 1px solid var(--fainter);
+  padding: 10px 12px;
+}
+.cmdk input:focus { border-color: var(--accent); }
+.cmdk input::placeholder { color: var(--faint); }
+.cmdk .cmdk-or { color: var(--faint); font-size: 11px; margin: 14px 0 8px; }
+.cmdk .presets { display: flex; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+.cmdk .presets button {
+  border: 1px solid var(--fainter);
+  padding: 6px 10px;
+}
+.cmdk .presets button:hover { border-color: var(--accent); color: var(--accent); }
 
 /* logo */
 .logo {
