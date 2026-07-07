@@ -140,7 +140,7 @@ const d = connectYdoc(cookieB, docId)
 await d.synced
 await sleep(600) // snapshotOnCompany runs off the handshake path
 const versions = await get(`/api/docs/${docId}/versions`, cookieA)
-const snap = versions.find((x) => x.name === `as quill${run} joined`)
+const snap = versions.find((x) => x.kind === 'join')
 if (!snap) throw new Error('FAIL: no auto snapshot on second writer join')
 const snapBody = await get(`/api/versions/${snap.id}`, cookieA)
 editor.commands.setContent(snapBody.content)

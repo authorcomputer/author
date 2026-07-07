@@ -469,7 +469,7 @@ app.post('/api/comments/:cid/resolve', requireUser, (req, res) => {
 app.get('/api/docs/:id/versions', requireUser, (req, res) => {
   const rows = db
     .prepare(
-      'SELECT id, name, username, created_at FROM versions WHERE doc_id = ? ORDER BY created_at DESC'
+      'SELECT id, name, username, created_at, kind FROM versions WHERE doc_id = ? ORDER BY created_at DESC'
     )
     .all(req.params.id)
   res.json(rows)
@@ -481,11 +481,11 @@ app.post('/api/docs/:id/versions', requireFullUser, (req, res) => {
   if (!content) return res.status(400).json({ error: 'no content' })
   const vid = uid('v')
   db.prepare(
-    'INSERT INTO versions (id, doc_id, name, username, content, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+    "INSERT INTO versions (id, doc_id, name, username, content, created_at, kind) VALUES (?, ?, ?, ?, ?, ?, 'manual')"
   ).run(
     vid,
     req.params.id,
-    String(name || '').trim() || 'unnamed version',
+    String(name || '').trim(),
     req.user.username,
     JSON.stringify(content),
     Date.now()

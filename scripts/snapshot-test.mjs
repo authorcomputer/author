@@ -1,5 +1,5 @@
-// End-to-end check: a version named "before <joiner> joined" appears when a
-// second distinct user connects to a doc that already has text.
+// End-to-end check: a kind='join' version appears when a second distinct
+// user connects to a doc that already has text.
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import WebSocket from 'ws'
@@ -71,7 +71,7 @@ const versions = await (
 ).json()
 console.log('versions:', JSON.stringify(versions, null, 2))
 
-const snap = versions.find((v) => v.name === `as quill${run} joined`)
+const snap = versions.find((v) => v.kind === 'join')
 if (!snap) throw new Error('FAIL: no auto snapshot: ' + JSON.stringify(versions))
 const body = await (
   await fetch(`${BASE}/api/versions/${snap.id}`, { headers: { Cookie: cookieA } })

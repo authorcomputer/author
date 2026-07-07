@@ -675,6 +675,35 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
 
 .version-row .v-meta { color: var(--faint); font-size: 11px; }
 
+/* hovering a version floats a peek at that save, out over the page.
+   fixed positioning so the panel's own scroll can't clip it */
+.v-preview {
+  position: fixed;
+  width: 280px;
+  max-height: 300px;
+  overflow: hidden;
+  background: var(--paper);
+  border: 1px solid var(--fainter);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.1);
+  padding: 14px 16px;
+  z-index: 40;
+  pointer-events: none;
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.v-preview div { margin-bottom: 6px; }
+.v-preview .pv-h { font-weight: 700; }
+.v-preview::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 36px;
+  background: linear-gradient(transparent, var(--paper));
+}
+
 .row-actions { display: flex; gap: 12px; margin-top: 6px; font-size: 12px; }
 
 .panel-foot {

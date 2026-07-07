@@ -1,6 +1,6 @@
 // End-to-end check for the idle snapshot: five minutes (here shrunk via
-// AUTHOR_IDLE_SNAP_MS) without a change mints a version named "as the ink
-// dried". Two modes, keyed on the gap the server was booted with:
+// AUTHOR_IDLE_SNAP_MS) without a change mints an unnamed kind='idle'
+// version. Two modes, keyed on the gap the server was booted with:
 //   gap < 30s  → the timer path: pause mints one, silence adds nothing,
 //                a fresh edit re-arms it for exactly one more
 //   gap > 35s  → the flush path: edit, leave, and the room's 30s unload
@@ -78,7 +78,7 @@ if (GAP > 35_000) {
   a.provider.destroy()
   await sleep(33_000)
   const versions = await versionsNow()
-  const dried = versions.filter((v) => v.name === 'as the ink dried')
+  const dried = versions.filter((v) => v.kind === 'idle')
   if (dried.length !== 1)
     throw new Error('FAIL: unload did not flush the pending snapshot: ' + JSON.stringify(versions))
   console.log('PASS: leaving flushes the pending version, credited to', dried[0].username)
@@ -90,7 +90,7 @@ write(a, 'written, then the pen rests')
 // 1) the pause mints a version
 await sleep(GAP + 1000)
 let versions = await versionsNow()
-const snap = versions.find((v) => v.name === 'as the ink dried')
+const snap = versions.find((v) => v.kind === 'idle')
 if (!snap) throw new Error('FAIL: no idle snapshot: ' + JSON.stringify(versions))
 const body = await (
   await fetch(`${BASE}/api/versions/${snap.id}`, { headers: { Cookie: cookie } })
@@ -110,7 +110,7 @@ console.log('PASS: silence without a change adds nothing')
 write(a, 'a second thought')
 await sleep(GAP + 1000)
 versions = await versionsNow()
-const dried = versions.filter((v) => v.name === 'as the ink dried')
+const dried = versions.filter((v) => v.kind === 'idle')
 if (dried.length !== 2) throw new Error('FAIL: expected 2 idle snapshots, got ' + dried.length)
 console.log('PASS: a fresh edit re-arms the timer')
 
@@ -124,7 +124,7 @@ if (ACTIVE) {
   await sleep(ACTIVE + 500)
   write(a, 'a lone returning keystroke')
   await sleep(600)
-  const early = (await versionsNow()).filter((v) => v.name === 'while the ink flowed')
+  const early = (await versionsNow()).filter((v) => v.kind === 'flow')
   if (early.length) throw new Error('FAIL: a single keystroke after a break minted a mid-flow version')
   console.log('PASS: a return after a break is not mistaken for flow')
 
@@ -136,7 +136,7 @@ if (ACTIVE) {
   }
   await sleep(500)
   versions = await versionsNow()
-  const flowed = versions.filter((v) => v.name === 'while the ink flowed')
+  const flowed = versions.filter((v) => v.kind === 'flow')
   if (flowed.length < 1) throw new Error('FAIL: no mid-flow snapshot during continuous writing')
   console.log('PASS: a long session is kept mid-flow, credited to', flowed[0].username)
   await sleep(GAP + 1000) // let the trailing idle version land before the next check
@@ -161,7 +161,7 @@ versions = await versionsNow()
 // what must NOT appear is one minted after the manual save
 const manual = versions.find((v) => v.name === 'kept by hand')
 if (!manual) throw new Error('FAIL: manual version missing from the list')
-if (versions.some((v) => v.name === 'as the ink dried' && v.created_at > manual.created_at))
+if (versions.some((v) => v.kind === 'idle' && v.created_at > manual.created_at))
   throw new Error('FAIL: idle snapshot duplicated a manual save')
 console.log('PASS: a manual save stands the idle timer down')
 

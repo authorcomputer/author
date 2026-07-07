@@ -142,7 +142,7 @@ function noteEdit(room) {
     // stamped before the walk so a dedupe skip can't re-trigger per keystroke;
     // deferred so the doc walk never blocks the message path
     room.lastSnap = now
-    setImmediate(() => snapshotOnSettle(room, 'while the ink flowed'))
+    setImmediate(() => snapshotOnSettle(room, 'flow'))
   }
 }
 
@@ -151,13 +151,15 @@ const ownerUsername = (docId) =>
     .prepare('SELECT u.username FROM user u JOIN docs d ON d.owner_id = u.id WHERE d.id = ?')
     .get(docId)?.username || 'author*'
 
-function insertVersion(docId, name, username, json, ts) {
+// auto versions carry no name — the panel shows them by their moment.
+// kind is the machine-readable marker: 'idle' | 'flow' | 'join' | 'manual'
+function insertVersion(docId, username, json, ts, kind) {
   db.prepare(
-    'INSERT INTO versions (id, doc_id, name, username, content, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run('v_' + crypto.randomBytes(8).toString('hex'), docId, name, username, json, ts)
+    "INSERT INTO versions (id, doc_id, name, username, content, created_at, kind) VALUES (?, ?, '', ?, ?, ?, ?)"
+  ).run('v_' + crypto.randomBytes(8).toString('hex'), docId, username, json, ts, kind)
 }
 
-function snapshotOnSettle(room, name = 'as the ink dried') {
+function snapshotOnSettle(room, kind = 'idle') {
   try {
     const content = yDocToProsemirrorJSON(room.ydoc, 'default')
     if (!hasStuff(content)) return
@@ -172,8 +174,7 @@ function snapshotOnSettle(room, name = 'as the ink dried') {
       // a manual save counts as keeping the stretch
       room.lastSnap = Math.max(room.lastSnap, latest.created_at)
       // a mid-flow version only marks stretches nothing else kept
-      if (name === 'while the ink flowed' && Date.now() - latest.created_at < ACTIVE_SNAP_GAP)
-        return
+      if (kind === 'flow' && Date.now() - latest.created_at < ACTIVE_SNAP_GAP) return
       // a version kept after the last change (a manual save, mostly) already
       // holds this settled state — client and server serialize the same doc
       // slightly differently, so trust the clock, not just the bytes
@@ -186,7 +187,7 @@ function snapshotOnSettle(room, name = 'as the ink dried') {
     const username =
       ids.size === 1 ? room.editors[0].username : ownerUsername(room.id)
     room.lastSnap = Date.now()
-    insertVersion(room.id, name, username, json, room.lastSnap)
+    insertVersion(room.id, username, json, room.lastSnap, kind)
   } catch (e) {
     console.error('auto snapshot failed', room.id, e)
   }
@@ -200,7 +201,7 @@ function snapshotOnSettle(room, name = 'as the ink dried') {
 // manual or automatic, is restore point enough.
 const AUTO_SNAP_GAP = 10 * 60 * 1000
 
-function snapshotOnCompany(room, joiner) {
+function snapshotOnCompany(room) {
   // off the ws-upgrade path: the doc-to-JSON walk and the insert can wait
   // until after the joiner's handshake
   setImmediate(() => {
@@ -211,7 +212,7 @@ function snapshotOnCompany(room, joiner) {
       // doesn't capture the state at THIS join, which is the whole point
       const latest = db
         .prepare(
-          "SELECT MAX(created_at) AS t FROM versions WHERE doc_id = ? AND name LIKE 'as % joined'"
+          "SELECT MAX(created_at) AS t FROM versions WHERE doc_id = ? AND kind = 'join'"
         )
         .get(room.id)
       if (latest?.t && now - latest.t < AUTO_SNAP_GAP) return
@@ -221,7 +222,7 @@ function snapshotOnCompany(room, joiner) {
       room.lastSnap = Math.max(room.lastSnap, now)
       // credit the page's owner — "whose text this was" — not whoever's
       // socket happened to open first
-      insertVersion(room.id, `as ${joiner} joined`, ownerUsername(room.id), JSON.stringify(content), now)
+      insertVersion(room.id, ownerUsername(room.id), JSON.stringify(content), now, 'join')
     } catch (e) {
       console.error('auto snapshot failed', room.id, e)
     }
@@ -282,7 +283,7 @@ export function setupCollab(ws, docId, user) {
   if (user?.id) {
     const ids = new Set([...room.names.values()].map((u) => u.id))
     if (ids.size === 1 && !ids.has(user.id)) {
-      snapshotOnCompany(room, user.username)
+      snapshotOnCompany(room)
     }
     room.names.set(ws, { id: user.id, username: user.username })
   }

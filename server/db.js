@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS versions (
   name TEXT NOT NULL,
   username TEXT NOT NULL,
   content TEXT NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  kind TEXT DEFAULT 'manual'
 );
 CREATE INDEX IF NOT EXISTS idx_versions_doc_created ON versions(doc_id, created_at);
 CREATE TABLE IF NOT EXISTS activity (
@@ -98,6 +99,14 @@ addColumn('docs', 'header_image TEXT')
 addColumn('docs', 'on_profile INTEGER DEFAULT 1')
 addColumn('invite_codes', 'max_uses INTEGER DEFAULT 25')
 addColumn('profiles', 'member INTEGER DEFAULT 0')
+// versions carry a kind so names stay purely human: manual saves keep what
+// the writer typed, auto saves have no name and display as date and time.
+// the one-time backfill reads the old poetic names into kinds, then blanks them
+addColumn('versions', "kind TEXT DEFAULT 'manual'")
+db.exec(`UPDATE versions SET kind = 'join', name = '' WHERE kind = 'manual' AND name LIKE 'as % joined'`)
+db.exec(`UPDATE versions SET kind = 'idle', name = '' WHERE kind = 'manual' AND name = 'as the ink dried'`)
+db.exec(`UPDATE versions SET kind = 'flow', name = '' WHERE kind = 'manual' AND name = 'while the ink flowed'`)
+
 // a comment can carry a proposed replacement for its quoted passage
 addColumn('comments', "suggestion TEXT DEFAULT ''")
 // replies thread under a parent comment

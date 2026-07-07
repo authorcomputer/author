@@ -105,7 +105,7 @@ const isRoot = (c: Comment) => !c.parent_id
 const isOpenRoot = (c: Comment) => !c.resolved && isRoot(c)
 
 type Issue = { excerpt: string; kind: string; note: string; suggestion: string }
-type Version = { id: string; name: string; username: string; created_at: number }
+type Version = { id: string; name: string; username: string; created_at: number; kind: string }
 type Panel = 'ai' | 'checks' | 'titles' | 'comments' | 'versions' | null
 
 function docText(editor: TiptapEditor) {
@@ -1933,9 +1933,57 @@ function CommentsPanel({
   )
 }
 
+// a version's face is its moment: auto saves carry no name, so the row
+// shows when the words were set down
+function versionMoment(t: number) {
+  const d = new Date(t)
+  const opts: Intl.DateTimeFormatOptions = {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric'
+  return d.toLocaleString(undefined, opts).toLowerCase()
+}
+
+type PreviewLine = { t: string; h?: boolean }
+
+// a glanceable reading of a stored version: first dozen blocks as text,
+// media as placeholders — enough to know which save is which
+function previewLines(doc: any): PreviewLine[] {
+  const textOf = (n: any): string => n.text || (n.content || []).map(textOf).join('')
+  const lines: PreviewLine[] = []
+  for (const b of doc?.content || []) {
+    if (lines.length >= 12) break
+    if (b.type === 'image') lines.push({ t: '[ image ]' })
+    else if (b.type === 'embed') lines.push({ t: '[ embed ]' })
+    else if (b.type === 'bulletList' || b.type === 'orderedList') {
+      for (const li of b.content || []) {
+        if (lines.length >= 12) break
+        const t = textOf(li).trim()
+        if (t) lines.push({ t: '· ' + t })
+      }
+    } else {
+      const t = textOf(b).trim()
+      if (t) lines.push({ t, h: b.type === 'heading' })
+    }
+  }
+  return lines
+}
+
 function VersionsPanel({ editor, docId }: { editor: TiptapEditor; docId: string }) {
   const [versions, setVersions] = useState<Version[]>([])
   const [name, setName] = useState('')
+  const [preview, setPreview] = useState<{
+    id: string
+    top: number
+    right: number
+    lines: PreviewLine[]
+  } | null>(null)
+  const previews = useRef(new Map<string, PreviewLine[]>())
+  const hoverId = useRef<string | null>(null)
+  const hoverTimer = useRef<number | undefined>(undefined)
 
   async function load() {
     setVersions(await api(`/api/docs/${docId}/versions`))
@@ -1954,19 +2002,52 @@ function VersionsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
     load()
   }
 
-  async function restore(vid: string) {
+  function showPreview(v: Version, el: HTMLElement) {
+    const rect = el.getBoundingClientRect()
+    hoverId.current = v.id
+    window.clearTimeout(hoverTimer.current)
+    hoverTimer.current = window.setTimeout(async () => {
+      let lines = previews.current.get(v.id)
+      if (!lines) {
+        try {
+          const full = await api(`/api/versions/${v.id}`)
+          lines = previewLines(full.content)
+          previews.current.set(v.id, lines)
+        } catch {
+          return
+        }
+      }
+      // the pointer may have moved on while the version loaded
+      if (hoverId.current !== v.id) return
+      setPreview({
+        id: v.id,
+        top: Math.max(12, Math.min(rect.top, window.innerHeight - 320)),
+        right: window.innerWidth - rect.left + 14,
+        lines,
+      })
+    }, 150)
+  }
+
+  function hidePreview() {
+    hoverId.current = null
+    window.clearTimeout(hoverTimer.current)
+    setPreview(null)
+  }
+
+  async function restore(v: Version) {
     if (!confirm('Restore this version? The current text is kept as its own version first.')) return
-    const v = await api(`/api/versions/${vid}`)
+    const full = await api(`/api/versions/${v.id}`)
+    const label = v.name || versionMoment(v.created_at)
     // a restore is never a one-way door: keep what's on the page right now
     await api(`/api/docs/${docId}/versions`, {
       method: 'POST',
       body: JSON.stringify({
-        name: `before restoring “${String(v.name).slice(0, 60)}”`,
+        name: `before restoring “${label.slice(0, 60)}”`,
         content: editor.getJSON(),
       }),
     }).catch(() => {})
     try {
-      editor.commands.setContent(v.content)
+      editor.commands.setContent(full.content)
     } catch {
       alert('couldn’t restore this version — it may predate the current page format')
       load()
@@ -1996,16 +2077,31 @@ function VersionsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
         </div>
       )}
       {versions.map((v) => (
-        <div className="version-row" key={v.id}>
-          <div>{v.name}</div>
+        <div
+          className="version-row"
+          key={v.id}
+          onMouseEnter={(e) => showPreview(v, e.currentTarget)}
+          onMouseLeave={hidePreview}
+        >
+          <div>{v.name || versionMoment(v.created_at)}</div>
           <div className="v-meta">
-            {v.username} · {new Date(v.created_at).toLocaleString()}
+            {v.username}
+            {v.name ? ' · ' + versionMoment(v.created_at) : ''}
           </div>
           <div className="row-actions">
-            <button onClick={() => restore(v.id)}>↺ restore</button>
+            <button onClick={() => restore(v)}>↺ restore</button>
           </div>
         </div>
       ))}
+      {preview && preview.lines.length > 0 && (
+        <div className="v-preview" style={{ top: preview.top, right: preview.right }}>
+          {preview.lines.map((l, i) => (
+            <div key={i} className={l.h ? 'pv-h' : undefined}>
+              {l.t}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

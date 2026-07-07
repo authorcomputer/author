@@ -20,7 +20,7 @@ export const UPDATES: UpdateDay[] = [
       {
         kind: 'bullet',
         head: 'versions save themselves',
-        text: 'five quiet minutes after your last change, a version is kept automatically — "as the ink dried" in your history, ready if you ever want the page back the way it was. long sessions are kept too: every ten minutes of unbroken writing sets one down "while the ink flowed".',
+        text: 'five quiet minutes after your last change — or every ten of unbroken writing — a version is kept automatically, listed by its date and time. hover any version to peek inside before restoring.',
       },
     ],
   },
