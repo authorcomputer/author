@@ -614,6 +614,8 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
 }
 .issue .excerpt:hover { color: var(--accent); }
 .issue .fix { color: var(--faint); }
+.issue.taken { opacity: 0.55; }
+.issue.taken .excerpt { text-decoration: line-through; }
 .issue.active {
   background: #f8efdc;
   margin: 0 -10px;

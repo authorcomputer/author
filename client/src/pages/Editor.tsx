@@ -1392,6 +1392,7 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
   const [customOn, setCustomOn] = useState(false)
   const [err, setErr] = useState('')
   const [active, setActive] = useState<number | null>(null)
+  const [taken, setTaken] = useState<Set<number>>(new Set())
 
   // the pen lifts when the panel closes
   useEffect(() => () => clearMarks(editor, 'checks'), [editor])
@@ -1434,6 +1435,7 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
     setErr('')
     setIssues(null)
     setActive(null)
+    setTaken(new Set())
     clearMarks(editor, 'checks')
     try {
       const res = await api('/api/ai/checks', {
@@ -1454,6 +1456,29 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
     } finally {
       setRunning(false)
     }
+  }
+
+  // the fix is one click from taken — the flagged span is replaced with the
+  // suggested words, exactly as written, and the mark comes off with it
+  function takeFix(iss: Issue, i: number) {
+    const r = findRange(editor, iss.excerpt)
+    if (!r) {
+      alert('couldn’t find that passage — it may have been rewritten')
+      return
+    }
+    editor
+      .chain()
+      .focus()
+      .command(({ tr }) => {
+        tr.insertText(iss.suggestion, r.from, r.to)
+        return true
+      })
+      .run()
+    setTaken((s) => new Set(s).add(i))
+    // redraw: positions moved, and the taken excerpt no longer exists so
+    // its mark drops out on its own
+    if (issues) decorateIssues(editor, issues)
+    track('ai: check fix applied', { kind: iss.kind })
   }
 
   return (
@@ -1516,7 +1541,7 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
       )}
       {issues?.map((iss, i) => (
         <div
-          className={`issue ${active === i ? 'active' : ''}`}
+          className={`issue ${active === i ? 'active' : ''} ${taken.has(i) ? 'taken' : ''}`}
           id={`check-issue-${i}`}
           key={i}
         >
@@ -1532,6 +1557,15 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
           </span>
           <div>{iss.note}</div>
           <div className="fix">→ {iss.suggestion}</div>
+          <div className="row-actions">
+            {taken.has(i) ? (
+              <span className="hint">✓ taken</span>
+            ) : (
+              <button onClick={() => takeFix(iss, i)} title="replace the passage with the fix">
+                [ ✓ take the fix ]
+              </button>
+            )}
+          </div>
         </div>
       ))}
     </div>
