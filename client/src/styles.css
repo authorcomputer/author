@@ -690,7 +690,9 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
 .version-row .v-meta { color: var(--faint); font-size: 11px; }
 
 /* the proof: bracket checkboxes, one errand per line, then one run button */
-.proof-row { margin-top: 9px; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* wraps rather than trails off — a check the writer can't read is a check
+   they won't run */
+.proof-row { margin-top: 9px; font-size: 12.5px; }
 .proof-row button { white-space: pre; }
 .proof-row button[aria-pressed='true'] { color: var(--accent); }
 .proof-row .desc { color: var(--faint); }

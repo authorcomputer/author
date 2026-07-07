@@ -27,7 +27,7 @@ Live at **[author.computer](https://author.computer)**.
 - **live collaboration** — Yjs CRDTs over WebSockets; share a writing link
   and whoever opens it lands in the draft with you, named cursors and all
 - **an editor on call** — *ask* streams feedback on the draft, the *proof*
-  reads for exactly the checks you pick (spelling, grammar, clichés,
+  reads for exactly the checks you pick (grammar, clarity, clichés,
   hedging, your own…) with every issue clickable, and **⌘K** rewrites any
   selection to instruction
 - **formatting** — select text for the floating toolbar (bold, italic,

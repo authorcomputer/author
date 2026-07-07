@@ -100,13 +100,16 @@ export async function aiCommand(req, res) {
 // the proof reads for exactly what the writer asked — each check is its
 // own errand, and the schema only admits the kinds that were requested
 const PROOF_CHECKS = {
-  spelling: 'spelling errors and typos',
-  grammar: 'grammar problems — agreement, tense, punctuation',
-  repetition: 'repeated or leaned-on words and phrases',
+  grammar: 'spelling errors and typos, plus grammar problems — agreement, tense, punctuation',
+  clarity:
+    'confusing or convoluted sentences a reader would have to re-read; repeated or leaned-on words and phrases; needless words where fewer would say more',
   cliche: 'clichés and tired phrasing',
-  clarity: 'confusing or convoluted sentences a reader would have to re-read',
-  brevity: 'needless words — places where fewer words would say more',
   hedging: 'excessive hedging that saps confidence (maybe, I think, probably, sort of)',
+  // accepted for clients from before the merges: spelling folded into
+  // grammar, repetition and brevity into clarity
+  spelling: 'spelling errors and typos',
+  repetition: 'repeated or leaned-on words and phrases',
+  brevity: 'needless words — places where fewer words would say more',
 }
 
 export async function aiChecks(req, res) {
@@ -120,7 +123,8 @@ export async function aiChecks(req, res) {
   if (sent === null && !ask) {
     // a client from before the picker (a tab that outlived a deploy) sends
     // no checks field at all — give it the full read it was built for
-    picked = Object.keys(PROOF_CHECKS)
+    // (the canonical four; the alias keys would only repeat them)
+    picked = ['grammar', 'clarity', 'cliche', 'hedging']
   }
   if (!picked.length && !ask)
     // an explicit-but-empty or unrecognized pick is a real error — naming a

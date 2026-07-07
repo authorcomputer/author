@@ -32,7 +32,7 @@ const FEATURES = [
     glyph: '✓',
     name: 'proof',
     blurb:
-      'a proof-read for exactly what you pick — spelling, grammar, clichés, hedging, or a check in your own words. each issue clickable, each with a fix.',
+      'a proof-read for exactly what you pick — grammar, clarity, clichés, hedging, or a check in your own words. each issue clickable, each with a fix.',
   },
   {
     glyph: '↺',

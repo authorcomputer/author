@@ -1375,20 +1375,19 @@ function decorateIssues(editor: TiptapEditor, issues: Issue[]) {
 }
 
 // each check is its own errand — the writer picks what the proof reads for
+// descriptions stay short enough to fit the panel on one line — the full
+// definitions live server-side in the prompt
 const PROOF_CHECKS = [
-  { key: 'spelling', label: 'spelling', desc: 'typos and slips' },
-  { key: 'grammar', label: 'grammar', desc: 'agreement, tense, stray commas' },
-  { key: 'repetition', label: 'repetition', desc: 'words leaned on twice' },
+  { key: 'grammar', label: 'grammar', desc: 'typos, tense, agreement' },
+  { key: 'clarity', label: 'clarity', desc: 'repeats, clutter, tangles' },
   { key: 'cliche', label: 'clichés', desc: 'phrases worn smooth' },
-  { key: 'clarity', label: 'clarity', desc: 'sentences a reader must re-read' },
-  { key: 'brevity', label: 'brevity', desc: 'words the sentence doesn’t need' },
-  { key: 'hedging', label: 'hedging', desc: 'confidence lost to maybes' },
+  { key: 'hedging', label: 'hedging', desc: 'maybes and hedges' },
 ] as const
 
 function ChecksPanel({ editor }: { editor: TiptapEditor }) {
   const [issues, setIssues] = useState<Issue[] | null>(null)
   const [running, setRunning] = useState(false)
-  const [picked, setPicked] = useState<Set<string>>(new Set(['spelling', 'grammar']))
+  const [picked, setPicked] = useState<Set<string>>(new Set(['grammar']))
   const [custom, setCustom] = useState('')
   const [customOn, setCustomOn] = useState(false)
   const [err, setErr] = useState('')

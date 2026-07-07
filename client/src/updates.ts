@@ -20,7 +20,7 @@ export const UPDATES: UpdateDay[] = [
       {
         kind: 'bullet',
         head: 'the proof reads for what you pick',
-        text: 'checks became proof: choose exactly what the pen reads for — spelling, grammar, repetition, clichés, clarity, brevity, hedging, or a check in your own words — instead of everything at once. the titles tab retired; share copy tightened.',
+        text: 'checks became proof: choose exactly what the pen reads for — grammar, clarity, clichés, hedging, or a check in your own words — instead of everything at once. the titles tab retired; share copy tightened.',
       },
       {
         kind: 'bullet',
