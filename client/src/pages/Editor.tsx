@@ -1572,17 +1572,21 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
   )
 }
 
-// one line, one reply — threads stay conversations, not documents
+// one line at a time, as many as the talk takes — replying is the default
+// action here; settling the thread rides along as the quiet one
 function ReplyBox({
   docId,
   parentId,
   onPosted,
+  children,
 }: {
   docId: string
   parentId: string
   onPosted: () => void
+  children?: ReactNode
 }) {
   const [text, setText] = useState('')
+  const box = useRef<HTMLInputElement>(null)
   async function send() {
     const t = text.trim()
     if (!t) return
@@ -1605,19 +1609,31 @@ function ReplyBox({
     onPosted()
   }
   return (
-    <input
-      className="reply-box"
-      placeholder="↩ reply…"
-      aria-label="reply to this thread"
-      value={text}
-      onChange={(e) => setText(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-          e.preventDefault()
-          send()
-        }
-      }}
-    />
+    <>
+      <input
+        ref={box}
+        className="reply-box"
+        placeholder="↩ reply…"
+        aria-label="reply to this thread"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+            e.preventDefault()
+            send()
+          }
+        }}
+      />
+      <div className="row-actions">
+        <button
+          className="primary"
+          onClick={() => (text.trim() ? send() : box.current?.focus())}
+        >
+          [ ↩ reply ]
+        </button>
+        {children}
+      </div>
+    </>
   )
 }
 
@@ -1848,32 +1864,29 @@ function CommentPop({
             ( this thread is settled )
           </div>
         ) : (
-          <ReplyBox docId={docId} parentId={comment.id} onPosted={onChanged} />
-        )}
-        {!comment.resolved && (
-        <div className="ai-actions">
-          {comment.suggestion?.trim() && (
+          <ReplyBox docId={docId} parentId={comment.id} onPosted={onChanged}>
+            {comment.suggestion?.trim() && (
+              <button
+                onClick={() => {
+                  onClose()
+                  applySuggestion(editor, comment, onChanged)
+                }}
+                title="replace the passage with their words"
+              >
+                [ ✓ apply edit ]
+              </button>
+            )}
             <button
-              onClick={() => {
+              className="faint"
+              onClick={async () => {
+                await resolveComment(editor, comment.id)
+                onChanged()
                 onClose()
-                applySuggestion(editor, comment, onChanged)
               }}
-              title="replace the passage with their words"
             >
-              [ ✓ apply edit ]
+              {comment.suggestion?.trim() ? '[ ✗ dismiss ]' : '[ ✓ resolve ]'}
             </button>
-          )}
-          <button
-            className="faint"
-            onClick={async () => {
-              await resolveComment(editor, comment.id)
-              onChanged()
-              onClose()
-            }}
-          >
-            {comment.suggestion?.trim() ? '[ ✗ dismiss ]' : '[ ✓ resolve ]'}
-          </button>
-        </div>
+          </ReplyBox>
         )}
       </div>
     </>
@@ -1956,11 +1969,9 @@ function CommentsPanel({
             )}
             {c.text && <div className="body">{c.text}</div>}
             <Replies replies={repliesFor(c.id)} />
-            <ReplyBox docId={docId} parentId={c.id} onPosted={reload} />
-            <div className="row-actions">
+            <ReplyBox docId={docId} parentId={c.id} onPosted={reload}>
               {c.suggestion?.trim() && (
                 <button
-                  className="primary"
                   onClick={() => applySuggestion(editor, c, reload)}
                   title="replace the passage with their words"
                 >
@@ -1976,7 +1987,7 @@ function CommentsPanel({
               >
                 {c.suggestion?.trim() ? '[ ✗ dismiss ]' : '[ ✓ resolve ]'}
               </button>
-            </div>
+            </ReplyBox>
           </div>
         )
       })}
