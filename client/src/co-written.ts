@@ -53,9 +53,14 @@ function diffBlocks(before: PMNode, after: PMNode) {
     endB--
   }
   const pairs = new Map<PMNode, PMNode>()
+  const prior = new Map<PMNode, PMNode>()
   // equal-length changed regions (endA === endB) pair up index-by-index
-  if (endA === endB) for (let i = start; i < endA; i++) pairs.set(a[i], b[i])
-  return { fresh: b.slice(start, endB), pairs }
+  if (endA === endB)
+    for (let i = start; i < endA; i++) {
+      pairs.set(a[i], b[i])
+      prior.set(b[i], a[i])
+    }
+  return { fresh: b.slice(start, endB), pairs, prior }
 }
 
 const carry = (m: Map<PMNode, number>, pairs: Map<PMNode, PMNode>, keep: Set<PMNode>) => {
@@ -97,7 +102,7 @@ export function coWrittenPlugin() {
         const now = Date.now()
         const meta = tr.getMeta(ySyncPluginKey)
 
-        const { fresh, pairs } = diffBlocks(tr.before, tr.doc)
+        const { fresh, pairs, prior } = diffBlocks(tr.before, tr.doc)
         const alive = new Set(children(tr.doc))
         const local = carry(prev.local, pairs, alive)
         const remote = carry(prev.remote, pairs, alive)
@@ -122,6 +127,12 @@ export function coWrittenPlugin() {
         const mine = isRemote ? remote : local
         const theirs = isRemote ? local : remote
         for (const node of fresh) {
+          // a mark coming or going — a comment placed, a settled thread
+          // swept — rebuilds the node but writes nothing: same words,
+          // nobody's pen. the review loop does this constantly, and it
+          // must never read as a second writer
+          const was = prior.get(node)
+          if (was && was.textContent === node.textContent) continue
           const t = theirs.get(node)
           if (t !== undefined && now - t < WINDOW && prev.others > 0) {
             marked.set(node, now) // colliding: place the note, or refresh its clock
