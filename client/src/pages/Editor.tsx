@@ -1613,7 +1613,7 @@ function ReplyBox({
       <input
         ref={box}
         className="reply-box"
-        placeholder="↩ reply…"
+        placeholder="write back…"
         aria-label="reply to this thread"
         value={text}
         onChange={(e) => setText(e.target.value)}
