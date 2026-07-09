@@ -53,15 +53,46 @@ function diffBlocks(before: PMNode, after: PMNode) {
     endB--
   }
   const pairs = new Map<PMNode, PMNode>()
-  const prior = new Map<PMNode, PMNode>()
   // equal-length changed regions (endA === endB) pair up index-by-index
-  if (endA === endB)
-    for (let i = start; i < endA; i++) {
-      pairs.set(a[i], b[i])
-      prior.set(b[i], a[i])
-    }
-  return { fresh: b.slice(start, endB), pairs, prior }
+  if (endA === endB) for (let i = start; i < endA; i++) pairs.set(a[i], b[i])
+  return { fresh: b.slice(start, endB), removed: a.slice(start, endA), pairs }
 }
+
+// the ink of a block: words, structure, formatting — everything except
+// comment marks, whose coming and going is review-loop metadata, not
+// writing. adjacent text runs with the same marks merge, so a comment
+// boundary splitting a text node doesn't read as different ink
+const inkMarks = (n: PMNode) =>
+  n.marks
+    .filter((m) => m.type.name !== 'comment')
+    .map((m) => m.type.name + JSON.stringify(m.attrs))
+    .join(',')
+
+function inkOf(n: PMNode): string {
+  // \u0001-\u0003 as field separators — untypeable, so text can't forge them
+  let out = '\u0001' + n.type.name + '\u0002' + JSON.stringify(n.attrs) + '\u0002' + inkMarks(n)
+  let run: string | null = null
+  n.forEach((child) => {
+    if (child.isText) {
+      const key = inkMarks(child)
+      if (key !== run) {
+        out += '\u0003' + key + '\u0002'
+        run = key
+      }
+      out += child.text
+    } else {
+      out += inkOf(child) // hard breaks, images, nested blocks — all count
+      run = null
+    }
+  })
+  return out
+}
+
+// same ink = nothing but comment marks distinguishes the blocks. marks are
+// sizeless, so a nodeSize mismatch (any ordinary typing) rules it out
+// before the fingerprints are ever built
+const sameInk = (a: PMNode, b: PMNode) =>
+  a === b || (a.nodeSize === b.nodeSize && inkOf(a) === inkOf(b))
 
 const carry = (m: Map<PMNode, number>, pairs: Map<PMNode, PMNode>, keep: Set<PMNode>) => {
   const next = new Map<PMNode, number>()
@@ -102,7 +133,7 @@ export function coWrittenPlugin() {
         const now = Date.now()
         const meta = tr.getMeta(ySyncPluginKey)
 
-        const { fresh, pairs, prior } = diffBlocks(tr.before, tr.doc)
+        const { fresh, removed, pairs } = diffBlocks(tr.before, tr.doc)
         const alive = new Set(children(tr.doc))
         const local = carry(prev.local, pairs, alive)
         const remote = carry(prev.remote, pairs, alive)
@@ -127,23 +158,23 @@ export function coWrittenPlugin() {
         const mine = isRemote ? remote : local
         const theirs = isRemote ? local : remote
         for (const node of fresh) {
-          // a mark coming or going — a comment placed, a settled thread
-          // swept — rebuilds the node but writes nothing: same words,
-          // nobody's pen. the review loop does this constantly, and it
-          // must never read as a second writer
-          const was = prior.get(node)
-          if (was && was.textContent === node.textContent) continue
-          const t = theirs.get(node)
+          // a comment placed or a settled thread swept rebuilds a block
+          // without writing in it — some removed block carries the same
+          // ink. the review loop does this constantly, and it (like a
+          // block merely moved) must never read as a second writer: no
+          // pen recorded, no collision — but an expired note still fades
+          const unwritten = removed.some((r) => sameInk(r, node))
+          const t = unwritten ? undefined : theirs.get(node)
           if (t !== undefined && now - t < WINDOW && prev.others > 0) {
             marked.set(node, now) // colliding: place the note, or refresh its clock
           } else {
             const m = marked.get(node)
-            // the collision went quiet and someone wrote here again — fade
+            // the collision went quiet and this block changed again — fade
             if (m !== undefined && now - m > WINDOW) marked.delete(node)
           }
           // with nobody else connected there is no "their pen" — a remote-
           // flagged change while alone is plumbing, not a person
-          if (!isRemote || prev.others > 0) mine.set(node, now)
+          if (!unwritten && (!isRemote || prev.others > 0)) mine.set(node, now)
         }
 
         // let old whispers expire so the maps stay small

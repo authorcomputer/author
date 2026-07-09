@@ -118,6 +118,28 @@ const replace = (pair, by, needle, text) =>
     tr.insertText(text, from, to)
   })
 
+// formatting is real ink — bold a passage the way the bubble menu would
+const bold = (pair, by, needle) =>
+  pair.edit(by, (tr, st) => {
+    const { from, to } = rangeOf(st, needle)
+    tr.addMark(from, to, st.schema.marks.bold.create())
+  })
+// restructure a block — paragraph to heading
+const toHeading = (pair, by, needle) =>
+  pair.edit(by, (tr, st) => {
+    let at = null
+    st.doc.forEach((node, offset) => {
+      if (at === null && node.textContent.includes(needle)) at = offset
+    })
+    tr.setNodeMarkup(at, st.schema.nodes.heading, { level: 2 })
+  })
+
+// the plugin reads Date.now() — let the test walk the clock forward
+const realNow = Date.now.bind(Date)
+let skew = 0
+Date.now = () => realNow() + skew
+const elapse = (ms) => (skew += ms)
+
 // which paragraphs wear the note right now
 const noted = (st) => {
   const plug = coWrittenKey.getState(st)
@@ -204,6 +226,48 @@ scenario('an applied suggestion is a real second pen', (pair) => {
   type(pair, 'ink', 'outright', ' hastily')
   replace(pair, 'quill', 'drafts a passage', 'rewrote every word') // apply edit
   notedOn(pair, 'ink')
+})
+
+scenario('formatting the other pen’s fresh words is a pen', (pair) => {
+  addParagraph(pair, 'ink', 'ink types words quill immediately bolds')
+  type(pair, 'ink', 'bolds', ' now')
+  bold(pair, 'quill', 'types words') // not a comment — real ink
+  notedOn(pair, 'ink')
+  notedOn(pair, 'quill')
+})
+
+scenario('restructuring the other pen’s fresh paragraph is a pen', (pair) => {
+  addParagraph(pair, 'ink', 'ink types a line quill turns into a heading')
+  type(pair, 'ink', 'a heading', ' at once')
+  toHeading(pair, 'quill', 'turns into')
+  notedOn(pair, 'ink')
+  notedOn(pair, 'quill')
+})
+
+scenario('a comment batched with writing elsewhere is still not a pen', (pair) => {
+  addParagraph(pair, 'ink', 'ink writes a paragraph quill will note in passing')
+  type(pair, 'ink', 'in passing', ' today')
+  // one sync frame can carry both: the comment on ink's paragraph and a
+  // brand-new paragraph — the changed region loses its shape
+  pair.edit('quill', (tr, st) => {
+    const { from, to } = rangeOf(st, 'a paragraph')
+    tr.addMark(from, to, st.schema.marks.comment.create({ id: 'c8', kind: 'note' }))
+    tr.insert(tr.doc.content.size, st.schema.nodes.paragraph.create(null, st.schema.text('quill starts a fresh thought')))
+  })
+  quietOn(pair, 'ink')
+  quietOn(pair, 'quill')
+})
+
+scenario('a stale note fades when a thread is swept later', (pair) => {
+  addParagraph(pair, 'ink', 'a real collision that later goes quiet')
+  type(pair, 'ink', 'goes quiet', ' — ink')
+  type(pair, 'quill', 'goes quiet', ' — quill')
+  notedOn(pair, 'ink') // the collision is real…
+  comment(pair, 'quill', 'real collision', 'c9')
+  elapse(31_000) // …then everyone moves on
+  sweep(pair, 'ink', 'c9') // settling the thread is the next touch — fade
+  quietOn(pair, 'ink')
+  quietOn(pair, 'quill')
 })
 
 console.log(failed ? `\n${failed} check(s) FAILED` : '\nPASS: the note knows a pen from a mark')
