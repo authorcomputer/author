@@ -17,6 +17,7 @@ import { CommentMark } from '../comment-mark'
 import { Embed } from '../embed-node'
 import { parseEmbed } from '../embeds'
 import { renderMarkdown } from '../markdown'
+import { uncodeBlocks } from '../uncode'
 import { track } from '../analytics'
 import AccountModal from '../AccountModal'
 import MembershipModal from '../MembershipModal'
@@ -861,7 +862,13 @@ function FormatBubble({ editor }: { editor: TiptapEditor }) {
         {item(<i>i</i>, editor.isActive('italic'), () => editor.chain().focus().toggleItalic().run(), 'italic', 'italic ⌘I')}
         {item(<u>u</u>, editor.isActive('underline'), () => editor.chain().focus().toggleUnderline().run(), 'underline', 'underline ⌘U')}
         {item(<s>s</s>, editor.isActive('strike'), () => editor.chain().focus().toggleStrike().run(), 'strikethrough', 'strikethrough ⌘⇧X')}
-        {item(<code>code</code>, editor.isActive('code'), () => editor.chain().focus().toggleCode().run(), 'code')}
+        {item(<code>code</code>, editor.isActive('code') || editor.isActive('codeBlock'), () => {
+          // a pasted <pre> traps whole pages in a code block; clicking code
+          // inside one dissolves it back to prose instead of toggling a mark
+          // the block's schema would swallow silently
+          const dissolved = editor.chain().focus().command(({ state, tr }) => uncodeBlocks(state, tr)).run()
+          if (!dissolved) editor.chain().focus().toggleCode().run()
+        }, 'code')}
         <span className="fmt-sep">·</span>
         {item('h1', editor.isActive('heading', { level: 1 }), () =>
           editor.chain().focus().toggleHeading({ level: 1 }).run(),
