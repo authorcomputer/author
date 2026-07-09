@@ -8,6 +8,11 @@
 // it within WINDOW of each other; the note fades once the next edit arrives
 // after the collision has gone quiet.
 //
+// Not every rebuild is writing: a block whose ink — everything except
+// metadata marks (comment threads, autolinked URLs) — matches a block that
+// just left the doc was commented, swept, or merely moved, and must never
+// read as a second pen. Its clocks and note follow it instead.
+//
 // Why block identity instead of step maps: y-prosemirror applies every
 // remote update as one whole-document ReplaceStep, so step maps say
 // "everything changed" and mapped decorations are wiped. But it reuses the
@@ -17,11 +22,19 @@
 // common prefix/suffix of the before/after child lists.
 import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
-import type { Node as PMNode } from '@tiptap/pm/model'
+import { Fragment } from '@tiptap/pm/model'
+import type { Node as PMNode, Mark } from '@tiptap/pm/model'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { ySyncPluginKey } from 'y-prosemirror'
+import { COMMENT_MARK } from './comment-mark'
 
 const WINDOW = 30_000
+
+// marks that are metadata rather than writing: comment threads (the review
+// loop places and sweeps them constantly), and links (autolink decorates
+// URLs in *arriving* collaborator text as a local transaction — a
+// machine's pen, not a person's)
+const METADATA_MARKS = new Set([COMMENT_MARK, 'link'])
 
 type CoState = {
   others: number // collaborators actually present — no second pen, no note
@@ -39,8 +52,36 @@ const children = (doc: PMNode) => {
   return out
 }
 
-// blocks whose node identity changed between docs, plus old->new pairings
-// (index-aligned when the changed region kept its shape, i.e. plain typing)
+const bareMarks = (marks: readonly Mark[]) =>
+  marks.filter((m) => !METADATA_MARKS.has(m.type.name))
+
+// the block with its metadata marks removed — what the pens actually wrote.
+// memoized per transaction so no node is rebuilt twice
+function strip(n: PMNode, memo: Map<PMNode, PMNode>): PMNode {
+  const hit = memo.get(n)
+  if (hit) return hit
+  let out: PMNode
+  if (n.isText) {
+    out = n.mark(bareMarks(n.marks))
+  } else {
+    const kids: PMNode[] = []
+    n.forEach((c) => kids.push(strip(c, memo)))
+    // fromArray re-joins text that was split only at a metadata boundary
+    out = n.type.create(n.attrs, Fragment.fromArray(kids), bareMarks(n.marks))
+  }
+  memo.set(n, out)
+  return out
+}
+
+// same ink = nothing but metadata marks distinguishes the blocks. marks are
+// sizeless, so a nodeSize mismatch (any ordinary typing) rules it out
+// before anything is built
+const sameInk = (a: PMNode, b: PMNode, memo: Map<PMNode, PMNode>) =>
+  a === b || (a.nodeSize === b.nodeSize && strip(a, memo).eq(strip(b, memo)))
+
+// blocks whose node identity changed between docs; `pairs` binds old blocks
+// to their successors so clocks and the note can follow, `unwritten` holds
+// the fresh blocks whose ink already stood in the doc — nobody's stroke
 function diffBlocks(before: PMNode, after: PMNode) {
   const a = children(before)
   const b = children(after)
@@ -52,47 +93,31 @@ function diffBlocks(before: PMNode, after: PMNode) {
     endA--
     endB--
   }
+  const fresh = b.slice(start, endB)
+  const removed: (PMNode | null)[] = a.slice(start, endA)
   const pairs = new Map<PMNode, PMNode>()
-  // equal-length changed regions (endA === endB) pair up index-by-index
-  if (endA === endB) for (let i = start; i < endA; i++) pairs.set(a[i], b[i])
-  return { fresh: b.slice(start, endB), removed: a.slice(start, endA), pairs }
-}
-
-// the ink of a block: words, structure, formatting — everything except
-// comment marks, whose coming and going is review-loop metadata, not
-// writing. adjacent text runs with the same marks merge, so a comment
-// boundary splitting a text node doesn't read as different ink
-const inkMarks = (n: PMNode) =>
-  n.marks
-    .filter((m) => m.type.name !== 'comment')
-    .map((m) => m.type.name + JSON.stringify(m.attrs))
-    .join(',')
-
-function inkOf(n: PMNode): string {
-  // \u0001-\u0003 as field separators — untypeable, so text can't forge them
-  let out = '\u0001' + n.type.name + '\u0002' + JSON.stringify(n.attrs) + '\u0002' + inkMarks(n)
-  let run: string | null = null
-  n.forEach((child) => {
-    if (child.isText) {
-      const key = inkMarks(child)
-      if (key !== run) {
-        out += '\u0003' + key + '\u0002'
-        run = key
-      }
-      out += child.text
-    } else {
-      out += inkOf(child) // hard breaks, images, nested blocks — all count
-      run = null
+  const unwritten = new Set<PMNode>()
+  const memo = new Map<PMNode, PMNode>()
+  if (removed.length === fresh.length) {
+    // the region kept its shape (plain typing) — pair up index-by-index
+    for (let i = 0; i < fresh.length; i++) {
+      pairs.set(removed[i]!, fresh[i])
+      if (sameInk(removed[i]!, fresh[i], memo)) unwritten.add(fresh[i])
     }
-  })
-  return out
+  } else {
+    // the region changed shape — bind each fresh block to a removed block
+    // of identical ink, each spent once: a moved paragraph, or a metadata
+    // rebuild arriving batched with writing elsewhere
+    for (const node of fresh) {
+      const j = removed.findIndex((r) => r !== null && sameInk(r, node, memo))
+      if (j < 0) continue
+      pairs.set(removed[j]!, node)
+      removed[j] = null
+      unwritten.add(node)
+    }
+  }
+  return { fresh, pairs, unwritten }
 }
-
-// same ink = nothing but comment marks distinguishes the blocks. marks are
-// sizeless, so a nodeSize mismatch (any ordinary typing) rules it out
-// before the fingerprints are ever built
-const sameInk = (a: PMNode, b: PMNode) =>
-  a === b || (a.nodeSize === b.nodeSize && inkOf(a) === inkOf(b))
 
 const carry = (m: Map<PMNode, number>, pairs: Map<PMNode, PMNode>, keep: Set<PMNode>) => {
   const next = new Map<PMNode, number>()
@@ -133,7 +158,7 @@ export function coWrittenPlugin() {
         const now = Date.now()
         const meta = tr.getMeta(ySyncPluginKey)
 
-        const { fresh, removed, pairs } = diffBlocks(tr.before, tr.doc)
+        const { fresh, pairs, unwritten } = diffBlocks(tr.before, tr.doc)
         const alive = new Set(children(tr.doc))
         const local = carry(prev.local, pairs, alive)
         const remote = carry(prev.remote, pairs, alive)
@@ -158,13 +183,11 @@ export function coWrittenPlugin() {
         const mine = isRemote ? remote : local
         const theirs = isRemote ? local : remote
         for (const node of fresh) {
-          // a comment placed or a settled thread swept rebuilds a block
-          // without writing in it — some removed block carries the same
-          // ink. the review loop does this constantly, and it (like a
-          // block merely moved) must never read as a second writer: no
-          // pen recorded, no collision — but an expired note still fades
-          const unwritten = removed.some((r) => sameInk(r, node))
-          const t = unwritten ? undefined : theirs.get(node)
+          // a comment placed or swept, a URL auto-linked, a block merely
+          // moved — rebuilt, but nobody wrote in it: no pen recorded, no
+          // collision. an expired note still fades
+          const un = unwritten.has(node)
+          const t = un ? undefined : theirs.get(node)
           if (t !== undefined && now - t < WINDOW && prev.others > 0) {
             marked.set(node, now) // colliding: place the note, or refresh its clock
           } else {
@@ -174,7 +197,7 @@ export function coWrittenPlugin() {
           }
           // with nobody else connected there is no "their pen" — a remote-
           // flagged change while alone is plumbing, not a person
-          if (!unwritten && (!isRemote || prev.others > 0)) mine.set(node, now)
+          if (!un && (!isRemote || prev.others > 0)) mine.set(node, now)
         }
 
         // let old whispers expire so the maps stay small

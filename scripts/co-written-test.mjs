@@ -39,6 +39,7 @@ await build({
 
 const { getSchema } = await import('@tiptap/core')
 const { default: StarterKit } = await import('@tiptap/starter-kit')
+const { default: TiptapLink } = await import('@tiptap/extension-link')
 const { EditorState } = await import('@tiptap/pm/state')
 const { ySyncPluginKey } = await import('y-prosemirror')
 const { coWrittenPlugin, coWrittenKey } = await import(
@@ -46,7 +47,7 @@ const { coWrittenPlugin, coWrittenKey } = await import(
 )
 const { CommentMark } = await import(path.join(cache, 'comment-mark.js'))
 
-const schema = getSchema([StarterKit.configure({ history: false }), CommentMark])
+const schema = getSchema([StarterKit.configure({ history: false }), CommentMark, TiptapLink])
 
 // two states, every edit landing on both — locally for its author,
 // remote-tagged for the other side, like the wire would deliver it
@@ -158,6 +159,7 @@ const check = (name, cond, detail = '') => {
 }
 const scenario = (name, fn, initial = []) => {
   console.log(`\n· ${name}`)
+  skew = 0 // every scenario starts at the real clock
   fn(makePair(initial))
 }
 const quietOn = (pair, who) =>
@@ -256,6 +258,42 @@ scenario('a comment batched with writing elsewhere is still not a pen', (pair) =
   })
   quietOn(pair, 'ink')
   quietOn(pair, 'quill')
+})
+
+scenario('a machine auto-linking their words is not a pen', (pair) => {
+  addParagraph(pair, 'quill', 'quill mentions example.com in passing')
+  type(pair, 'quill', 'in passing', ' today')
+  // ink's editor decorates the URL locally, the way autolink does
+  pair.edit('ink', (tr, st) => {
+    const { from, to } = rangeOf(st, 'example.com')
+    tr.addMark(from, to, st.schema.marks.link.create({ href: 'http://example.com' }))
+  })
+  quietOn(pair, 'ink')
+  quietOn(pair, 'quill')
+})
+
+scenario('a live note survives a batched sweep', (pair) => {
+  addParagraph(pair, 'ink', 'both pens are mid-fight over this line')
+  type(pair, 'ink', 'this line', ' — ink')
+  type(pair, 'quill', 'this line', ' — quill')
+  notedOn(pair, 'ink') // the collision is real and hot
+  comment(pair, 'quill', 'mid-fight', 'c10')
+  // quill sweeps the mark and starts a paragraph in one frame — the note
+  // must ride along, not die with the rebuilt block
+  pair.edit('quill', (tr, st) => {
+    st.doc.descendants((node, pos) => {
+      node.marks.forEach((m) => {
+        if (m.type.name === 'comment' && m.attrs.id === 'c10')
+          tr.removeMark(pos, pos + node.nodeSize, st.schema.marks.comment)
+      })
+    })
+    tr.insert(
+      tr.doc.content.size,
+      st.schema.nodes.paragraph.create(null, st.schema.text('and a new thought'))
+    )
+  })
+  notedOn(pair, 'ink')
+  notedOn(pair, 'quill')
 })
 
 scenario('a stale note fades when a thread is swept later', (pair) => {

@@ -1,5 +1,9 @@
 import { Mark, mergeAttributes } from '@tiptap/core'
 
+// the one name every plugin that must recognize (or ignore) comment marks
+// hangs off — co-written.ts filters by it, so a rename here follows through
+export const COMMENT_MARK = 'comment'
+
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
     comment: {
@@ -9,7 +13,7 @@ declare module '@tiptap/core' {
 }
 
 export const CommentMark = Mark.create({
-  name: 'comment',
+  name: COMMENT_MARK,
   inclusive: false,
 
   addAttributes() {
