@@ -254,7 +254,7 @@ app.get('/api/docs', requireUser, (req, res) => {
   const rows = db
     .prepare(
       `SELECT d.id, d.title, d.updated_at, d.published, d.slug, d.owner_id, d.html,
-              d.header_image, (d.owner_id = ?) AS mine
+              d.header_image, d.on_profile, (d.owner_id = ?) AS mine
        FROM docs d
        WHERE d.owner_id = ? OR d.id IN (SELECT doc_id FROM collaborators WHERE user_id = ?)
        ORDER BY d.updated_at DESC`
