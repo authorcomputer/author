@@ -95,27 +95,31 @@ function diffBlocks(before: PMNode, after: PMNode) {
   }
   const fresh = b.slice(start, endB)
   const removed: (PMNode | null)[] = a.slice(start, endA)
+  const aligned = removed.length === fresh.length
   const pairs = new Map<PMNode, PMNode>()
   const unwritten = new Set<PMNode>()
   const memo = new Map<PMNode, PMNode>()
-  if (removed.length === fresh.length) {
-    // the region kept its shape (plain typing) — pair up index-by-index
-    for (let i = 0; i < fresh.length; i++) {
-      pairs.set(removed[i]!, fresh[i])
-      if (sameInk(removed[i]!, fresh[i], memo)) unwritten.add(fresh[i])
-    }
-  } else {
-    // the region changed shape — bind each fresh block to a removed block
-    // of identical ink, each spent once: a moved paragraph, or a metadata
-    // rebuild arriving batched with writing elsewhere
-    for (const node of fresh) {
-      const j = removed.findIndex((r) => r !== null && sameInk(r, node, memo))
-      if (j < 0) continue
-      pairs.set(removed[j]!, node)
+  const strays: number[] = []
+  // a block whose ink already stood in the region — commented, swept, or
+  // merely moved (a reorder keeps the region's shape, so this must run
+  // regardless of shape) — binds to its old self, each spent once, so its
+  // clocks and note follow it and nobody's pen is recorded
+  for (let i = 0; i < fresh.length; i++) {
+    const j =
+      aligned && removed[i] !== null && sameInk(removed[i]!, fresh[i], memo)
+        ? i // the aligned twin is the likely match — try it first
+        : removed.findIndex((r) => r !== null && sameInk(r, fresh[i], memo))
+    if (j >= 0) {
+      pairs.set(removed[j]!, fresh[i])
       removed[j] = null
-      unwritten.add(node)
+      unwritten.add(fresh[i])
+    } else {
+      strays.push(i)
     }
   }
+  // what's left of a shape-kept region is plain typing — index-by-index
+  if (aligned)
+    for (const i of strays) if (removed[i] !== null) pairs.set(removed[i]!, fresh[i])
   return { fresh, pairs, unwritten }
 }
 

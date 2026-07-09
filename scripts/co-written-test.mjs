@@ -260,6 +260,31 @@ scenario('a comment batched with writing elsewhere is still not a pen', (pair) =
   quietOn(pair, 'quill')
 })
 
+scenario(
+  'a paragraph dragged past fresh typing is not a pen',
+  (pair) => {
+    type(pair, 'quill', 'the attention', ' — quill') // quill's clock is hot on beta
+    // ink drags gamma above beta: delete + reinsert in one transaction,
+    // a shape-keeping reorder of the changed region
+    pair.edit('ink', (tr, st) => {
+      let gamma = null
+      let beta = null
+      st.doc.forEach((node, offset) => {
+        if (node.textContent.includes('the rear')) gamma = { from: offset, to: offset + node.nodeSize, node }
+        if (node.textContent.includes('the attention')) beta = { from: offset }
+      })
+      tr.delete(gamma.from, gamma.to)
+      tr.insert(beta.from, gamma.node)
+    })
+    quietOn(pair, 'ink')
+    quietOn(pair, 'quill')
+    type(pair, 'quill', 'quill', ' again') // beta is still only quill's
+    quietOn(pair, 'ink')
+    quietOn(pair, 'quill')
+  },
+  ['alpha stands first', 'beta gets the attention', 'gamma holds the rear']
+)
+
 scenario('a machine auto-linking their words is not a pen', (pair) => {
   addParagraph(pair, 'quill', 'quill mentions example.com in passing')
   type(pair, 'quill', 'in passing', ' today')
