@@ -786,6 +786,9 @@ function aiLimit(req, res, next) {
   if (!hasInput) return res.status(400).json({ error: 'nothing to read yet — write a little first' })
 
   const day = new Date().toISOString().slice(0, 10)
+  // the ledger keys this request will owe — settled by the handler only once
+  // the model actually answers, so a provider failure burns no allowance
+  const charges = [req.user.id]
 
   if (req.user.anon) {
     const accountRequired = () =>
@@ -803,7 +806,7 @@ function aiLimit(req, res, next) {
       .prepare('SELECT count FROM ai_usage WHERE user_id = ? AND day = ?')
       .get(ipKey, day)
     if (ipRow && ipRow.count >= AI_GHOST_IP_CAP) return accountRequired()
-    bumpUsage(ipKey, day)
+    charges.push(ipKey)
   } else if (profileFor(req.user.id).member) {
     const row = db
       .prepare('SELECT count FROM ai_usage WHERE user_id = ? AND day = ?')
@@ -830,7 +833,14 @@ function aiLimit(req, res, next) {
   if (global.s >= AI_GLOBAL_DAILY_CAP) {
     return res.status(429).json({ error: 'the pen rests — the whole desk hit its daily limit' })
   }
-  bumpUsage(req.user.id, day)
+  // same promise as above: nothing is charged yet. the handler settles up at
+  // the first sign of output, so an upstream 529 leaves the count untouched
+  let settled = false
+  req.settleAiCharge = () => {
+    if (settled) return
+    settled = true
+    for (const key of charges) bumpUsage(key, day)
+  }
   next()
 }
 

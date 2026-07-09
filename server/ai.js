@@ -7,15 +7,21 @@ const VOICE = `You are the writing companion inside "author", a quiet writing ap
 You are a sharp, kind editor. You are concise and concrete. You never pad, never flatter,
 and never use bullet-point corporate voice unless the writing calls for it.`
 
-// Stream plain text chunks to the response.
-async function streamText(res, params) {
+// Stream plain text chunks to the response. `settle` is the quota charge
+// from aiLimit — called at the first ink, so a provider that fails before
+// producing anything costs the writer nothing.
+async function streamText(res, params, settle) {
   res.setHeader('Content-Type', 'text/plain; charset=utf-8')
   res.setHeader('Cache-Control', 'no-cache')
   res.setHeader('X-Accel-Buffering', 'no')
   try {
     const stream = client.messages.stream(params)
-    stream.on('text', (t) => res.write(t))
+    stream.on('text', (t) => {
+      settle?.()
+      res.write(t)
+    })
     await stream.finalMessage()
+    settle?.() // a reply with no text block still ran the model
     res.end()
   } catch (e) {
     console.error('ai stream error', e)
@@ -73,13 +79,17 @@ export async function aiFeedback(req, res) {
     messages = [{ role: 'user', content: firstTurn(text, question) }]
   }
 
-  await streamText(res, {
-    model: MODEL,
-    max_tokens: 16000,
-    thinking: { type: 'adaptive' },
-    system: VOICE,
-    messages,
-  })
+  await streamText(
+    res,
+    {
+      model: MODEL,
+      max_tokens: 16000,
+      thinking: { type: 'adaptive' },
+      system: VOICE,
+      messages,
+    },
+    req.settleAiCharge
+  )
 }
 
 export async function aiCommand(req, res) {
@@ -89,12 +99,16 @@ export async function aiCommand(req, res) {
   const prompt = hasSelection
     ? `<document_context>\n${(context || '').slice(0, 50000)}\n</document_context>\n\n<selection>\n${selection.slice(0, 50000)}\n</selection>\n\nInstruction: ${instruction}\n\nRewrite the selection according to the instruction. Match the document's voice. Respond with ONLY the replacement text — no preamble, no quotes around it, no commentary.`
     : `<document>\n${(context || '').slice(0, 100000)}\n</document>\n\nInstruction: ${instruction}\n\nContinue or produce the requested text so it can be inserted at the end of the document. Match the document's voice. Respond with ONLY the text to insert — no preamble, no commentary.`
-  await streamText(res, {
-    model: MODEL,
-    max_tokens: 16000,
-    system: VOICE,
-    messages: [{ role: 'user', content: prompt }],
-  })
+  await streamText(
+    res,
+    {
+      model: MODEL,
+      max_tokens: 16000,
+      system: VOICE,
+      messages: [{ role: 'user', content: prompt }],
+    },
+    req.settleAiCharge
+  )
 }
 
 // the proof reads for exactly what the writer asked — each check is its
@@ -175,7 +189,9 @@ export async function aiChecks(req, res) {
       },
     })
     const block = response.content.find((b) => b.type === 'text')
-    res.json(JSON.parse(block.text))
+    const issues = JSON.parse(block.text)
+    req.settleAiCharge?.() // the model answered and it parsed — now it counts
+    res.json(issues)
   } catch (e) {
     console.error('ai checks error', e)
     res.status(500).json({ error: e?.message || 'ai error' })
