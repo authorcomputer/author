@@ -20,16 +20,16 @@ export const UPDATES: UpdateDay[] = [
       {
         kind: 'bullet',
         head: 'reply is the answer',
-        text: 'comment threads now lead with ↩ reply — write back as many times as the talk takes. settling the thread is the quiet button beside it, not the way you respond.',
+        text: 'threads now lead with ↩ reply — write back as long as the talk takes. resolving is the quiet button beside it.',
       },
       {
         kind: 'bullet',
-        head: '“✽ written twice” learns what writing is',
-        text: 'the note now appears only when two pens truly rework the same paragraph. leaving a comment, resolving a thread, or moving a paragraph into place no longer counts as a second writer — and a note that has outstayed the collision fades on the next touch.',
+        head: '“✽ written twice” calms down',
+        text: 'the note appears only when two pens truly rework the same paragraph — commenting, resolving, and rearranging no longer count.',
       },
       {
         kind: 'aside',
-        text: 'under the floorboards: a pressure test now walks two make-believe writers through every comment, sweep, drag, and collision before the note is allowed to ship.',
+        text: 'under the floorboards: a pressure test now walks two make-believe writers through every collision before the note ships.',
       },
     ],
   },
