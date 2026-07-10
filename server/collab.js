@@ -115,8 +115,20 @@ function send(ws, buf) {
 
 function persist(room) {
   // the empty stand-in for a blob that wouldn't load is not the document —
-  // saving it would turn maybe-recoverable corruption into a certain blank
-  if (room.brokenLoad) return
+  // saving it would turn maybe-recoverable corruption into a certain blank.
+  // but real content — a restored version, or words deliberately typed — is
+  // the document now: it heals the room and earns the write. only a still-blank
+  // broken room refuses.
+  if (room.brokenLoad) {
+    let content
+    try {
+      content = yDocToProsemirrorJSON(room.ydoc, 'default')
+    } catch {
+      return
+    }
+    if (!hasStuff(content)) return
+    room.brokenLoad = false
+  }
   try {
     const title = room.ydoc.getMap('meta').get('title')
     saveYDoc(room.id, Buffer.from(Y.encodeStateAsUpdate(room.ydoc)), title)

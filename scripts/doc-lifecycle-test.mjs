@@ -3,7 +3,8 @@
 // parse — and the invariant each must keep: delete tears the room down
 // (no ghost saves, no orphan versions), the sweep spares any page someone
 // has open, and a blob that fails to load is never overwritten by the
-// empty stand-in a broken room serves.
+// empty stand-in a broken room serves — yet real content typed into that
+// stand-in heals the room and is saved, so restore is not a dead end.
 //
 // Boot the server with AUTHOR_IDLE_SNAP_MS=1200 AUTHOR_SWEEP_MS=1500.
 // Reads the server's own SQLite file (AUTHOR_DB, default data/author.db)
@@ -151,6 +152,36 @@ const blob = sdb.prepare('SELECT ydoc FROM docs WHERE id = ?').get(fragile).ydoc
 check(
   blob && Buffer.compare(Buffer.from(blob), garbage) === 0,
   'the unparseable blob survives the room untouched'
+)
+
+// ---------- 4. real content heals a broken room and persists ----------
+// the recovery path the refusal must not block: a corrupt blob, opened, then
+// given words. the stand-in stops being a stand-in — the save proceeds and
+// the doc reloads from disk carrying what was typed.
+const { id: healed } = await post('/api/docs', { title: 'healed' }, cookieA)
+const garbage2 = Buffer.from('twenty broken bytes!')
+sdb.prepare('UPDATE docs SET ydoc = ? WHERE id = ?').run(garbage2, healed)
+const d = connectYdoc(cookieA, healed)
+await d.synced // empty stand-in, same as the fragile room above
+typeInto(d.ydoc, 'words that heal the broken doc')
+await sleep(400) // the edit reaches the server
+d.provider.destroy() // last out persists — and now there is content to keep
+await sleep(800)
+const healedBlob = sdb.prepare('SELECT ydoc FROM docs WHERE id = ?').get(healed).ydoc
+check(
+  healedBlob && Buffer.compare(Buffer.from(healedBlob), garbage2) !== 0,
+  'real content overwrites the broken blob'
+)
+// reload the way a fresh room would: parse the stored bytes into a new doc
+let reloaded = ''
+try {
+  const rdoc = new Y.Doc()
+  Y.applyUpdate(rdoc, new Uint8Array(healedBlob))
+  reloaded = rdoc.getXmlFragment('default').toString()
+} catch {}
+check(
+  reloaded.includes('words that heal the broken doc'),
+  'the healed blob reloads with the typed content'
 )
 
 if (failed) {
