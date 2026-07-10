@@ -14,6 +14,46 @@ export type UpdateDay = { date: string; title: string; blocks: UpdateBlock[] }
 
 export const UPDATES: UpdateDay[] = [
   {
+    date: 'july 9, 2026',
+    title: 'a day spent reading our own handwriting',
+    blocks: [
+      {
+        kind: 'bullet',
+        head: 'markdown arrives as markdown',
+        text: 'paste a report and it lands wearing its shape — headings, bold, rules — instead of its own punctuation. anything that still comes in as a block of code now has a door back to prose.',
+      },
+      {
+        kind: 'bullet',
+        head: 'your pictures are kept too',
+        text: 'images now ride to the backup beside the words, so a page restored from a bad day comes back whole.',
+      },
+      {
+        kind: 'bullet',
+        head: 'a cursor belongs to its writer',
+        text: 'lose your connection and your cursor waits for you; no one else can wear it while you are gone.',
+      },
+      {
+        kind: 'bullet',
+        head: 'edits land where they are meant',
+        text: 'incorporating a proof no longer doubles a line, applying a suggestion keeps the passage whole, and only a writer on the page may settle its threads.',
+      },
+      {
+        kind: 'bullet',
+        head: 'nothing is lost quietly',
+        text: 'deleting a page no longer leaves a collaborator writing into the void, and a page that fails to open can be healed by restoring a version — never overwritten blank.',
+      },
+      {
+        kind: 'bullet',
+        head: 'the counts tell the truth',
+        text: 'a ✎ request that never answered costs you nothing, the chart fills with your own pen alone, and your profile lists what it says it lists.',
+      },
+      {
+        kind: 'aside',
+        text: 'under the floorboards: twenty-two faults found by a small army of readers — each confirmed by two skeptics before it was mended, and checked by two more after. locks tightened on the sign-up and password doors along the way.',
+      },
+    ],
+  },
+  {
     date: 'july 8, 2026',
     title: 'threads become conversations',
     blocks: [
