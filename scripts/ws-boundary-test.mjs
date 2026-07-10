@@ -75,30 +75,43 @@ check(
   'observer sees the victim before any forgery'
 )
 
-// a second session opens a raw socket and forges the victim's cursor: same
-// clientId, an unreachable clock, a state of its choosing
-const attacker = new WebSocket(`${WS}/${docId}`, { headers: { Cookie: cookie } })
-attacker.binaryType = 'arraybuffer'
-await new Promise((r, j) => {
-  attacker.once('open', r)
-  attacker.once('error', j)
-})
-{
+// a raw frame naming another writer's cursor: same clientId, an unreachable
+// clock, a state of its choosing. the forger is a *different account* — that
+// is the only thing that separates a thief from a writer whose wifi dropped
+const strangerCookie = await signup('quill')
+const forgeFrame = (clientId, name) => {
   const inner = encoding.createEncoder()
   encoding.writeVarUint(inner, 1) // one entry
-  encoding.writeVarUint(inner, victimId)
+  encoding.writeVarUint(inner, clientId)
   encoding.writeVarUint(inner, 1 << 30) // a clock the victim will never reach
-  encoding.writeVarString(inner, JSON.stringify({ user: { name: 'imposter', color: '#000' } }))
+  encoding.writeVarString(inner, JSON.stringify({ user: { name, color: '#000' } }))
   const frame = encoding.createEncoder()
   encoding.writeVarUint(frame, 1) // MESSAGE_AWARENESS
   encoding.writeVarUint8Array(frame, encoding.toUint8Array(inner))
-  attacker.send(encoding.toUint8Array(frame))
+  return encoding.toUint8Array(frame)
 }
+const rawSocket = async (cookie) => {
+  const ws = new WebSocket(`${WS}/${docId}`, { headers: { Cookie: cookie } })
+  ws.binaryType = 'arraybuffer'
+  await new Promise((r, j) => {
+    ws.once('open', r)
+    ws.once('error', j)
+  })
+  return ws
+}
+
+// the doc must be open to the stranger before their socket is allowed in
+await fetch(`${BASE}/api/docs/${docId}/open`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Origin: BASE, Cookie: strangerCookie },
+})
+const attacker = await rawSocket(strangerCookie)
+attacker.send(forgeFrame(victimId, 'imposter'))
 await sleep(500)
 
 check(
   nameFor(observer.provider.awareness, victimId) === 'victim',
-  'the forged frame did not override the victim to everyone else'
+  'a stranger’s forged frame did not override the victim to everyone else'
 )
 
 attacker.close()
@@ -109,6 +122,33 @@ check(
   'closing the forger did not erase the victim from everyone else'
 )
 
+// ---------- 1b. a reconnect is not a forger ----------
+// y-websocket keeps its clientID across a drop, and a half-open socket can
+// still be registered when the new one arrives. the writer's own second
+// socket must be able to reclaim its cursor — and the stale socket's eventual
+// close must not take that live cursor with it
+const rejoin = await rawSocket(cookie)
+rejoin.send(forgeFrame(victimId, 'victim-again'))
+await sleep(500)
+
+check(
+  nameFor(observer.provider.awareness, victimId) === 'victim-again',
+  'the writer’s own reconnect reclaimed their cursor'
+)
+
+// the stale socket dies without a goodbye, exactly as a half-open one does.
+// terminate, not destroy: a graceful disconnect announces its own departure
+// and the server rightly honours it — a dropped laptop announces nothing
+victim.provider.shouldConnect = false
+victim.provider.ws.terminate()
+await sleep(700)
+
+check(
+  nameFor(observer.provider.awareness, victimId) === 'victim-again',
+  'reaping the stale socket did not erase the reconnected writer'
+)
+
+rejoin.close()
 victim.provider.destroy()
 observer.provider.destroy()
 await sleep(200)

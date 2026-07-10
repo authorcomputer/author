@@ -80,14 +80,28 @@ function broadcast(room, buf) {
   }
 }
 
-// a clientId is spoken for the moment one connection registers it. any other
-// connection naming it is forging that cursor — the wire has no signature, so
-// ownership is the only proof we get
-function ownedByOther(room, ws, clientId) {
+// a clientId belongs to the account that first spoke it. the wire carries no
+// signature, so the session behind the socket is the only proof we get: a
+// frame naming a cursor another *account* holds is forgery.
+function forgedBy(room, ws, clientId) {
+  const mine = room.names.get(ws)
   for (const [conn, ids] of room.conns) {
-    if (conn !== ws && ids.has(clientId)) return true
+    if (conn === ws || !ids.has(clientId)) continue
+    const theirs = room.names.get(conn)
+    if (!mine || !theirs || theirs.id !== mine.id) return true
   }
   return false
+}
+
+// the same writer on a second socket is no forger but a reconnect —
+// y-websocket keeps its clientID across a drop, and a half-open socket can
+// linger long past it. hand the id to the live connection, so when the stale
+// one is finally reaped its close cannot erase a cursor that never left.
+function takeClientId(room, ws, clientId) {
+  for (const [conn, ids] of room.conns) {
+    if (conn !== ws) ids.delete(clientId)
+  }
+  room.conns.get(ws)?.add(clientId)
 }
 
 function send(ws, buf) {
@@ -363,13 +377,12 @@ export function setupCollab(ws, docId, user) {
             decoding.readVarString(dec2) // state
             incoming.push(clientId)
           }
-          // a socket may only move its own cursor. a frame naming a clientId
-          // another connection holds is presence-forgery: drop it whole, or
-          // it would override that writer now and, on this socket's close,
-          // erase them from everyone's view
-          if (incoming.some((id) => ownedByOther(room, ws, id))) break
-          const ids = room.conns.get(ws)
-          if (ids) for (const id of incoming) ids.add(id)
+          // a frame naming a cursor another account holds is presence-forgery:
+          // drop it whole, or it would override that writer now and, on this
+          // socket's close, erase them from everyone's view. checked before a
+          // single id changes hands, so a forged tail can't strand a claimed head
+          if (incoming.some((id) => forgedBy(room, ws, id))) break
+          for (const id of incoming) takeClientId(room, ws, id)
           awarenessProtocol.applyAwarenessUpdate(room.awareness, update, ws)
           break
         }
