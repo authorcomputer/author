@@ -10,7 +10,7 @@ import sanitizeHtml from 'sanitize-html'
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node'
 import { db, docExists } from './db.js'
 import { auth, runAuthMigrations, migrateLegacyUsers, TRUSTED_ORIGINS } from './auth.js'
-import { setupCollab, flushRooms, insertVersion } from './collab.js'
+import { setupCollab, flushRooms, insertVersion, dropRoom, hasRoom } from './collab.js'
 import { aiFeedback, aiCommand, aiChecks } from './ai.js'
 
 const app = express()
@@ -338,11 +338,16 @@ app.delete('/api/docs/:id', requireUser, (req, res) => {
   const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
   if (!doc) return res.status(404).json({ error: 'no such doc' })
   if (doc.owner_id !== req.user.id) return res.status(403).json({ error: 'not yours' })
-  db.prepare('DELETE FROM docs WHERE id = ?').run(doc.id)
-  unlinkDocImages(doc) // after the row is gone, so it isn't counted as a referrer
-  db.prepare('DELETE FROM comments WHERE doc_id = ?').run(doc.id)
-  db.prepare('DELETE FROM versions WHERE doc_id = ?').run(doc.id)
-  db.prepare('DELETE FROM collaborators WHERE doc_id = ?').run(doc.id)
+  // the live room goes first — anyone still connected must be cut off, not
+  // left typing into saves that match no row
+  dropRoom(doc.id)
+  db.transaction(() => {
+    db.prepare('DELETE FROM docs WHERE id = ?').run(doc.id)
+    db.prepare('DELETE FROM comments WHERE doc_id = ?').run(doc.id)
+    db.prepare('DELETE FROM versions WHERE doc_id = ?').run(doc.id)
+    db.prepare('DELETE FROM collaborators WHERE doc_id = ?').run(doc.id)
+  })()
+  unlinkDocImages(doc) // after the rows are gone, so this doc isn't counted as a referrer
   res.json({ ok: true })
 })
 
@@ -1000,31 +1005,40 @@ function sweepGhosts() {
          AND COALESCE((SELECT MAX(updated_at) FROM docs WHERE owner_id = u.id), 0) < ?`
     )
     .all(nowIso, cutoffMs)
+  let swept = 0
   for (const { id } of stale) {
     const docs = db.prepare('SELECT id, header_image, html FROM docs WHERE owner_id = ?').all(id)
-    for (const d of docs) {
-      db.prepare('DELETE FROM comments WHERE doc_id = ?').run(d.id)
-      db.prepare('DELETE FROM versions WHERE doc_id = ?').run(d.id)
-      db.prepare('DELETE FROM collaborators WHERE doc_id = ?').run(d.id)
-    }
-    db.prepare('DELETE FROM docs WHERE owner_id = ?').run(id)
+    // updated_at only moves on save — a page reopened after a long sleep
+    // looks stale until the first keystroke lands. a loaded room means
+    // someone is there now; leave the whole ghost for a later night.
+    if (docs.some((d) => hasRoom(d.id))) continue
+    db.transaction(() => {
+      for (const d of docs) {
+        db.prepare('DELETE FROM comments WHERE doc_id = ?').run(d.id)
+        db.prepare('DELETE FROM versions WHERE doc_id = ?').run(d.id)
+        db.prepare('DELETE FROM collaborators WHERE doc_id = ?').run(d.id)
+      }
+      db.prepare('DELETE FROM docs WHERE owner_id = ?').run(id)
+      db.prepare('DELETE FROM collaborators WHERE user_id = ?').run(id)
+      db.prepare('DELETE FROM activity WHERE user_id = ?').run(id)
+      db.prepare('DELETE FROM ai_usage WHERE user_id = ?').run(id)
+      db.prepare('DELETE FROM account WHERE userId = ?').run(id)
+      db.prepare('DELETE FROM session WHERE userId = ?').run(id)
+      db.prepare('DELETE FROM user WHERE id = ?').run(id)
+    })()
     // rows gone first, so a file shared with another doc isn't unlinked
     for (const d of docs) unlinkDocImages(d)
-    db.prepare('DELETE FROM collaborators WHERE user_id = ?').run(id)
-    db.prepare('DELETE FROM activity WHERE user_id = ?').run(id)
-    db.prepare('DELETE FROM ai_usage WHERE user_id = ?').run(id)
-    db.prepare('DELETE FROM account WHERE userId = ?').run(id)
-    db.prepare('DELETE FROM session WHERE userId = ?').run(id)
-    db.prepare('DELETE FROM user WHERE id = ?').run(id)
+    swept++
   }
-  if (stale.length) console.log(`swept ${stale.length} drifted ghost(s)`)
+  if (swept) console.log(`swept ${swept} drifted ghost(s)`)
 }
 
 const PORT = process.env.PORT || 3001
 await runAuthMigrations()
 await migrateLegacyUsers()
 sweepGhosts()
-setInterval(sweepGhosts, 24 * 60 * 60 * 1000).unref()
+// nightly by default; the knob is for tests, which can't wait a day
+setInterval(sweepGhosts, Number(process.env.AUTHOR_SWEEP_MS) || 24 * 60 * 60 * 1000).unref()
 server.listen(PORT, () => {
   console.log(`author* listening on http://localhost:${PORT}`)
 })

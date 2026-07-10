@@ -19,10 +19,15 @@ function getRoom(docId) {
 
   const ydoc = new Y.Doc()
   const stored = loadYDoc(docId)
+  // bytes that won't parse might still be recoverable — a torn write, a bad
+  // restore. the room carries on with an empty stand-in so readers aren't
+  // locked out, but it must never write that stand-in back over the original
+  let brokenLoad = false
   if (stored) {
     try {
       Y.applyUpdate(ydoc, new Uint8Array(stored))
     } catch (e) {
+      brokenLoad = true
       console.error('failed to load ydoc', docId, e)
     }
   }
@@ -42,6 +47,7 @@ function getRoom(docId) {
     lastSnap: 0, // the mid-flow clock; reset at the start of each sitting
     editors: [], // who was at the desk when the last change landed
     destroyTimer: null,
+    brokenLoad,
   }
 
   awareness.on('update', ({ added, updated, removed }) => {
@@ -94,6 +100,9 @@ function send(ws, buf) {
 }
 
 function persist(room) {
+  // the empty stand-in for a blob that wouldn't load is not the document —
+  // saving it would turn maybe-recoverable corruption into a certain blank
+  if (room.brokenLoad) return
   try {
     const title = room.ydoc.getMap('meta').get('title')
     saveYDoc(room.id, Buffer.from(Y.encodeStateAsUpdate(room.ydoc)), title)
@@ -282,6 +291,31 @@ function flushRoom(room) {
 // deploys don't wait five minutes
 export function flushRooms() {
   for (const room of rooms.values()) flushRoom(room)
+}
+
+// a loaded room is presence enough — someone has the page open, even if
+// they haven't typed yet
+export const hasRoom = (docId) => rooms.has(docId)
+
+// deletion's other half: when the row goes, the live room goes with it —
+// otherwise editors keep typing into saves that match nothing, and the
+// settle timers keep minting versions for a page that isn't there
+export function dropRoom(docId) {
+  const room = rooms.get(docId)
+  if (!room) return
+  rooms.delete(docId)
+  for (const t of ['saveTimer', 'idleTimer', 'destroyTimer']) {
+    if (room[t]) clearTimeout(room[t])
+    room[t] = null
+  }
+  for (const ws of room.conns.keys()) {
+    try {
+      ws.close()
+    } catch {}
+  }
+  room.conns.clear()
+  room.awareness.destroy()
+  room.ydoc.destroy()
 }
 
 export function setupCollab(ws, docId, user) {
