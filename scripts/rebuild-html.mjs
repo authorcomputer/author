@@ -35,6 +35,10 @@ const mapped = xml
   .replace(/<(\/?)codeblock[^>]*>/gi, '<$1pre>')
   .replace(/<horizontalrule><\/horizontalrule>/gi, '<hr>')
   .replace(/<hardbreak><\/hardbreak>/gi, '<br>')
+  // atoms carry their media in attributes, not children: image -> <img>, and
+  // embed -> the editor's <iframe> whose provider lives under data-provider
+  .replace(/<image\b([^>]*)><\/image>/gi, '<img$1>')
+  .replace(/<embed\b([^>]*)><\/embed>/gi, (_, a) => `<iframe${a.replace(/\bprovider=/gi, 'data-provider=')}></iframe>`)
   .replace(/<(\/?)bold>/g, '<$1strong>')
   .replace(/<(\/?)italic>/g, '<$1em>')
   .replace(/<(\/?)strike>/g, '<$1s>')
