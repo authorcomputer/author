@@ -59,5 +59,20 @@ if (/already|exists|has a desk|taken|registered/.test(tell))
   throw new Error(`FAIL: duplicate signup names the address as known: "${tell}"`)
 console.log(`PASS: a taken address gets the same flat no as any other stumble (${again.status})`)
 
+// and the raw better-auth sign-up desk must be shut entirely — it answered
+// 422 "user already exists" for a taken address and 200 for a free one, a
+// louder oracle than the 409 above, and it bypassed the wrapper's rate limit
+// and handle generation. a free address is the sharpest probe: if the route
+// still lived it would 200 and mint an account; a 404 admits nothing.
+const raw = await post('/api/auth/sign-up/email', {
+  email: `raw-${run}@test.local`,
+  password: 'first-word',
+  name: `raw${run}`,
+  username: `raw${run}`,
+})
+if (raw.status !== 404)
+  throw new Error(`FAIL: raw /api/auth/sign-up/email still answers ${raw.status} — the enumeration oracle lives`)
+console.log('PASS: the raw better-auth sign-up endpoint is gone (404)')
+
 console.log('ALL PASS')
 process.exit(0)

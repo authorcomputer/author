@@ -39,6 +39,15 @@ app.use((req, res, next) => {
   next()
 })
 
+// better-auth's own sign-up desk answers 422 "user already exists" for a
+// taken address and 200 for a free one — a plainer enumeration oracle than
+// the 409 /api/signup was hardened out of. nothing on the client walks this
+// route; the product signs up through /api/signup (rate-limited, flat-no,
+// ghost-linking), which reaches better-auth in-process, not over this path.
+// so shut the public door with a 404 that admits nothing. ghost sign-in,
+// email sign-in, and session routes under /api/auth/* still pass through.
+app.all('/api/auth/sign-up/email', (req, res) => res.status(404).json({ error: 'nothing here' }))
+
 // better-auth needs the raw request body — mount before express.json
 app.all('/api/auth/*', toNodeHandler(auth))
 app.use(express.json({ limit: '5mb' }))

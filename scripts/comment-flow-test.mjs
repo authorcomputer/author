@@ -16,11 +16,9 @@ async function post(path, body, cookie) {
 }
 
 // the owner takes a desk and writes
-const owner = await post('/api/auth/sign-up/email', {
+const owner = await post('/api/signup', {
   email: `owner-${run}@test.local`,
   password: 'hunter22',
-  name: `owner${run}`,
-  username: `owner${run}`,
 })
 const ownerCookie = cookieOf(owner)
 const { id: docId } = await (await post('/api/docs', { title: 'draft for review' }, ownerCookie)).json()
@@ -134,11 +132,9 @@ console.log('PASS: empty comments refused')
 // settling is a doc-level act — a stranger holding a cid gets nothing
 const tid = 'c_authtest' + run
 await post(`/api/docs/${docId}/comments`, { id: tid, text: 'still open', quote: 'x' }, ownerCookie)
-const stranger = await post('/api/auth/sign-up/email', {
+const stranger = await post('/api/signup', {
   email: `stranger-${run}@test.local`,
   password: 'hunter22',
-  name: `stranger${run}`,
-  username: `stranger${run}`,
 })
 const strangerCookie = cookieOf(stranger)
 const theft = await fetch(`${BASE}/api/comments/${tid}/resolve`, {

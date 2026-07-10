@@ -9,14 +9,12 @@ const WS = BASE.replace(/^http/, 'ws') + '/ws'
 const run = Date.now().toString(36)
 
 async function signup(name) {
-  const res = await fetch(`${BASE}/api/auth/sign-up/email`, {
+  const res = await fetch(`${BASE}/api/signup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Origin: BASE },
     body: JSON.stringify({
       email: `${name}-${run}@test.local`,
       password: 'hunter22',
-      name: `${name}${run}`,
-      username: `${name}${run}`,
     }),
   })
   if (!res.ok) throw new Error(`signup ${name}: ${res.status} ${await res.text()}`)

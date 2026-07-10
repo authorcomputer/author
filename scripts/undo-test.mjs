@@ -40,14 +40,12 @@ async function post(path, body, cookie) {
 }
 async function signup(name) {
   for (let tries = 0; ; tries++) {
-    const res = await fetch(`${BASE}/api/auth/sign-up/email`, {
+    const res = await fetch(`${BASE}/api/signup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Origin: BASE },
       body: JSON.stringify({
         email: `${name}-${run}@test.local`,
         password: 'hunter22',
-        name: `${name}${run}`,
-        username: `${name}${run}`,
       }),
     })
     if (res.ok) return cookieOf(res)

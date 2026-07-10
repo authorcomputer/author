@@ -15,11 +15,9 @@ async function post(path, body, cookie) {
 }
 
 // a free writer takes a desk — no membership, capped at AI_FREE_MONTHLY
-const writer = await post('/api/auth/sign-up/email', {
+const writer = await post('/api/signup', {
   email: `quota-${run}@test.local`,
   password: 'hunter22',
-  name: `quota${run}`,
-  username: `quota${run}`,
 })
 if (!writer.ok) throw new Error(`sign-up: ${writer.status} ${await writer.text()}`)
 const writerCookie = cookieOf(writer)
