@@ -10,6 +10,7 @@ import TiptapLink from '@tiptap/extension-link'
 import TiptapImage from '@tiptap/extension-image'
 import Underline from '@tiptap/extension-underline'
 import type { EditorView } from '@tiptap/pm/view'
+import type { Transaction } from '@tiptap/pm/state'
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { api, apiStream, me, username, colorFor, localDay } from '../api'
@@ -26,6 +27,14 @@ import { Checkmarks, setMarks, clearMarks, MarkItem } from '../checkmarks'
 import { CoWritten, coWrittenKey } from '../co-written'
 import { CommentGutter } from '../comment-gutter'
 import { findRange, findWholeRange, commentRange } from '../ranges'
+import { isOwnInk, PLUMBING } from '../own-ink'
+import { defaultPasteKeeps } from '../paste'
+import {
+  type CommandResult,
+  listenCommandResults,
+  publishCommandResult,
+} from '../command-bus'
+import { keepThenRestore } from '../restore'
 
 function needsAccount(e: unknown) {
   return (e as any)?.code === 'account_required'
@@ -269,14 +278,15 @@ function EditorInner({ id }: { id: string }) {
           }
         }
         // rich content (Word, web pages) ships an image rendition *alongside*
-        // the real text — let the default paste win when there's text to keep
-        const hasText =
-          !!cd && Array.from(cd.types).some((t) => t === 'text/html' || t === 'text/plain')
-        if (hasText) return false
+        // the real text — let the default paste win when it would keep
+        // anything. but "copy image" ships only an external <img> the schema
+        // drops: there the file on the clipboard is the whole paste
         const file = Array.from(cd?.files ?? []).find((f) => f.type.startsWith('image/'))
-        if (!file) return false
-        insertInlineImage(view, file)
-        return true
+        if (file && !defaultPasteKeeps(cd?.getData('text/html') ?? '', text)) {
+          insertInlineImage(view, file)
+          return true
+        }
+        return false
       },
       handleDrop: (view, event, _slice, moved) => {
         if (moved) return false // reordering content within the doc, not a file
@@ -345,7 +355,11 @@ function EditorInner({ id }: { id: string }) {
   const htmlTimer = useRef<ReturnType<typeof setTimeout>>()
   useEffect(() => {
     if (!editor) return
-    const push = () => {
+    const push = ({ transaction }: { transaction: Transaction }) => {
+      // a collaborator's typing fires 'update' here too — but the snapshot
+      // POST credits *this* viewer's activity chart, so only their own pen
+      // may send it. the writer's own tab keeps the html column fresh.
+      if (!isOwnInk(transaction)) return
       clearTimeout(htmlTimer.current)
       htmlTimer.current = setTimeout(() => {
         api(`/api/docs/${id}/html`, {
@@ -561,7 +575,9 @@ function EditorInner({ id }: { id: string }) {
         }
       })
     })
-    if (tr.steps.length) editor.view.dispatch(tr)
+    // the sweep is bookkeeping, not writing — it must not read as this
+    // viewer's ink
+    if (tr.steps.length) editor.view.dispatch(tr.setMeta(PLUMBING, true))
   }, [comments, editor])
 
   // the "written twice" note needs to know whether anyone else is here
@@ -963,16 +979,6 @@ function SharePop({
 /* side panel                                                          */
 /* ------------------------------------------------------------------ */
 
-type CommandResult = {
-  instruction: string
-  range: { from: number; to: number } | null
-  sourceText: string
-  text: string
-  running: boolean
-}
-
-let commandResultBus: { set?: (r: CommandResult | null) => void } = {}
-
 // the one way to run the pen: stream a rewrite into the ask panel, where
 // [replace]/[insert] live.
 async function runAiCommand(
@@ -990,7 +996,7 @@ async function runAiCommand(
   // wait a tick for the panel to mount and register the bus
   await new Promise((r) => setTimeout(r, 50))
   const update = (partial: Partial<{ text: string; running: boolean }>) => {
-    commandResultBus.set?.({
+    publishCommandResult(editor, {
       instruction: inst,
       range: hasSel ? range : null,
       sourceText: selection,
@@ -1123,9 +1129,9 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
   const [cmd, setCmd] = useState<CommandResult | null>(null)
 
   useEffect(() => {
-    commandResultBus.set = setCmd
+    const unlisten = listenCommandResults(setCmd)
     return () => {
-      if (commandResultBus.set === setCmd) commandResultBus.set = undefined
+      unlisten()
       clearMarks(editor, 'pending')
     }
   }, [editor])
@@ -2121,19 +2127,25 @@ function VersionsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
 
   async function restore(v: Version) {
     if (!confirm('Restore this version? The current text is kept as its own version first.')) return
-    const full = await api(`/api/versions/${v.id}`)
     const label = versionTitle(v)
-    // a restore is never a one-way door: keep what's on the page right now
-    await api(`/api/docs/${docId}/versions`, {
-      method: 'POST',
-      body: JSON.stringify({
-        name: `before restoring “${label.slice(0, 60)}”`,
-        content: editor.getJSON(),
-      }),
-    }).catch(() => {})
-    try {
-      editor.commands.setContent(full.content)
-    } catch {
+    const outcome = await keepThenRestore({
+      fetchVersion: () => api(`/api/versions/${v.id}`),
+      // a restore is never a one-way door: keep what's on the page right now
+      keep: () =>
+        api(`/api/docs/${docId}/versions`, {
+          method: 'POST',
+          body: JSON.stringify({
+            name: `before restoring “${label.slice(0, 60)}”`,
+            content: editor.getJSON(),
+          }),
+        }),
+      apply: (content) => editor.commands.setContent(content),
+    })
+    if (outcome === 'keep failed') {
+      alert('couldn’t keep the current text as a version — nothing was restored')
+      return
+    }
+    if (outcome === 'stale format') {
       alert('couldn’t restore this version — it may predate the current page format')
       load()
       return
