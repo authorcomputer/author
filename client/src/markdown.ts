@@ -13,10 +13,13 @@ function scrub(node: Element) {
     // depth-first first, so a disallowed wrapper's children are already clean
     // before we move them up (a nested <script> can't survive an unwrap)
     scrub(el)
-    if (!ALLOWED.has(el.tagName)) {
+    // svg/mathml elements report tagName in lowercase — compare case-blind or
+    // a <script> inside <svg> slips past both gates as a benign unknown
+    const tag = el.tagName.toUpperCase()
+    if (!ALLOWED.has(tag)) {
       // drop <script>/<style> whole; unwrap any other disallowed tag (e.g. a
       // stray <div>) so its allowed children aren't lost with it
-      const dangerous = el.tagName === 'SCRIPT' || el.tagName === 'STYLE'
+      const dangerous = tag === 'SCRIPT' || tag === 'STYLE'
       el.replaceWith(...(dangerous ? [] : Array.from(el.childNodes)))
       continue
     }
@@ -29,7 +32,7 @@ function scrub(node: Element) {
         el.removeAttribute(attr.name) // strips on*, style, src, class, etc.
       }
     }
-    if (el.tagName === 'A' && el.getAttribute('href')) {
+    if (tag === 'A' && el.getAttribute('href')) {
       el.setAttribute('target', '_blank')
       el.setAttribute('rel', 'noreferrer noopener')
     }

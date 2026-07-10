@@ -17,6 +17,9 @@ export default function Public() {
   const signedIn = !!m && !m.anon
 
   useEffect(() => {
+    // the component survives /p/a → /p/b (only the param changes), so a slow
+    // response for the old slug must not land on the new page
+    let stale = false
     setDoc(null)
     setMissing(false)
     fetch(`/api/public/${slug}`)
@@ -24,8 +27,11 @@ export default function Public() {
         if (!r.ok) throw new Error()
         return r.json()
       })
-      .then(setDoc)
-      .catch(() => setMissing(true))
+      .then((data) => !stale && setDoc(data))
+      .catch(() => !stale && setMissing(true))
+    return () => {
+      stale = true
+    }
   }, [slug])
 
   useEffect(() => {

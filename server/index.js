@@ -6,8 +6,8 @@ import fs from 'node:fs'
 import crypto from 'node:crypto'
 import { WebSocketServer } from 'ws'
 import bcrypt from 'bcryptjs'
-import sanitizeHtml from 'sanitize-html'
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node'
+import { cleanHtml } from './clean-html.js'
 import { db, docExists } from './db.js'
 import { auth, runAuthMigrations, migrateLegacyUsers, TRUSTED_ORIGINS } from './auth.js'
 import { setupCollab, flushRooms, insertVersion, dropRoom, hasRoom } from './collab.js'
@@ -70,36 +70,6 @@ function textOf(html) {
 // profile previews, and share-card descriptions all want the same shape
 function previewOf(html, n = 420) {
   return textOf(html).replace(/\s+/g, ' ').trim().slice(0, n)
-}
-
-// embedded players: only these exact /embed/ URL shapes are allowed through,
-// mirroring the client's parseEmbed() — anything else is dropped as an iframe
-const EMBED_SRC_RE =
-  /^https:\/\/(?:www\.youtube-nocookie\.com\/embed\/[\w-]{11}|player\.vimeo\.com\/video\/\d+|www\.loom\.com\/embed\/[a-f0-9]{32}|open\.spotify\.com\/embed\/(?:track|album|playlist|episode|show)\/[a-zA-Z0-9]+|platform\.twitter\.com\/embed\/Tweet\.html\?id=\d+)$/
-
-// Doc snapshots are rendered on the public read-only page with
-// dangerouslySetInnerHTML — allow only what the editor actually produces.
-function cleanHtml(html) {
-  return sanitizeHtml(String(html || ''), {
-    allowedTags: [
-      'p', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'code', 'pre',
-      'blockquote', 'h1', 'h2', 'h3', 'ul', 'ol', 'li', 'hr', 'span', 'a', 'img', 'iframe',
-    ],
-    allowedAttributes: {
-      span: ['data-comment-id'],
-      a: ['href'],
-      img: ['src', 'alt'],
-      iframe: ['src', 'data-provider', 'loading', 'frameborder', 'allow', 'allowfullscreen'],
-    },
-    allowedSchemes: ['http', 'https', 'mailto'],
-    // images may only point at our own uploads; iframes only at a known player
-    exclusiveFilter: (frame) => {
-      if (frame.tag === 'img')
-        return !/^\/files\/[a-f0-9]{24}\.(jpg|png|webp|gif)$/.test(frame.attribs?.src || '')
-      if (frame.tag === 'iframe') return !EMBED_SRC_RE.test(frame.attribs?.src || '')
-      return false
-    },
-  })
 }
 
 // ---------- auth (better-auth cookie sessions; ghosts are anonymous users) ----------

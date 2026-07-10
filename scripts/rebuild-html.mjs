@@ -3,6 +3,7 @@
 // is opened in the editor).
 import Database from 'better-sqlite3'
 import * as Y from 'yjs'
+import { cleanHtml } from '../server/clean-html.js'
 
 const docId = process.argv[2]
 const db = new Database('data/author.db')
@@ -22,7 +23,7 @@ xml = xml
   .replace(/<heading[^>]*>/g, '<h3>')
 // close headings: we lost which level — instead do a proper sequential pass
 xml = ydoc.getXmlFragment('default').toString()
-const html = xml
+const mapped = xml
   .replace(/<heading level="(\d)"[^>]*>([\s\S]*?)<\/heading>/g, (_, l, inner) => {
     const lvl = Math.min(3, Math.max(1, Number(l)))
     return `<h${lvl}>${inner}</h${lvl}>`
@@ -37,6 +38,10 @@ const html = xml
   .replace(/<(\/?)bold>/g, '<$1strong>')
   .replace(/<(\/?)italic>/g, '<$1em>')
   .replace(/<(\/?)strike>/g, '<$1s>')
+
+// XmlText.toString() leaves angle brackets in prose unescaped — literal
+// markup typed as text would go live on /p/:slug. same gate as POST /html.
+const html = cleanHtml(mapped)
 
 db.prepare('UPDATE docs SET html = ? WHERE id = ?').run(html, docId)
 console.log('rebuilt html snapshot for', docId, '—', html.slice(0, 120))
