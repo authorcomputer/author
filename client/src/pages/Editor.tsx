@@ -25,6 +25,7 @@ import Scribble from '../Scribble'
 import { Checkmarks, setMarks, clearMarks, MarkItem } from '../checkmarks'
 import { CoWritten, coWrittenKey } from '../co-written'
 import { CommentGutter } from '../comment-gutter'
+import { findRange, findWholeRange, commentRange } from '../ranges'
 
 function needsAccount(e: unknown) {
   return (e as any)?.code === 'account_required'
@@ -125,25 +126,6 @@ function textToHtml(text: string) {
           .replace(/\n/g, '<br>')}</p>`
     )
     .join('')
-}
-
-function findRange(
-  editor: TiptapEditor,
-  excerpt: string
-): { from: number; to: number } | null {
-  const needles = [excerpt, excerpt.slice(0, 24), excerpt.slice(0, 12)].filter(
-    (n) => n.trim().length >= 4
-  )
-  for (const needle of needles) {
-    let found: { from: number; to: number } | null = null
-    editor.state.doc.descendants((node, pos) => {
-      if (found || !node.isText || !node.text) return
-      const idx = node.text.indexOf(needle)
-      if (idx >= 0) found = { from: pos + idx, to: pos + idx + needle.length }
-    })
-    if (found) return found
-  }
-  return null
 }
 
 function selectRange(editor: TiptapEditor, range: { from: number; to: number }) {
@@ -1038,22 +1020,6 @@ async function runAiCommand(
   }
 }
 
-// where a comment's passage lives now: the full span of its mark if it
-// survives (bold or a link inside the passage splits it across text nodes —
-// take first start to last end), else the quote hunted down by text
-function commentRange(editor: TiptapEditor, c: Comment) {
-  let from = -1
-  let to = -1
-  editor.state.doc.descendants((node, pos) => {
-    if (node.marks.some((mk) => mk.type.name === 'comment' && mk.attrs.id === c.id)) {
-      if (from < 0) from = pos
-      to = pos + node.nodeSize
-    }
-  })
-  if (from >= 0) return { from, to }
-  return findRange(editor, c.quote)
-}
-
 // a suggested edit applies itself — the reviewer already wrote the words.
 // no model involved: the mark's span (or the hunted-down quote) is replaced
 // with exactly what they proposed
@@ -1228,10 +1194,7 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
       }
       const current = editor.state.doc.textBetween(r.from, r.to, '\n\n')
       if (current !== cmd.sourceText) {
-        r = findRange(editor, cmd.sourceText)
-        // a prefix match would replace only part of the old selection and
-        // leave the rest duplicated — only trust a full-length match
-        if (r && r.to - r.from < cmd.sourceText.length) r = null
+        r = findWholeRange(editor, cmd.sourceText)
       }
       if (!r) {
         alert('the original selection has changed — inserting at the end instead')
@@ -1466,9 +1429,11 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
   }
 
   // the fix is one click from taken — the flagged span is replaced with the
-  // suggested words, exactly as written, and the mark comes off with it
+  // suggested words, exactly as written, and the mark comes off with it.
+  // whole-match only: replacing a prefix would leave the tail of the old
+  // sentence sitting after the fix
   function takeFix(iss: Issue, i: number) {
-    const r = findRange(editor, iss.excerpt)
+    const r = findWholeRange(editor, iss.excerpt)
     if (!r) {
       alert('couldn’t find that passage — it may have been rewritten')
       return
@@ -1692,6 +1657,9 @@ function CommentComposer({
     } catch (e) {
       if (needsAccount(e)) promptAccount()
       else if (needsMembership(e)) promptMembership()
+      // a refusal names its reason (too long, empty) — the generic shrug
+      // is for the network
+      else if ((e as any)?.status === 400) alert((e as any).message)
       else alert('couldn’t post that — give it another try')
       return
     }
@@ -1706,8 +1674,7 @@ function CommentComposer({
       to: Math.min(draft.to, docSize),
     }
     if (editor.state.doc.textBetween(r.from, r.to, ' ') !== draft.quote) {
-      const found = findRange(editor, draft.quote)
-      r = found && found.to - found.from === draft.quote.length ? found : null
+      r = findWholeRange(editor, draft.quote)
     }
     try {
       if (r)

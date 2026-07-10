@@ -455,8 +455,12 @@ app.post('/api/docs/:id/comments', requireUser, (req, res) => {
   const note = String(text || '').trim()
   const parent = String(parent_id || '')
   // replies are words only; a top-level comment may instead be an edit
-  const sugg = parent ? '' : String(suggestion || '').slice(0, 5000)
+  const sugg = parent ? '' : String(suggestion || '')
   if (!note && !sugg.trim()) return res.status(400).json({ error: 'empty comment' })
+  // a cut edit would later be applied cut — over the ceiling is a
+  // refusal the reviewer sees, never a silent slice
+  if (sugg.length > 5000)
+    return res.status(400).json({ error: 'that edit is too long — keep it under 5,000 characters' })
   if (parent) {
     // one level deep, and only while the thread is still open — a reply
     // accepted anywhere else would be invisible in every view

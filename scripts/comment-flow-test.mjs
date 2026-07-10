@@ -64,6 +64,27 @@ const s = withSugg.find((x) => x.id === sid)
 if (!s || s.suggestion !== 'the ending lands') throw new Error('FAIL: suggestion not stored')
 console.log('PASS: suggested edit round-trips')
 
+// applying replaces the passage with exactly what was stored, so an edit
+// at the ceiling must survive whole — and one over it must be refused
+// with words, never quietly cut mid-sentence
+const big = 'y'.repeat(5000)
+const bid = 'c_bigsugg' + run
+await post(`/api/docs/${docId}/comments`, { id: bid, text: '', suggestion: big, quote: 'the ending' }, ghostCookie)
+const withCeiling = await (
+  await fetch(`${BASE}/api/docs/${docId}/comments`, { headers: { Cookie: ownerCookie } })
+).json()
+if (withCeiling.find((x) => x.id === bid)?.suggestion !== big)
+  throw new Error('FAIL: suggestion at the ceiling came back cut')
+console.log('PASS: an edit at the ceiling survives whole')
+const over = await fetch(`${BASE}/api/docs/${docId}/comments`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Origin: BASE, Cookie: ghostCookie },
+  body: JSON.stringify({ text: '', suggestion: 'y'.repeat(5001), quote: 'the ending' }),
+})
+if (over.status !== 400)
+  throw new Error(`FAIL: oversized edit accepted (${over.status}) — it would be applied truncated`)
+console.log('PASS: over-long edits are refused, never silently cut')
+
 // the owner replies to the suggestion — a thread
 await post(`/api/docs/${docId}/comments`, { text: 'ha, fair — applying', parent_id: sid }, ownerCookie)
 const withReply = await (
