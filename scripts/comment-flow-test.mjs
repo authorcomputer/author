@@ -109,4 +109,44 @@ const empty = await fetch(`${BASE}/api/docs/${docId}/comments`, {
 })
 if (empty.status !== 400) throw new Error('FAIL: empty comment accepted')
 console.log('PASS: empty comments refused')
+
+// settling is a doc-level act — a stranger holding a cid gets nothing
+const tid = 'c_authtest' + run
+await post(`/api/docs/${docId}/comments`, { id: tid, text: 'still open', quote: 'x' }, ownerCookie)
+const stranger = await post('/api/auth/sign-up/email', {
+  email: `stranger-${run}@test.local`,
+  password: 'hunter22',
+  name: `stranger${run}`,
+  username: `stranger${run}`,
+})
+const strangerCookie = cookieOf(stranger)
+const theft = await fetch(`${BASE}/api/comments/${tid}/resolve`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Origin: BASE, Cookie: strangerCookie },
+  body: '{}',
+})
+if (theft.status !== 403) throw new Error(`FAIL: stranger resolved a thread on a doc they never touched (${theft.status})`)
+const still = await (
+  await fetch(`${BASE}/api/docs/${docId}/comments`, { headers: { Cookie: ownerCookie } })
+).json()
+if (still.find((x) => x.id === tid)?.resolved) throw new Error('FAIL: stranger resolve stuck anyway')
+console.log('PASS: a stranger cannot settle another doc’s thread')
+
+// a cid that names no comment is a miss, not a silent ok
+const miss = await fetch(`${BASE}/api/comments/c_nowhere${run}/resolve`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Origin: BASE, Cookie: ownerCookie },
+  body: '{}',
+})
+if (miss.status !== 404) throw new Error(`FAIL: resolving nothing returned ${miss.status}`)
+console.log('PASS: resolving nothing is a 404')
+
+// but a collaborator — someone who opened the doc — may settle threads
+await post(`/api/docs/${docId}/open`, {}, ghostCookie)
+await post(`/api/comments/${tid}/resolve`, {}, ghostCookie)
+const settled = await (
+  await fetch(`${BASE}/api/docs/${docId}/comments`, { headers: { Cookie: ownerCookie } })
+).json()
+if (!settled.find((x) => x.id === tid)?.resolved) throw new Error('FAIL: collaborator resolve refused')
+console.log('PASS: a collaborator may settle a thread')
 process.exit(0)

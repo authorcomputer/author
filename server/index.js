@@ -485,6 +485,13 @@ app.post('/api/docs/:id/comments', requireUser, (req, res) => {
 })
 
 app.post('/api/comments/:cid/resolve', requireUser, (req, res) => {
+  // cids are global and often client-chosen, so holding one proves nothing —
+  // settling a thread hides it from review, and only a pen that can write
+  // this doc gets to say the conversation is over
+  const c = db.prepare('SELECT doc_id FROM comments WHERE id = ?').get(req.params.cid)
+  if (!c) return res.status(404).json({ error: 'no such comment' })
+  const doc = db.prepare('SELECT id, owner_id FROM docs WHERE id = ?').get(c.doc_id)
+  if (!doc || !canEditDoc(doc, req.user.id)) return res.status(403).json({ error: 'not yours' })
   db.prepare('UPDATE comments SET resolved = 1 WHERE id = ?').run(req.params.cid)
   res.json({ ok: true })
 })
