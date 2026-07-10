@@ -112,6 +112,12 @@ if (addColumn('versions', "kind TEXT DEFAULT 'manual'")) {
   db.exec(`UPDATE versions SET kind = 'flow' WHERE name = 'while the ink flowed'`)
 }
 
+// versions remember whose pen signed them, so a handle rename can follow
+// the writer instead of the name — a pen name can echo a handle, so the
+// name alone proves nothing. no backfill: guessing owners for old rows by
+// that same string match is the misattribution the column exists to end
+addColumn('versions', 'user_id TEXT')
+
 // a comment can carry a proposed replacement for its quoted passage
 addColumn('comments', "suggestion TEXT DEFAULT ''")
 // replies thread under a parent comment

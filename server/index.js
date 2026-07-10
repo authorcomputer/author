@@ -175,16 +175,18 @@ app.post('/api/handle', requireFullUser, (req, res) => {
   if (uname === req.user.username) return res.json({ username: uname })
   if (db.prepare('SELECT id FROM user WHERE username = ?').get(uname))
     return res.status(409).json({ error: 'that handle already has a desk' })
-  const old = req.user.username
   db.prepare('UPDATE user SET username = ?, displayUsername = ?, name = ? WHERE id = ?').run(
     uname,
     uname,
     uname,
     req.user.id
   )
-  // display-name snapshots on past comments and versions follow the rename
+  // display-name snapshots on past comments and versions follow the rename —
+  // keyed by id, never by the old name: a ghost's pen name can echo a handle,
+  // and an echo must not hand this rename someone else's bylines. rows from
+  // before versions carried an id keep the byline they were written with.
   db.prepare('UPDATE comments SET username = ? WHERE user_id = ?').run(uname, req.user.id)
-  db.prepare('UPDATE versions SET username = ? WHERE username = ?').run(uname, old)
+  db.prepare('UPDATE versions SET username = ? WHERE user_id = ?').run(uname, req.user.id)
   res.json({ username: uname })
 })
 
@@ -489,7 +491,7 @@ app.post('/api/docs/:id/versions', requireFullUser, (req, res) => {
   const vid = insertVersion(
     req.params.id,
     String(name || '').trim() || 'unnamed version',
-    req.user.username,
+    req.user,
     JSON.stringify(content),
     Date.now(),
     'manual'
@@ -556,6 +558,10 @@ function unlinkIfOrphan(url, exceptDocId) {
     )
     .get(exceptDocId || '', url, `%${url}%`)
   if (still) return
+  // version history counts as a referrer too — a restore must find its
+  // pictures, so any kept version naming the file keeps the file (a deleted
+  // doc's own versions are already gone by the time this runs)
+  if (db.prepare('SELECT 1 FROM versions WHERE content LIKE ? LIMIT 1').get(`%${url}%`)) return
   fs.unlink(path.join(uploadsDir, path.basename(url)), () => {})
 }
 // a doc is going away entirely — drop every image it alone still holds
@@ -834,7 +840,14 @@ function aiLimit(req, res, next) {
     }
   }
 
-  const global = db.prepare('SELECT COALESCE(SUM(count), 0) AS s FROM ai_usage WHERE day = ?').get(day)
+  // the synthetic ip rows are shadows of ghost charges, not requests of
+  // their own — counted here they'd spend the desk's budget twice per ghost
+  const global = db
+    .prepare(
+      `SELECT COALESCE(SUM(count), 0) AS s FROM ai_usage
+       WHERE day = ? AND user_id NOT LIKE 'ip:%'`
+    )
+    .get(day)
   if (global.s >= AI_GLOBAL_DAILY_CAP) {
     return res.status(429).json({ error: 'the pen rests — the whole desk hit its daily limit' })
   }

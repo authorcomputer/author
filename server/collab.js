@@ -165,19 +165,21 @@ function noteEdit(room) {
   }
 }
 
-const ownerUsername = (docId) =>
+const ownerByline = (docId) =>
   db
-    .prepare('SELECT u.username FROM user u JOIN docs d ON d.owner_id = u.id WHERE d.id = ?')
-    .get(docId)?.username || 'author*'
+    .prepare('SELECT u.id, u.username FROM user u JOIN docs d ON d.owner_id = u.id WHERE d.id = ?')
+    .get(docId) || { id: null, username: 'author*' }
 
 // kind is the machine-readable marker: 'idle' | 'flow' | 'join' | 'manual'.
 // the client titles every non-manual version by its moment, so auto names
-// are pure metadata — idle/flow store none, join remembers who arrived
-export function insertVersion(docId, name, username, json, ts, kind) {
+// are pure metadata — idle/flow store none, join remembers who arrived.
+// the byline carries both name and id: the name is the display snapshot,
+// the id is what a later handle rename may key on — names repeat, ids don't
+export function insertVersion(docId, name, byline, json, ts, kind) {
   const id = 'v_' + crypto.randomBytes(8).toString('hex')
   db.prepare(
-    'INSERT INTO versions (id, doc_id, name, username, content, created_at, kind) VALUES (?, ?, ?, ?, ?, ?, ?)'
-  ).run(id, docId, name, username, json, ts, kind)
+    'INSERT INTO versions (id, doc_id, name, username, user_id, content, created_at, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+  ).run(id, docId, name, byline.username, byline.id || null, json, ts, kind)
   return id
 }
 
@@ -206,10 +208,9 @@ function snapshotOnSettle(room, kind = 'idle') {
     // credit whoever was at the desk for the change if it was one person
     // (one account — pen names can repeat); otherwise the page's owner
     const ids = new Set(room.editors.map((u) => u.id))
-    const username =
-      ids.size === 1 ? room.editors[0].username : ownerUsername(room.id)
+    const byline = ids.size === 1 ? room.editors[0] : ownerByline(room.id)
     room.lastSnap = Date.now()
-    insertVersion(room.id, '', username, json, room.lastSnap, kind)
+    insertVersion(room.id, '', byline, json, room.lastSnap, kind)
   } catch (e) {
     console.error('auto snapshot failed', room.id, e)
   }
@@ -244,7 +245,7 @@ function snapshotOnCompany(room, joiner) {
       room.lastSnap = Math.max(room.lastSnap, now)
       // credit the page's owner — "whose text this was" — not whoever's
       // socket happened to open first
-      insertVersion(room.id, `as ${joiner} joined`, ownerUsername(room.id), JSON.stringify(content), now, 'join')
+      insertVersion(room.id, `as ${joiner} joined`, ownerByline(room.id), JSON.stringify(content), now, 'join')
     } catch (e) {
       console.error('auto snapshot failed', room.id, e)
     }
