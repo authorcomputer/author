@@ -283,14 +283,21 @@ function HandleRow({ current, onRenamed }: { current: string; onRenamed: (u: str
 }
 
 function PasswordRow() {
+  const [cur, setCur] = useState('')
   const [pw, setPw] = useState('')
   const [state, setState] = useState<'idle' | 'saved' | 'error'>('idle')
   const [msg, setMsg] = useState('')
 
   async function set() {
     try {
-      await api('/api/password', { method: 'POST', body: JSON.stringify({ password: pw }) })
+      // the server insists on the current password — a live session alone
+      // is not allowed to hand the account to whoever is holding the tab
+      await api('/api/password', {
+        method: 'POST',
+        body: JSON.stringify({ current: cur, password: pw }),
+      })
       track('user: password changed')
+      setCur('')
       setPw('')
       setState('saved')
       setTimeout(() => setState('idle'), 1500)
@@ -303,20 +310,32 @@ function PasswordRow() {
   return (
     <div className="setting-row">
       <div style={{ marginBottom: 6 }}>change password</div>
-      <div style={{ display: 'flex', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <input
           type="password"
-          style={{ flex: 1, borderBottom: '1px solid var(--fainter)' }}
-          placeholder="new password"
-          value={pw}
+          style={{ borderBottom: '1px solid var(--fainter)' }}
+          placeholder="current password"
+          value={cur}
           onChange={(e) => {
-            setPw(e.target.value)
+            setCur(e.target.value)
             setState('idle')
           }}
         />
-        <button onClick={set} disabled={!pw}>
-          {state === 'saved' ? '✓ changed' : '[ set password ]'}
-        </button>
+        <div style={{ display: 'flex', gap: 12 }}>
+          <input
+            type="password"
+            style={{ flex: 1, borderBottom: '1px solid var(--fainter)' }}
+            placeholder="new password"
+            value={pw}
+            onChange={(e) => {
+              setPw(e.target.value)
+              setState('idle')
+            }}
+          />
+          <button onClick={set} disabled={!pw || !cur}>
+            {state === 'saved' ? '✓ changed' : '[ set password ]'}
+          </button>
+        </div>
       </div>
       {state === 'error' && <div className="err">✗ {msg}</div>}
     </div>

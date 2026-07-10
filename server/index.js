@@ -154,6 +154,11 @@ function rateLimit(limit, windowMs) {
   }
 }
 
+// every signup stumble gets this same flat no — a distinct "taken" reply
+// would hand anyone with an email list an oracle for who writes here
+const declineSignup = (res) =>
+  res.status(400).json({ error: "that didn't take — if this is your address, try signing in" })
+
 // open signup: email + password. a handle is generated and renameable in
 // settings. account creation is delegated to better-auth (which also links
 // a ghost session's work into the new account via the anonymous plugin)
@@ -164,8 +169,7 @@ app.post('/api/signup', rateLimit(8, 60_000), async (req, res) => {
     return res.status(400).json({ error: 'that email looks off' })
   if (String(password || '').length < 6)
     return res.status(400).json({ error: 'password: six characters at least' })
-  if (db.prepare('SELECT id FROM user WHERE email = ?').get(mail))
-    return res.status(409).json({ error: 'that email already has a desk' })
+  if (db.prepare('SELECT id FROM user WHERE email = ?').get(mail)) return declineSignup(res)
   let uname
   do {
     uname = 'writer-' + crypto.randomBytes(2).toString('hex')
@@ -176,13 +180,19 @@ app.post('/api/signup', rateLimit(8, 60_000), async (req, res) => {
       headers: fromNodeHeaders(req.headers), // carries a ghost session for linking
       asResponse: true,
     })
+    const body = await response.text()
+    if (!response.ok) {
+      // better-auth's own "already exists" must not leak through either —
+      // the log keeps the real reason, the wire keeps the flat no
+      console.error('signup declined', response.status, body)
+      return declineSignup(res)
+    }
     const cookies = response.headers.getSetCookie?.() || []
     if (cookies.length) res.setHeader('Set-Cookie', cookies)
-    const body = await response.text()
     res.status(response.status).type('application/json').send(body || '{}')
   } catch (e) {
     console.error('signup error', e)
-    res.status(400).json({ error: e?.body?.message || e?.message || 'signup failed' })
+    declineSignup(res)
   }
 })
 
@@ -237,8 +247,17 @@ app.post('/api/name', requireUser, rateLimit(10, 60_000), (req, res) => {
 })
 
 app.post('/api/password', requireFullUser, async (req, res) => {
-  const p = String((req.body || {}).password || '')
+  const { current, password } = req.body || {}
+  const p = String(password || '')
   if (p.length < 6) return res.status(400).json({ error: 'six characters at least' })
+  // a session in hand is not the owner in the chair — only the standing
+  // password may choose its successor, so a borrowed browser can't turn
+  // one open tab into a locked-out account with no way back
+  const cred = db
+    .prepare(`SELECT password FROM account WHERE userId = ? AND providerId = 'credential'`)
+    .get(req.user.id)
+  if (!cred?.password || !bcrypt.compareSync(String(current || ''), cred.password))
+    return res.status(403).json({ error: 'your current password first' })
   db.prepare(
     `UPDATE account SET password = ? WHERE userId = ? AND providerId = 'credential'`
   ).run(bcrypt.hashSync(p, 10), req.user.id)
