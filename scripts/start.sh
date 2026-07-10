@@ -15,6 +15,9 @@ if [ -n "$BUCKET_NAME" ] && [ -n "$AWS_ENDPOINT_URL_S3" ]; then
     rm -f "$DB-wal" "$DB-shm"
     litestream restore -if-replica-exists "$DB"
   fi
+  # the words are back; fetch the pictures they point at before the door opens.
+  # never fatal — a page missing its picture still beats a server that won't boot
+  node scripts/restore-images.mjs || true
   exec litestream replicate -exec "node server/index.js"
 fi
 

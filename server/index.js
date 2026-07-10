@@ -11,6 +11,7 @@ import { cleanHtml } from './clean-html.js'
 import { db, docExists } from './db.js'
 import { auth, runAuthMigrations, migrateLegacyUsers, TRUSTED_ORIGINS } from './auth.js'
 import { setupCollab, flushRooms, insertVersion, dropRoom, hasRoom } from './collab.js'
+import { putImage, deleteImage, pushMissing, imagesReplicated } from './images.js'
 import { aiFeedback, aiCommand, aiChecks } from './ai.js'
 
 const app = express()
@@ -571,7 +572,10 @@ function unlinkIfOrphan(url, exceptDocId) {
   // pictures, so any kept version naming the file keeps the file (a deleted
   // doc's own versions are already gone by the time this runs)
   if (db.prepare('SELECT 1 FROM versions WHERE content LIKE ? LIMIT 1').get(`%${url}%`)) return
-  fs.unlink(path.join(uploadsDir, path.basename(url)), () => {})
+  const name = path.basename(url)
+  fs.unlink(path.join(uploadsDir, name), () => {})
+  // the copy goes with it, or a deleted page's picture outlives the page
+  deleteImage(name).catch(() => {})
 }
 // a doc is going away entirely — drop every image it alone still holds
 function unlinkDocImages(doc) {
@@ -590,7 +594,7 @@ function canEditDoc(doc, userId) {
 
 // shared receive-validate-store for both header and inline uploads;
 // returns the /files/ url, or null after sending the error response itself
-function receiveImage(req, res) {
+async function receiveImage(req, res) {
   const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
   if (!doc) {
     res.status(404).json({ error: 'no such doc' })
@@ -611,6 +615,10 @@ function receiveImage(req, res) {
   }
   const name = `${crypto.randomBytes(12).toString('hex')}.${ext}`
   fs.writeFileSync(path.join(uploadsDir, name), req.body)
+  // write-through: the second copy is made before the writer is told the name,
+  // so no crash can strand a picture on a volume that isn't a backup. a bucket
+  // having a bad day costs a backup, not the upload — the sweep will find it
+  await putImage(name, req.body)
   return `/files/${name}`
 }
 
@@ -618,8 +626,8 @@ app.post(
   '/api/docs/:id/header',
   requireUser,
   express.raw({ type: Object.keys(IMG_EXT), limit: '12mb' }),
-  (req, res) => {
-    const url = receiveImage(req, res)
+  async (req, res) => {
+    const url = await receiveImage(req, res)
     if (!url) return
     const prev = db.prepare('SELECT header_image FROM docs WHERE id = ?').get(req.params.id)
     db.prepare('UPDATE docs SET header_image = ? WHERE id = ?').run(url, req.params.id)
@@ -633,8 +641,8 @@ app.post(
   '/api/docs/:id/images',
   requireUser,
   express.raw({ type: Object.keys(IMG_EXT), limit: '12mb' }),
-  (req, res) => {
-    const url = receiveImage(req, res)
+  async (req, res) => {
+    const url = await receiveImage(req, res)
     if (!url) return
     res.json({ url })
   }
@@ -1064,6 +1072,20 @@ setInterval(sweepGhosts, Number(process.env.AUTHOR_SWEEP_MS) || 24 * 60 * 60 * 1
 server.listen(PORT, () => {
   console.log(`author* listening on http://localhost:${PORT}`)
 })
+
+// an upload the bucket refused, or a volume restored from an older replica,
+// leaves pictures on disk with no copy behind them. heal them off the boot
+// path — and again each hour, so a bucket that was down for a while catches up
+if (imagesReplicated()) {
+  const sweep = () =>
+    pushMissing(uploadsDir)
+      .then(({ uploaded, failed }) => {
+        if (uploaded || failed) console.log(`images: pushed ${uploaded}, failed ${failed}`)
+      })
+      .catch((e) => console.error('image sweep failed', e.message))
+  setTimeout(sweep, 5_000).unref()
+  setInterval(sweep, 60 * 60 * 1000).unref()
+}
 
 // a deploy is just a very abrupt way of leaving — write everything down
 // first (better-sqlite3 is synchronous, so this completes before exit)

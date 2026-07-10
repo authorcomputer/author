@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
+    "@aws-sdk/client-s3": "^3.1084.0",
     "@tiptap/extension-bubble-menu": "^2.27.2",
     "@tiptap/extension-character-count": "^2.11.5",
     "@tiptap/extension-collaboration": "^2.11.5",
