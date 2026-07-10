@@ -962,18 +962,29 @@ server.on('upgrade', (req, socket, head) => {
     return socket.destroy()
   }
   const docId = match[1]
+  // getUser awaits; a client that RSTs mid-await emits 'error' on a raw socket
+  // that ws hasn't adopted yet. with no listener that becomes an
+  // uncaughtException and takes the whole box down — every room's unsaved edits
+  // with it. hold the socket until ws attaches its own handlers.
+  const onUpgradeError = () => socket.destroy()
+  socket.on('error', onUpgradeError)
   // sessions are cookie-based; the browser sends them on the ws handshake
   getUser(req.headers)
     .then((user) => {
       if (!user || !docExists(docId)) {
+        socket.removeListener('error', onUpgradeError)
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
         return socket.destroy()
       }
       wss.handleUpgrade(req, socket, head, (ws) => {
+        socket.removeListener('error', onUpgradeError)
         setupCollab(ws, docId, { id: user.id, username: user.username })
       })
     })
-    .catch(() => socket.destroy())
+    .catch(() => {
+      socket.removeListener('error', onUpgradeError)
+      socket.destroy()
+    })
 })
 
 // sweep ghosts that drifted off: anonymous users whose sessions have all

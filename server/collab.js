@@ -74,6 +74,16 @@ function broadcast(room, buf) {
   }
 }
 
+// a clientId is spoken for the moment one connection registers it. any other
+// connection naming it is forging that cursor — the wire has no signature, so
+// ownership is the only proof we get
+function ownedByOther(room, ws, clientId) {
+  for (const [conn, ids] of room.conns) {
+    if (conn !== ws && ids.has(clientId)) return true
+  }
+  return false
+}
+
 function send(ws, buf) {
   if (ws.readyState !== 1) return
   try {
@@ -308,16 +318,23 @@ export function setupCollab(ws, docId, user) {
         }
         case MESSAGE_AWARENESS: {
           const update = decoding.readVarUint8Array(decoder)
-          // track which awareness clientIds belong to this connection
+          // learn which awareness clientIds this connection speaks for
           const dec2 = decoding.createDecoder(update)
           const len = decoding.readVarUint(dec2)
-          const ids = room.conns.get(ws)
+          const incoming = []
           for (let i = 0; i < len; i++) {
             const clientId = decoding.readVarUint(dec2)
             decoding.readVarUint(dec2) // clock
             decoding.readVarString(dec2) // state
-            if (ids) ids.add(clientId)
+            incoming.push(clientId)
           }
+          // a socket may only move its own cursor. a frame naming a clientId
+          // another connection holds is presence-forgery: drop it whole, or
+          // it would override that writer now and, on this socket's close,
+          // erase them from everyone's view
+          if (incoming.some((id) => ownedByOther(room, ws, id))) break
+          const ids = room.conns.get(ws)
+          if (ids) for (const id of incoming) ids.add(id)
           awarenessProtocol.applyAwarenessUpdate(room.awareness, update, ws)
           break
         }
