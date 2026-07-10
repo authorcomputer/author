@@ -7,6 +7,13 @@ import path from 'node:path'
 import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { build } from 'esbuild'
+import { JSDOM } from 'jsdom'
+
+// the markdown door parses html, so the door needs a DOM to walk through
+const dom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost' })
+global.window = dom.window
+global.document = dom.window.document
+global.DOMParser = dom.window.DOMParser // markdown.ts reaches for the bare global
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const cache = path.join(root, 'node_modules', '.cache', 'uncode-test')
@@ -48,15 +55,34 @@ const eq = (label, got, want) => {
   console.log(`PASS: ${label}`)
 }
 
-// the report scenario: whole doc is one code block, cmd+A, click code
+// the report scenario: a markdown document trapped in a code block, cmd+A,
+// click code — it comes back as the document it always was
 {
-  const st = state(code('# Title\n\n**bold claim**\n\n- a list line'))
+  const st = state(code('# Title\n\n**bold claim** stands\n\n---\n\n- a list line'))
   const { changed, doc } = apply(st, 'all')
   if (!changed) throw new Error('FAIL: select-all did not dissolve')
-  eq('select-all dissolves to one paragraph per line, blanks dropped', types(doc), [
-    'paragraph:# Title',
-    'paragraph:**bold claim**',
-    'paragraph:- a list line',
+  eq('a markdown block dissolves into real headings, rules and lists', types(doc), [
+    'heading:Title',
+    'paragraph:bold claim stands',
+    'horizontalRule:',
+    'bulletList:a list line',
+  ])
+  // the bold survived as a mark, not as punctuation
+  const strong = doc.content.content[1].content.content[0]
+  if (!strong.marks.some((m) => m.type.name === 'bold'))
+    throw new Error('FAIL: **bold** did not become a bold mark')
+  console.log('PASS: **bold** became a mark, not literal asterisks')
+}
+
+// real code is not markdown: a lone '#' comment must not become a heading
+{
+  const st = state(code('# tally the rows\nfor r in rows:\n    n += 1'))
+  const { changed, doc } = apply(st, 'all')
+  if (!changed) throw new Error('FAIL: code block did not dissolve')
+  eq('a block of real code dissolves to plain paragraphs, one per line', types(doc), [
+    'paragraph:# tally the rows',
+    'paragraph:for r in rows:',
+    'paragraph:    n += 1',
   ])
 }
 

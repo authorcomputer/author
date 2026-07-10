@@ -19,6 +19,7 @@ import { Embed } from '../embed-node'
 import { parseEmbed } from '../embeds'
 import { renderMarkdown } from '../markdown'
 import { uncodeBlocks } from '../uncode'
+import { pasteMarkdown } from '../markdown-paste'
 import { track } from '../analytics'
 import AccountModal from '../AccountModal'
 import MembershipModal from '../MembershipModal'
@@ -284,6 +285,15 @@ function EditorInner({ id }: { id: string }) {
         const file = Array.from(cd?.files ?? []).find((f) => f.type.startsWith('image/'))
         if (file && !defaultPasteKeeps(cd?.getData('text/html') ?? '', text)) {
           insertInlineImage(view, file)
+          return true
+        }
+        // a markdown document — pasted as text, or wrapped in the <pre> a chat
+        // window puts on the clipboard — should land as the document it is,
+        // not as a page wearing its own punctuation. rich sources hand us
+        // prose in text/plain, which reads as markdown to nobody
+        const raw = cd?.getData('text/plain') ?? ''
+        if (pasteMarkdown(view, raw)) {
+          track('doc: markdown pasted')
           return true
         }
         return false
