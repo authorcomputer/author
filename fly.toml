@@ -21,7 +21,10 @@ primary_region = "sjc"
 [http_service]
   internal_port = 3001
   force_https = true
-  auto_stop_machines = "stop"
+  # suspend (not stop): resume restores the memory snapshot in <1s, so the
+  # first visit after idle skips the full boot — no image-restore round trip,
+  # no litestream/node startup wait
+  auto_stop_machines = "suspend"
   auto_start_machines = true
   min_machines_running = 0
 
