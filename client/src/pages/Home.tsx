@@ -70,6 +70,13 @@ export default function Home() {
         <button onClick={newDraft}>[ + new draft ]</button>
       </div>
       <div className="ascii-rule">════════════════════════════════════════════════════════════</div>
+      {/* when the window is too narrow for the rail, the chart moves in
+          with the list — same chart, whichever home the CSS gives it */}
+      {activity && activity.length > 0 && (
+        <div className="desk-strip" aria-hidden>
+          <Chart activity={activity} />
+        </div>
+      )}
       {docs.slice(0, shown).map((d) => (
         <Link
           className="doc-row"

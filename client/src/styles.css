@@ -136,11 +136,19 @@ input, textarea {
   /* hug the centered 640px column: half viewport + half column + gutter */
   left: calc(50% + 320px + 48px);
   top: 76px;
-  width: 250px;
+  /* the gutter that actually exists, up to the chart's full-size width */
+  width: min(294px, calc(50vw - 384px - 16px));
   z-index: 14;
 }
 @media (max-width: 1240px) {
   .desk-rail { display: none; }
+}
+/* the chart's in-flow seat at the top of the list, taken only when the
+   window is too narrow for the rail */
+.desk-strip { display: none; }
+@media (max-width: 1240px) {
+  .desk-strip { display: block; padding: 4px 0 18px; border-bottom: 1px solid var(--wash); margin-bottom: 8px; }
+  .desk-strip .contrib-grid { max-width: 294px; }
 }
 
 /* hover peek: a little paper card showing what the page is */
@@ -936,9 +944,11 @@ a:has(> .logo) {
    hugs the column edge instead of floating out where the chart would be */
 .desk-peek.peek-hug { left: calc(50% + 320px + 12px); }
 
+/* columns want 8px but may shrink together, so the six months always fit
+   whatever container holds them */
 .contrib-grid { display: flex; gap: 3px; }
-.contrib-col { display: flex; flex-direction: column; gap: 3px; }
-.contrib-cell { width: 8px; height: 8px; border-radius: 1px; background: var(--wash); }
+.contrib-col { display: flex; flex-direction: column; gap: 3px; flex: 0 1 8px; min-width: 0; }
+.contrib-cell { width: 100%; aspect-ratio: 1 / 1; border-radius: 1px; background: var(--wash); }
 .contrib-cell.pad { background: transparent; }
 .contrib-cell.lv1 { background: #ecd9c9; }
 .contrib-cell.lv2 { background: #e0a87e; }
