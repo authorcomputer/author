@@ -929,10 +929,13 @@ a:has(> .logo) {
 .pub-body span[data-comment-id] { background: none; border: none; }
 
 /* ---------- profile ---------- */
-.profile-tabs { display: flex; gap: 18px; margin: 20px 0 8px; }
+/* same three tiers as the share panel: bold titles, working row, whisper */
+.profile-tabs { display: flex; gap: 18px; margin: 20px 0 8px; font-size: 13px; }
+.profile-tabs button { font-weight: 700; }
 .profile-body { padding-top: 12px; }
 .setting-row { padding: 16px 0; border-bottom: 1px solid var(--wash); }
-.setting-row .hint { color: var(--faint); margin-top: 4px; font-size: 12px; }
+.setting-h { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.setting-row .hint { color: var(--faint); margin-top: 4px; font-size: 11px; }
 .file-pick { cursor: pointer; }
 .file-pick:hover { color: var(--accent); }
 .import-row { padding: 6px 0; }

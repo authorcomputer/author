@@ -175,7 +175,7 @@ function SettingsTab() {
       <PasswordRow />
 
       <div className="setting-row">
-        <div style={{ marginBottom: 6 }}>social links</div>
+        <div className="setting-h">social links</div>
         <textarea
           className="ask-box"
           placeholder={'https://x.com/you\nhttps://github.com/you'}
@@ -259,7 +259,7 @@ function HandleRow({ current, onRenamed }: { current: string; onRenamed: (u: str
 
   return (
     <div className="setting-row">
-      <div style={{ marginBottom: 6 }}>handle</div>
+      <div className="setting-h">handle</div>
       <div style={{ display: 'flex', gap: 12 }}>
         <input
           style={{ flex: 1, borderBottom: '1px solid var(--fainter)' }}
@@ -306,7 +306,7 @@ function PasswordRow() {
 
   return (
     <div className="setting-row">
-      <div style={{ marginBottom: 6 }}>change password</div>
+      <div className="setting-h">change password</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <input
           type="password"
