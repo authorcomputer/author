@@ -15,6 +15,20 @@ type DocRow = {
   header_image: string | null
   snippet: string
   preview: string
+  unseen: Record<string, number> | null
+}
+
+// the log's types folded to what a desk row can wear: notes, suggested
+// edits, threads settled, and whether anyone wrote
+function newsOf(u: Record<string, number> | null) {
+  if (!u) return null
+  const notes = (u['comment.add'] || 0) + (u['comment.reply'] || 0)
+  const suggs = u['suggestion.add'] || 0
+  const settled =
+    (u['suggestion.accept'] || 0) + (u['suggestion.reject'] || 0) + (u['comment.resolve'] || 0)
+  const wrote = (u['edit'] || 0) + (u['version.save'] || 0) > 0
+  if (!notes && !suggs && !settled && !wrote) return null
+  return { notes, suggs, settled, wrote }
 }
 
 function ago(t: number) {
@@ -100,6 +114,34 @@ export default function Home() {
                 <span className="accent">✽ published</span>
               </>
             )}
+            {(() => {
+              const n = newsOf(d.unseen)
+              if (!n) return null
+              return (
+                <span className="doc-news">
+                  {n.wrote && (
+                    <span className="accent" title="edited since you last opened">
+                      {' · '}✎ edited
+                    </span>
+                  )}
+                  {n.suggs > 0 && (
+                    <span className="accent" title="new suggested edits">
+                      {' · '}↳ {n.suggs}
+                    </span>
+                  )}
+                  {n.notes > 0 && (
+                    <span className="accent" title="new comments">
+                      {' · '}☞ {n.notes}
+                    </span>
+                  )}
+                  {n.settled > 0 && (
+                    <span className="accent" title="threads settled since you last opened">
+                      {' · '}✓ {n.settled}
+                    </span>
+                  )}
+                </span>
+              )
+            })()}
           </div>
           {d.snippet && <div className="doc-snippet">{d.snippet}</div>}
         </Link>

@@ -81,6 +81,22 @@ CREATE TABLE IF NOT EXISTS profiles (
   show_writing INTEGER DEFAULT 1,
   links TEXT DEFAULT '[]'
 );
+CREATE TABLE IF NOT EXISTS doc_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  doc_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  username TEXT NOT NULL,
+  type TEXT NOT NULL,
+  detail TEXT DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_doc_events_doc ON doc_events(doc_id, id);
+CREATE TABLE IF NOT EXISTS read_cursors (
+  doc_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  last_event_id INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (doc_id, user_id)
+);
 `)
 
 // lightweight migrations for pre-existing databases. returns whether the
@@ -178,4 +194,39 @@ export function saveYDoc(docId, buf, title) {
 
 export function docExists(docId) {
   return !!db.prepare('SELECT id FROM docs WHERE id = ?').get(docId)
+}
+
+// the doc's history: one appended row per thing that happened, in the order
+// it happened. ids are the reading order — a reader's cursor points at the
+// last one they've seen, and everything past it is news. the byline carries
+// id and name like versions do: the name is the display snapshot, the id is
+// what renames and cursors key on.
+export function addEvent(docId, byline, type, detail = '') {
+  db.prepare(
+    'INSERT INTO doc_events (doc_id, user_id, username, type, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(docId, byline.id || '', byline.username, type, String(detail).slice(0, 200), Date.now())
+}
+
+// a long afternoon of writing is one line of history, not fifty — while
+// nothing else lands in between, a writer's consecutive edit entries
+// collapse to the freshest. anything else arriving pins the run in place.
+export function addEditEvent(docId, byline) {
+  const last = db
+    .prepare('SELECT id, user_id, type FROM doc_events WHERE doc_id = ? ORDER BY id DESC LIMIT 1')
+    .get(docId)
+  if (last && last.type === 'edit' && last.user_id === (byline.id || '')) {
+    db.prepare('DELETE FROM doc_events WHERE id = ?').run(last.id)
+  }
+  addEvent(docId, byline, 'edit')
+}
+
+// point a reader's cursor at the end of the log — everything so far is seen
+export function markSeen(docId, userId) {
+  const top = db
+    .prepare('SELECT COALESCE(MAX(id), 0) AS m FROM doc_events WHERE doc_id = ?')
+    .get(docId).m
+  db.prepare(
+    `INSERT INTO read_cursors (doc_id, user_id, last_event_id) VALUES (?, ?, ?)
+     ON CONFLICT(doc_id, user_id) DO UPDATE SET last_event_id = excluded.last_event_id`
+  ).run(docId, userId, top)
 }

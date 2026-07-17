@@ -708,6 +708,16 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
 
 .version-row .v-meta { color: var(--faint); font-size: 11px; }
 
+/* the history log: one line per happening, byline colored like everywhere
+   else, the words in serif quotes, the moment tucked under in faint */
+.ev-row { padding: 9px 0; border-bottom: 1px solid var(--wash); font-size: 13px; }
+.ev-row .byline { font-size: 12px; }
+.ev-row .ev-detail { font-family: var(--serif); font-style: italic; color: var(--faint); }
+.ev-row .ev-when { color: var(--fainter); font-size: 11px; margin-top: 2px; }
+
+/* news on a desk row keeps to the meta line's size, in accent */
+.doc-news { white-space: nowrap; }
+
 /* the proof: bracket checkboxes, one errand per line, then one run button */
 /* wraps rather than trails off — a check the writer can't read is a check
    they won't run */

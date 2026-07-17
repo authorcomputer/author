@@ -8,7 +8,7 @@ import { WebSocketServer } from 'ws'
 import bcrypt from 'bcryptjs'
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node'
 import { cleanHtml } from './clean-html.js'
-import { db, docExists } from './db.js'
+import { db, docExists, addEvent, markSeen } from './db.js'
 import { auth, runAuthMigrations, migrateLegacyUsers, TRUSTED_ORIGINS } from './auth.js'
 import { setupCollab, flushRooms, insertVersion, dropRoom, hasRoom } from './collab.js'
 import { putImage, deleteImage, pushMissing, imagesReplicated } from './images.js'
@@ -197,6 +197,7 @@ app.post('/api/handle', requireFullUser, (req, res) => {
   // before versions carried an id keep the byline they were written with.
   db.prepare('UPDATE comments SET username = ? WHERE user_id = ?').run(uname, req.user.id)
   db.prepare('UPDATE versions SET username = ? WHERE user_id = ?').run(uname, req.user.id)
+  db.prepare('UPDATE doc_events SET username = ? WHERE user_id = ?').run(uname, req.user.id)
   res.json({ username: uname })
 })
 
@@ -225,6 +226,7 @@ app.post('/api/name', requireUser, rateLimit(10, 60_000), (req, res) => {
   db.prepare('UPDATE user SET name = ? WHERE id = ?').run(name, req.user.id)
   // notes they already left follow the name
   db.prepare('UPDATE comments SET username = ? WHERE user_id = ?').run(name, req.user.id)
+  db.prepare('UPDATE doc_events SET username = ? WHERE user_id = ?').run(name, req.user.id)
   res.json({ username: name })
 })
 
@@ -261,6 +263,24 @@ app.get('/api/docs', requireUser, (req, res) => {
        ORDER BY d.updated_at DESC`
     )
     .all(req.user.id, req.user.id, req.user.id)
+  // what's new per doc since this reader's cursor — their own doings aren't
+  // news to them, so only other pens count
+  const unseen = new Map()
+  for (const e of db
+    .prepare(
+      `SELECT e.doc_id, e.type, COUNT(*) AS n
+       FROM doc_events e
+       LEFT JOIN read_cursors rc ON rc.doc_id = e.doc_id AND rc.user_id = ?
+       WHERE e.user_id != ? AND e.id > COALESCE(rc.last_event_id, 0)
+         AND e.doc_id IN (SELECT id FROM docs WHERE owner_id = ?
+                          UNION SELECT doc_id FROM collaborators WHERE user_id = ?)
+       GROUP BY e.doc_id, e.type`
+    )
+    .all(req.user.id, req.user.id, req.user.id, req.user.id)) {
+    const m = unseen.get(e.doc_id) || {}
+    m[e.type] = e.n
+    unseen.set(e.doc_id, m)
+  }
   res.json(
     rows.map((r) => {
       const text = previewOf(r.html)
@@ -275,6 +295,7 @@ app.get('/api/docs', requireUser, (req, res) => {
         on_profile: !!r.on_profile,
         snippet: text.slice(0, 140),
         preview: text,
+        unseen: unseen.get(r.id) || null,
       }
     })
   )
@@ -332,7 +353,29 @@ app.post('/api/docs/:id/open', requireUser, (req, res) => {
       req.user.id
     )
   }
+  // opening the page is reading it — the cursor moves to the end of the log
+  markSeen(doc.id, req.user.id)
   res.json(docMeta(doc, req.user.id))
+})
+
+// an open tab keeps reading — the client nudges this while the page is up,
+// so news that lands mid-visit doesn't greet them as unread tomorrow
+app.post('/api/docs/:id/seen', requireUser, (req, res) => {
+  if (!docExists(req.params.id)) return res.status(404).json({ error: 'no such doc' })
+  markSeen(req.params.id, req.user.id)
+  res.json({ ok: true })
+})
+
+// the history log, newest first — who did what to this page, and when
+app.get('/api/docs/:id/events', requireUser, (req, res) => {
+  if (!docExists(req.params.id)) return res.status(404).json({ error: 'no such doc' })
+  res.json(
+    db
+      .prepare(
+        'SELECT id, username, type, detail, created_at FROM doc_events WHERE doc_id = ? ORDER BY id DESC LIMIT 120'
+      )
+      .all(req.params.id)
+  )
 })
 
 app.delete('/api/docs/:id', requireUser, (req, res) => {
@@ -347,6 +390,8 @@ app.delete('/api/docs/:id', requireUser, (req, res) => {
     db.prepare('DELETE FROM comments WHERE doc_id = ?').run(doc.id)
     db.prepare('DELETE FROM versions WHERE doc_id = ?').run(doc.id)
     db.prepare('DELETE FROM collaborators WHERE doc_id = ?').run(doc.id)
+    db.prepare('DELETE FROM doc_events WHERE doc_id = ?').run(doc.id)
+    db.prepare('DELETE FROM read_cursors WHERE doc_id = ?').run(doc.id)
   })()
   unlinkDocImages(doc) // after the rows are gone, so this doc isn't counted as a referrer
   res.json({ ok: true })
@@ -467,6 +512,12 @@ app.post('/api/docs/:id/comments', requireUser, (req, res) => {
     parent,
     Date.now()
   )
+  addEvent(
+    req.params.id,
+    req.user,
+    parent ? 'comment.reply' : sugg.trim() ? 'suggestion.add' : 'comment.add',
+    sugg.trim() || note
+  )
   res.json({ id: cid })
 })
 
@@ -474,11 +525,14 @@ app.post('/api/comments/:cid/resolve', requireUser, (req, res) => {
   // cids are global and often client-chosen, so holding one proves nothing —
   // settling a thread hides it from review, and only a pen that can write
   // this doc gets to say the conversation is over
-  const c = db.prepare('SELECT doc_id FROM comments WHERE id = ?').get(req.params.cid)
+  const c = db
+    .prepare('SELECT doc_id, quote, text, suggestion FROM comments WHERE id = ?')
+    .get(req.params.cid)
   if (!c) return res.status(404).json({ error: 'no such comment' })
   const doc = db.prepare('SELECT id, owner_id FROM docs WHERE id = ?').get(c.doc_id)
   if (!doc || !canEditDoc(doc, req.user.id)) return res.status(403).json({ error: 'not yours' })
   db.prepare('UPDATE comments SET resolved = 1 WHERE id = ?').run(req.params.cid)
+  addEvent(c.doc_id, req.user, 'comment.resolve', c.suggestion?.trim() || c.quote || c.text)
   res.json({ ok: true })
 })
 
@@ -1047,9 +1101,12 @@ function sweepGhosts() {
         db.prepare('DELETE FROM comments WHERE doc_id = ?').run(d.id)
         db.prepare('DELETE FROM versions WHERE doc_id = ?').run(d.id)
         db.prepare('DELETE FROM collaborators WHERE doc_id = ?').run(d.id)
+        db.prepare('DELETE FROM doc_events WHERE doc_id = ?').run(d.id)
+        db.prepare('DELETE FROM read_cursors WHERE doc_id = ?').run(d.id)
       }
       db.prepare('DELETE FROM docs WHERE owner_id = ?').run(id)
       db.prepare('DELETE FROM collaborators WHERE user_id = ?').run(id)
+      db.prepare('DELETE FROM read_cursors WHERE user_id = ?').run(id)
       db.prepare('DELETE FROM activity WHERE user_id = ?').run(id)
       db.prepare('DELETE FROM ai_usage WHERE user_id = ?').run(id)
       db.prepare('DELETE FROM account WHERE userId = ?').run(id)

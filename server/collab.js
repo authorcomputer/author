@@ -6,7 +6,7 @@ import * as awarenessProtocol from 'y-protocols/awareness.js'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import { yDocToProsemirrorJSON } from 'y-prosemirror'
-import { db, loadYDoc, saveYDoc } from './db.js'
+import { db, loadYDoc, saveYDoc, addEvent, addEditEvent } from './db.js'
 
 const MESSAGE_SYNC = 0
 const MESSAGE_AWARENESS = 1
@@ -206,6 +206,11 @@ export function insertVersion(docId, name, byline, json, ts, kind) {
   db.prepare(
     'INSERT INTO versions (id, doc_id, name, username, user_id, content, created_at, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(id, docId, name, byline.username, byline.id || null, json, ts, kind)
+  // versions are where writing becomes history: a deliberate save is its own
+  // entry, and the automatic ones (idle, flow) mark that someone wrote —
+  // join snapshots record presence, not work, so they stay out of the log
+  if (kind === 'manual') addEvent(docId, byline, 'version.save', name)
+  else if (kind === 'idle' || kind === 'flow') addEditEvent(docId, byline)
   return id
 }
 

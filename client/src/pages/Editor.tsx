@@ -119,7 +119,7 @@ const isOpenRoot = (c: Comment) => !c.resolved && isRoot(c)
 
 type Issue = { excerpt: string; kind: string; note: string; suggestion: string }
 type Version = { id: string; name: string; username: string; created_at: number; kind: string }
-type Panel = 'ai' | 'checks' | 'comments' | 'versions' | null
+type Panel = 'ai' | 'checks' | 'comments' | 'versions' | 'history' | null
 
 function docText(editor: TiptapEditor) {
   return editor.state.doc.textBetween(0, editor.state.doc.content.size, '\n\n')
@@ -505,6 +505,10 @@ function EditorInner({ id }: { id: string }) {
 
   // ---------- comments ----------
   const lastCommentsJson = useRef('')
+  // the open tab keeps reading: while it's up, news that lands is seen as it
+  // lands — nudged along with the poll, throttled so it isn't a write per tick
+  // (open already moved the cursor, so the first nudge can wait)
+  const lastSeenNudge = useRef(Date.now())
   async function reloadComments() {
     try {
       const next = await api(`/api/docs/${id}/comments`)
@@ -513,6 +517,10 @@ function EditorInner({ id }: { id: string }) {
       if (s !== lastCommentsJson.current) {
         lastCommentsJson.current = s
         setComments(next)
+      }
+      if (Date.now() - lastSeenNudge.current > 20_000) {
+        lastSeenNudge.current = Date.now()
+        api(`/api/docs/${id}/seen`, { method: 'POST' }).catch(() => {})
       }
     } catch {
       /* transient — the poll will retry */
@@ -1160,7 +1168,7 @@ function SidePanel({
   return (
     <div className="panel">
       <div className="panel-tabs">
-        {(['ai', 'checks', 'comments', 'versions'] as const).map((p) => (
+        {(['ai', 'checks', 'comments', 'versions', 'history'] as const).map((p) => (
           <button key={p} className={panel === p ? 'on' : ''} onClick={() => setPanel(p)}>
             {p === 'comments' && openCount > 0 ? `comments·${openCount}` : (TAB_LABELS[p] ?? p)}
           </button>
@@ -1181,6 +1189,7 @@ function SidePanel({
           />
         )}
         {panel === 'versions' && <VersionsPanel editor={editor} docId={docId} />}
+        {panel === 'history' && <HistoryPanel docId={docId} />}
       </div>
     </div>
   )
@@ -2259,6 +2268,72 @@ function VersionsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* history panel                                                       */
+/* ------------------------------------------------------------------ */
+
+type Ev = { id: number; username: string; type: string; detail: string; created_at: number }
+
+// each entry wears its verb as state, not sentence — the glyphs match the
+// ones the rest of the interface already speaks
+const EV_VERBS: Record<string, string> = {
+  'comment.add': '☞ commented',
+  'comment.reply': '↩ replied',
+  'suggestion.add': '↳ suggested',
+  'suggestion.accept': '✓ accepted',
+  'suggestion.reject': '✗ dismissed',
+  'comment.resolve': '✓ resolved',
+  'version.save': '⛃ kept',
+  edit: '✎ wrote',
+}
+
+function HistoryPanel({ docId }: { docId: string }) {
+  const [events, setEvents] = useState<Ev[]>([])
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    let live = true
+    const load = () =>
+      api(`/api/docs/${docId}/events`)
+        .then((evs) => {
+          if (!live) return
+          setEvents(evs)
+          setLoaded(true)
+        })
+        .catch(() => {})
+    load()
+    const t = setInterval(() => {
+      if (!document.hidden) load()
+    }, 8000)
+    return () => {
+      live = false
+      clearInterval(t)
+    }
+  }, [docId])
+
+  return (
+    <div>
+      {loaded && events.length === 0 && (
+        <div className="hint" style={{ marginTop: 16 }}>
+          ( nothing has happened here yet )
+        </div>
+      )}
+      {events.map((e) => (
+        <div className="ev-row" key={e.id}>
+          <div>
+            <span className="byline" style={{ color: colorFor(e.username) }}>
+              {e.username}
+            </span>{' '}
+            {EV_VERBS[e.type] ?? e.type}
+            {e.detail && <span className="ev-detail"> “{e.detail.slice(0, 90)}”</span>}
+          </div>
+          <div className="ev-when">{versionMoment(e.created_at)}</div>
+        </div>
+      ))}
     </div>
   )
 }
