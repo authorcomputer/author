@@ -20,6 +20,7 @@ import { parseEmbed } from '../embeds'
 import { renderMarkdown } from '../markdown'
 import { uncodeBlocks } from '../uncode'
 import { pasteMarkdown } from '../markdown-paste'
+import { docToMarkdown, docToText, standaloneHtml, fileStem, download } from '../export'
 import { track } from '../analytics'
 import AccountModal from '../AccountModal'
 import MembershipModal from '../MembershipModal'
@@ -687,6 +688,8 @@ function EditorInner({ id }: { id: string }) {
           {shareOpen && meta && (
             <SharePop
               meta={meta}
+              editor={editor}
+              title={title}
               onToggle={togglePublish}
               onProfileToggle={toggleOnProfile}
               onClose={() => setShareOpen(false)}
@@ -902,30 +905,56 @@ function FormatBubble({ editor }: { editor: TiptapEditor }) {
 
 function SharePop({
   meta,
+  editor,
+  title,
   onToggle,
   onProfileToggle,
   onClose,
 }: {
   meta: Meta
+  editor: TiptapEditor | null
+  title: string
   onToggle: () => void
   onProfileToggle: () => void
   onClose: () => void
 }) {
-  const [copied, setCopied] = useState<'write' | 'read' | null>(null)
+  const [copied, setCopied] = useState<string | null>(null)
   const copyTimer = useRef<ReturnType<typeof setTimeout>>()
   const writeUrl = `${location.origin}/d/${meta.id}`
   const readUrl = meta.slug ? `${location.origin}/p/${meta.slug}` : null
 
   useEffect(() => () => clearTimeout(copyTimer.current), [])
 
+  function flash(which: string) {
+    setCopied(which)
+    clearTimeout(copyTimer.current)
+    copyTimer.current = setTimeout(() => setCopied(null), 1600)
+  }
+
   function copy(url: string, which: 'write' | 'read') {
     track('share: link copied', { kind: which === 'write' ? 'writing' : 'reading' })
     // clipboard API is absent in non-secure contexts; the link is visible
     // either way, so failing quietly is fine.
     navigator.clipboard?.writeText(url).catch(() => {})
-    setCopied(which)
-    clearTimeout(copyTimer.current)
-    copyTimer.current = setTimeout(() => setCopied(null), 1600)
+    flash(which)
+  }
+
+  function exportAs(format: 'md' | 'html' | 'txt') {
+    if (!editor) return
+    track('share: file downloaded', { format })
+    const stem = fileStem(title)
+    if (format === 'md') download(stem + '.md', 'text/markdown', docToMarkdown(editor.getJSON()))
+    if (format === 'txt') download(stem + '.txt', 'text/plain', docToText(editor.getJSON()))
+    if (format === 'html')
+      download(stem + '.html', 'text/html', standaloneHtml(title || 'untitled', editor.getHTML()))
+  }
+
+  function copyAs(format: 'md' | 'html') {
+    if (!editor) return
+    track('share: copied as', { format })
+    const text = format === 'md' ? docToMarkdown(editor.getJSON()) : editor.getHTML()
+    navigator.clipboard?.writeText(text).catch(() => {})
+    flash('as-' + format)
   }
 
   return (
@@ -980,6 +1009,32 @@ function SharePop({
             </>
           )}
         </div>
+        {editor && (
+          <>
+            <div className="ascii-rule" style={{ margin: '12px 0' }}>
+              · · · · · · · · · · · · · · · · · · ·
+            </div>
+            <div className="share-sec">
+              <div className="share-h">⇩ take it with you</div>
+              <div className="share-row">
+                <button onClick={() => exportAs('md')}>[ markdown ]</button>
+                <button onClick={() => exportAs('html')}>[ html ]</button>
+                <button onClick={() => exportAs('txt')}>[ text ]</button>
+              </div>
+            </div>
+            <div className="share-sec" style={{ marginTop: 10 }}>
+              <div className="share-h">⧉ copy the page as</div>
+              <div className="share-row">
+                <button onClick={() => copyAs('md')}>
+                  {copied === 'as-md' ? '✓ copied' : '[ markdown ]'}
+                </button>
+                <button onClick={() => copyAs('html')}>
+                  {copied === 'as-html' ? '✓ copied' : '[ html ]'}
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </>
   )

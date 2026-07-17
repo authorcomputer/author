@@ -831,6 +831,7 @@ a:has(> .logo) {
   word-break: break-all;
   margin-bottom: 8px;
 }
+.share-pop .share-row { display: flex; gap: 14px; flex-wrap: wrap; }
 
 /* published page */
 .pub-head {
