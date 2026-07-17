@@ -1,144 +1,108 @@
 // what a page becomes when it leaves the house — markdown, html, or bare
-// text a reader can carry anywhere. the serializer walks tiptap JSON by
-// hand so export needs no extra deps; review metadata (comment marks,
-// co-written tags) is ink about the ink and stays home.
+// text a reader can carry anywhere. markdown rides prosemirror-markdown
+// (already in the sleigh via @tiptap/pm) so escaping, fence-lengthening,
+// and list indentation are the library's problem, and an unmapped node
+// fails loudly instead of vanishing from the export. review metadata
+// (comment marks) is ink about the ink and stays home.
+import type { Node as PMNode } from '@tiptap/pm/model'
+import { MarkdownSerializer, defaultMarkdownSerializer } from '@tiptap/pm/markdown'
 
-type JNode = {
-  type?: string
-  text?: string
-  attrs?: Record<string, unknown>
-  marks?: { type: string; attrs?: Record<string, unknown> }[]
-  content?: JNode[]
-}
+const d = defaultMarkdownSerializer
+
+const serializer = new MarkdownSerializer(
+  {
+    paragraph: d.nodes.paragraph,
+    heading: d.nodes.heading,
+    blockquote: d.nodes.blockquote,
+    horizontalRule: d.nodes.horizontal_rule,
+    hardBreak: d.nodes.hard_break,
+    listItem: d.nodes.list_item,
+    text: d.nodes.text,
+    bulletList(state, node) {
+      state.renderList(node, '  ', () => '- ')
+    },
+    orderedList(state, node) {
+      // ?? not ||: an author-pasted <ol start="0"> keeps its zero
+      const start = Number(node.attrs.start ?? 1)
+      const maxW = String(start + node.childCount - 1).length
+      state.renderList(node, ' '.repeat(maxW + 2), (i) => {
+        const n = String(start + i)
+        return ' '.repeat(maxW - n.length) + n + '. '
+      })
+    },
+    codeBlock(state, node) {
+      // tiptap says `language` where prosemirror says `params`
+      const ticks = node.textContent.match(/`{3,}/gm)
+      const fence = ticks ? ticks.sort().slice(-1)[0] + '`' : '```'
+      state.write(fence + ((node.attrs.language as string) || '') + '\n')
+      state.text(node.textContent, false)
+      state.ensureNewLine()
+      state.write(fence)
+      state.closeBlock(node)
+    },
+    image(state, node) {
+      const origin = (state.options as { origin?: string }).origin ?? ''
+      state.write(`![${(node.attrs.alt as string) || ''}](${abs((node.attrs.src as string) || '', origin)})`)
+      state.closeBlock(node)
+    },
+    embed(state, node) {
+      state.write((node.attrs.src as string) || '')
+      state.closeBlock(node)
+    },
+  },
+  {
+    bold: d.marks.strong,
+    italic: d.marks.em,
+    code: d.marks.code,
+    link: d.marks.link,
+    strike: { open: '~~', close: '~~', mixable: true, expelEnclosingWhitespace: true },
+    underline: { open: '<u>', close: '</u>', mixable: true },
+    comment: { open: '', close: '', mixable: true },
+  }
+)
 
 function abs(src: string, origin: string): string {
   return src.startsWith('/') ? origin + src : src
 }
 
-/* ---- inline text with marks ---- */
-
-function inlineMd(nodes: JNode[] | undefined, origin: string): string {
-  if (!nodes) return ''
-  return nodes
-    .map((n) => {
-      if (n.type === 'hardBreak') return '  \n'
-      if (n.type === 'image')
-        return `![${(n.attrs?.alt as string) || ''}](${abs((n.attrs?.src as string) || '', origin)})`
-      let t = n.text ?? ''
-      if (!t) return ''
-      const marks = n.marks ?? []
-      const has = (m: string) => marks.some((x) => x.type === m)
-      if (has('code')) {
-        t = '`' + t + '`'
-      } else {
-        if (has('bold')) t = `**${t}**`
-        if (has('italic')) t = `*${t}*`
-        if (has('strike')) t = `~~${t}~~`
-        if (has('underline')) t = `<u>${t}</u>`
-      }
-      const link = marks.find((x) => x.type === 'link')
-      const href = link?.attrs?.href as string | undefined
-      if (href) t = `[${t}](${href})`
-      return t
-    })
-    .join('')
+export function docToMarkdown(doc: PMNode, origin = globalThis.location?.origin ?? ''): string {
+  return serializer.serialize(doc, { tightLists: true, origin } as Parameters<
+    typeof serializer.serialize
+  >[1]) + '\n'
 }
 
-/* ---- blocks ---- */
+/* ---- html fit to leave: strip review ink, absolutize upload srcs ---- */
 
-function blockMd(n: JNode, origin: string, indent = ''): string {
-  switch (n.type) {
-    case 'paragraph':
-      return inlineMd(n.content, origin)
-    case 'heading': {
-      const level = Math.min(Math.max(Number(n.attrs?.level) || 1, 1), 6)
-      return '#'.repeat(level) + ' ' + inlineMd(n.content, origin)
-    }
-    case 'blockquote':
-      return (n.content ?? [])
-        .map((c) => blockMd(c, origin))
-        .join('\n\n')
-        .split('\n')
-        .map((l) => ('> ' + l).trimEnd())
-        .join('\n')
-    case 'codeBlock': {
-      const lang = (n.attrs?.language as string) || ''
-      const body = (n.content ?? []).map((c) => c.text ?? '').join('')
-      return '```' + lang + '\n' + body + '\n```'
-    }
-    case 'bulletList':
-      return listMd(n, origin, indent, () => '- ')
-    case 'orderedList': {
-      let i = Number(n.attrs?.start) || 1
-      return listMd(n, origin, indent, () => `${i++}. `)
-    }
-    case 'horizontalRule':
-      return '---'
-    case 'image':
-      return `![${(n.attrs?.alt as string) || ''}](${abs((n.attrs?.src as string) || '', origin)})`
-    case 'embed':
-      return (n.attrs?.src as string) || ''
-    default:
-      return inlineMd(n.content, origin)
-  }
-}
-
-function listMd(list: JNode, origin: string, indent: string, bullet: () => string): string {
-  return (list.content ?? [])
-    .map((item) => {
-      const b = bullet()
-      const pad = ' '.repeat(b.length)
-      const parts = (item.content ?? []).map((c) =>
-        c.type === 'bulletList' || c.type === 'orderedList'
-          ? blockMd(c, origin, indent + pad)
-          : blockMd(c, origin)
-      )
-      return (
-        indent +
-        b +
-        parts
-          .join('\n')
-          .split('\n')
-          .map((l, i) => (i === 0 ? l : c(l, indent + pad)))
-          .join('\n')
-      )
-    })
-    .join('\n')
-}
-
-// nested list lines already carry their own indent; plain continuation lines don't
-function c(line: string, pad: string): string {
-  return line.startsWith(pad) ? line : pad + line
-}
-
-export function docToMarkdown(doc: JNode, origin = globalThis.location?.origin ?? ''): string {
-  return (doc.content ?? [])
-    .map((n) => blockMd(n, origin))
-    .filter((s) => s !== '')
-    .join('\n\n') + '\n'
-}
-
-export function docToText(doc: JNode): string {
-  const walk = (n: JNode): string => {
-    if (n.text) return n.text
-    if (n.type === 'hardBreak') return '\n'
-    return (n.content ?? []).map(walk).join('')
-  }
-  return (doc.content ?? [])
-    .map(walk)
-    .filter((s) => s.trim() !== '')
-    .join('\n\n') + '\n'
+// works on the parsed DOM, not the string — a code sample that happens to
+// contain the text src="/files/…" is prose, not an attribute, and stays put
+export function exportableHtml(rawHtml: string, origin = globalThis.location?.origin ?? ''): string {
+  const dom = new DOMParser().parseFromString(rawHtml, 'text/html')
+  dom.querySelectorAll('span[data-comment-id], span.comment-mark').forEach((el) => {
+    el.replaceWith(...el.childNodes)
+  })
+  dom.querySelectorAll('img[src^="/"]').forEach((el) => {
+    el.setAttribute('src', origin + el.getAttribute('src'))
+  })
+  return dom.body.innerHTML
 }
 
 /* ---- a standalone page the html download can be opened as ---- */
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
 
 export function standaloneHtml(
   title: string,
   bodyHtml: string,
   origin = globalThis.location?.origin ?? ''
 ): string {
-  const body = bodyHtml.replace(/src="\/(files\/[^"]+)"/g, `src="${origin}/$1"`)
-  const esc = title.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  const body = exportableHtml(bodyHtml, origin)
+  const esc = escapeHtml(title)
   return `<!doctype html>
 <html lang="en">
 <meta charset="utf-8">
@@ -180,6 +144,10 @@ export function download(filename: string, mime: string, text: string) {
   const a = document.createElement('a')
   a.href = url
   a.download = filename
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(url)
+  a.remove()
+  // let the download dereference the blob before the URL dies (old Firefox
+  // aborted on same-tick revoke)
+  setTimeout(() => URL.revokeObjectURL(url), 30_000)
 }

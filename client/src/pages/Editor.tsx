@@ -20,7 +20,7 @@ import { parseEmbed } from '../embeds'
 import { renderMarkdown } from '../markdown'
 import { uncodeBlocks } from '../uncode'
 import { pasteMarkdown } from '../markdown-paste'
-import { docToMarkdown, docToText, standaloneHtml, fileStem, download } from '../export'
+import { docToMarkdown, exportableHtml, standaloneHtml, fileStem, download } from '../export'
 import { track } from '../analytics'
 import AccountModal from '../AccountModal'
 import MembershipModal from '../MembershipModal'
@@ -604,6 +604,12 @@ function EditorInner({ id }: { id: string }) {
   const popComment = openPop ? (comments.find((c) => c.id === openPop.id) ?? null) : null
 
   const words = editor ? editor.storage.characterCount.words() : 0
+  // sweep some text and the count narrows to what's in hand
+  const sel = editor?.state.selection
+  const selWords =
+    editor && sel && !sel.empty
+      ? (editor.state.doc.textBetween(sel.from, sel.to, ' ', ' ').match(/\S+/g)?.length ?? 0)
+      : 0
 
   // reopening returns to the last tab; versions still needs a desk
   useEffect(() => {
@@ -646,7 +652,9 @@ function EditorInner({ id }: { id: string }) {
           ))}
         </div>
         <div className="spacer" />
-        <span className="faint">{words} words</span>
+        <span className="faint">
+          {selWords > 0 ? `${selWords} of ${words} words` : `${words} words`}
+        </span>
         {openComments.length > 0 && (
           <button
             className={panel === 'comments' ? 'on comment-count' : 'comment-count'}
@@ -872,7 +880,7 @@ function FormatBubble({ editor }: { editor: TiptapEditor }) {
         {item(<b>b</b>, editor.isActive('bold'), () => editor.chain().focus().toggleBold().run(), 'bold', 'bold ⌘B')}
         {item(<i>i</i>, editor.isActive('italic'), () => editor.chain().focus().toggleItalic().run(), 'italic', 'italic ⌘I')}
         {item(<u>u</u>, editor.isActive('underline'), () => editor.chain().focus().toggleUnderline().run(), 'underline', 'underline ⌘U')}
-        {item(<s>s</s>, editor.isActive('strike'), () => editor.chain().focus().toggleStrike().run(), 'strikethrough', 'strikethrough ⌘⇧X')}
+        {item(<s>s</s>, editor.isActive('strike'), () => editor.chain().focus().toggleStrike().run(), 'strikethrough', 'strikethrough ⌘⇧S')}
         {item(<code>code</code>, editor.isActive('code') || editor.isActive('codeBlock'), () => {
           // a pasted <pre> traps whole pages in a code block; clicking code
           // inside one dissolves it back to prose instead of toggling a mark
@@ -918,14 +926,14 @@ function SharePop({
   onProfileToggle: () => void
   onClose: () => void
 }) {
-  const [copied, setCopied] = useState<string | null>(null)
+  const [copied, setCopied] = useState<'write' | 'read' | 'as-md' | 'as-html' | null>(null)
   const copyTimer = useRef<ReturnType<typeof setTimeout>>()
   const writeUrl = `${location.origin}/d/${meta.id}`
   const readUrl = meta.slug ? `${location.origin}/p/${meta.slug}` : null
 
   useEffect(() => () => clearTimeout(copyTimer.current), [])
 
-  function flash(which: string) {
+  function flash(which: NonNullable<typeof copied>) {
     setCopied(which)
     clearTimeout(copyTimer.current)
     copyTimer.current = setTimeout(() => setCopied(null), 1600)
@@ -939,12 +947,20 @@ function SharePop({
     flash(which)
   }
 
+  // one source of truth per format, shared by download and copy
+  const pageAs = {
+    md: () => docToMarkdown(editor!.state.doc),
+    html: () => exportableHtml(editor!.getHTML()),
+    txt: () =>
+      editor!.getText({ blockSeparator: '\n\n', textSerializers: { hardBreak: () => '\n' } }),
+  }
+
   function exportAs(format: 'md' | 'html' | 'txt') {
     if (!editor) return
     track('share: file downloaded', { format })
     const stem = fileStem(title)
-    if (format === 'md') download(stem + '.md', 'text/markdown', docToMarkdown(editor.getJSON()))
-    if (format === 'txt') download(stem + '.txt', 'text/plain', docToText(editor.getJSON()))
+    if (format === 'md') download(stem + '.md', 'text/markdown', pageAs.md())
+    if (format === 'txt') download(stem + '.txt', 'text/plain', pageAs.txt())
     if (format === 'html')
       download(stem + '.html', 'text/html', standaloneHtml(title || 'untitled', editor.getHTML()))
   }
@@ -952,9 +968,8 @@ function SharePop({
   function copyAs(format: 'md' | 'html') {
     if (!editor) return
     track('share: copied as', { format })
-    const text = format === 'md' ? docToMarkdown(editor.getJSON()) : editor.getHTML()
-    navigator.clipboard?.writeText(text).catch(() => {})
-    flash('as-' + format)
+    navigator.clipboard?.writeText(pageAs[format]()).catch(() => {})
+    flash(format === 'md' ? 'as-md' : 'as-html')
   }
 
   return (

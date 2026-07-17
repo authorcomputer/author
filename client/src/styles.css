@@ -431,6 +431,10 @@ input, textarea {
 /* the bubble yields while the ⌘K panel is up — the two float over the same
    selection and would otherwise overlap */
 body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
+/* one row is wider than a phone; let it fold instead of clipping offscreen */
+@media (max-width: 640px) {
+  .fmt-bubble { white-space: normal; flex-wrap: wrap; max-width: calc(100vw - 24px); row-gap: 0; }
+}
 
 /* the waiting pen */
 .scribble { margin-top: 14px; }
@@ -545,10 +549,13 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
   display: flex;
   gap: 14px;
   padding: 14px 18px 10px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--faint);
   border-bottom: 1px solid var(--wash);
 }
+/* tabs are this panel's titles — same tier as .share-h; bold on all of
+   them (not just .on) so switching tabs never reflows the row */
+.panel-tabs button { font-weight: 700; }
 .panel-tabs button.on { color: var(--accent); }
 .panel-body {
   flex: 1;
@@ -556,7 +563,7 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
   padding: 18px;
   font-size: 12.5px;
 }
-.panel-body .hint { color: var(--faint); }
+.panel-body .hint { color: var(--faint); font-size: 11px; }
 
 .ai-out {
   font-family: var(--serif);
@@ -823,8 +830,9 @@ a:has(> .logo) {
   font-size: 12px;
   cursor: default;
 }
-.share-pop .share-h { margin-bottom: 4px; }
-.share-pop .hint { color: var(--faint); margin-bottom: 8px; }
+/* three tiers so the eye can rank them: bold titles, 12px working row, 11px whisper */
+.share-pop .share-h { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.share-pop .hint { color: var(--faint); font-size: 11px; margin-bottom: 8px; }
 .share-pop .share-link {
   font-size: 11px;
   color: var(--faint);
@@ -832,6 +840,9 @@ a:has(> .logo) {
   margin-bottom: 8px;
 }
 .share-pop .share-row { display: flex; gap: 14px; flex-wrap: wrap; }
+/* the popover-wide 10px hitslop would overlap neighbors in a 14px-gap row —
+   these buttons carry a slop that stays inside their own lane */
+.share-pop .share-row button { padding: 6px; margin: -6px; }
 
 /* published page */
 .pub-head {
