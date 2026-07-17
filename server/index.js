@@ -325,6 +325,7 @@ function docMeta(doc, userId) {
     published: !!doc.published,
     slug: doc.slug,
     mine: doc.owner_id === userId,
+    role: roleFor(doc, userId) || 'editor',
     owner: owner?.username || 'a ghost',
     header_image: doc.header_image || null,
     on_profile: !!doc.on_profile,
@@ -362,6 +363,40 @@ app.post('/api/docs/:id/seen', requireUser, (req, res) => {
   res.json({ ok: true })
 })
 
+// the review door's key — minted once per doc, by a pen that can write it.
+// the token deliberately carries no doc id: the narrower key must not have
+// the wider one folded inside
+app.post('/api/docs/:id/review-link', requireUser, (req, res) => {
+  const doc = db.prepare('SELECT id, owner_id, review_token FROM docs WHERE id = ?').get(req.params.id)
+  if (!doc) return res.status(404).json({ error: 'no such doc' })
+  if (!canEditDoc(doc, req.user.id)) return res.status(403).json({ error: 'not yours' })
+  let token = doc.review_token
+  if (!token) {
+    token = crypto.randomBytes(10).toString('hex')
+    db.prepare('UPDATE docs SET review_token = ? WHERE id = ? AND review_token IS NULL').run(
+      token,
+      doc.id
+    )
+    // two tabs can race the mint — whoever lost reads the winner's key
+    token = db.prepare('SELECT review_token FROM docs WHERE id = ?').get(doc.id).review_token
+  }
+  res.json({ token })
+})
+
+// through the review door: enrolled to speak, not to write. an owner or an
+// already-enrolled editor keeps their standing — a key never demotes.
+app.post('/api/review/:token/open', requireUser, (req, res) => {
+  const doc = db.prepare('SELECT * FROM docs WHERE review_token = ?').get(req.params.token)
+  if (!doc) return res.status(404).json({ error: 'nothing here' })
+  if (doc.owner_id !== req.user.id) {
+    db.prepare(
+      "INSERT OR IGNORE INTO collaborators (doc_id, user_id, role) VALUES (?, ?, 'commenter')"
+    ).run(doc.id, req.user.id)
+  }
+  markSeen(doc.id, req.user.id)
+  res.json(docMeta(doc, req.user.id))
+})
+
 // the history log, newest first — who did what to this page, and when
 app.get('/api/docs/:id/events', requireUser, (req, res) => {
   if (!docExists(req.params.id)) return res.status(404).json({ error: 'no such doc' })
@@ -386,9 +421,12 @@ app.delete('/api/docs/:id', requireUser, (req, res) => {
   res.json({ ok: true })
 })
 
-// html snapshot (for list snippets + published page)
+// html snapshot (for list snippets + published page) — a writing surface,
+// so a commenter's pen doesn't reach it
 app.post('/api/docs/:id/html', requireUser, (req, res) => {
-  if (!docExists(req.params.id)) return res.status(404).json({ error: 'no such doc' })
+  const doc = db.prepare('SELECT id, owner_id FROM docs WHERE id = ?').get(req.params.id)
+  if (!doc) return res.status(404).json({ error: 'no such doc' })
+  if (!canEditDoc(doc, req.user.id)) return res.status(403).json({ error: 'not yours' })
   db.prepare('UPDATE docs SET html = ? WHERE id = ?').run(
     cleanHtml(req.body && req.body.html),
     req.params.id
@@ -653,12 +691,22 @@ function unlinkDocImages(doc) {
   }
 }
 
-// only the owner or someone who has opened the doc (a collaborator) may write
-function canEditDoc(doc, userId) {
-  if (doc.owner_id === userId) return true
-  return !!db
-    .prepare('SELECT 1 FROM collaborators WHERE doc_id = ? AND user_id = ?')
+// what this pen may do here: the owner owns, an enrolled collaborator wears
+// their row's role, anyone else holding the doc id is an editor-in-waiting
+// (the write link is the capability — opening it enrolls them as one)
+function roleFor(doc, userId) {
+  if (doc.owner_id === userId) return 'owner'
+  const row = db
+    .prepare('SELECT role FROM collaborators WHERE doc_id = ? AND user_id = ?')
     .get(doc.id, userId)
+  return row ? row.role || 'editor' : null
+}
+
+// only the owner or someone enrolled to write may change the page — a
+// commenter's pen stays in the margins
+function canEditDoc(doc, userId) {
+  const r = roleFor(doc, userId)
+  return r === 'owner' || r === 'editor'
 }
 
 // shared receive-validate-store for both header and inline uploads;
@@ -1080,9 +1128,15 @@ server.on('upgrade', (req, socket, head) => {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
         return socket.destroy()
       }
+      // a commenter's socket reads the page and speaks presence, but its
+      // writes never land — the margin is their surface, not the text
+      const row = db
+        .prepare('SELECT role FROM collaborators WHERE doc_id = ? AND user_id = ?')
+        .get(docId, user.id)
+      const readOnly = row?.role === 'commenter'
       wss.handleUpgrade(req, socket, head, (ws) => {
         socket.removeListener('error', onUpgradeError)
-        setupCollab(ws, docId, { id: user.id, username: user.username })
+        setupCollab(ws, docId, { id: user.id, username: user.username }, readOnly)
       })
     })
     .catch(() => {

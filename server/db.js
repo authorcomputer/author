@@ -129,6 +129,17 @@ if (addColumn('versions', "kind TEXT DEFAULT 'manual'")) {
   db.exec(`UPDATE versions SET kind = 'flow' WHERE name = 'while the ink flowed'`)
 }
 
+// a collaborator wears a role: an editor writes, a commenter only speaks in
+// the margins. everyone enrolled before roles existed was let in to write.
+addColumn('collaborators', "role TEXT DEFAULT 'editor'")
+// the review door: a token that opens the page for commenting, not writing —
+// it must not contain or reveal the doc id, or the narrower key would carry
+// the wider one inside it
+addColumn('docs', 'review_token TEXT')
+db.exec(
+  'CREATE UNIQUE INDEX IF NOT EXISTS idx_docs_review ON docs(review_token) WHERE review_token IS NOT NULL'
+)
+
 // versions remember whose pen signed them, so a handle rename can follow
 // the writer instead of the name — a pen name can echo a handle, so the
 // name alone proves nothing. no backfill: guessing owners for old rows by

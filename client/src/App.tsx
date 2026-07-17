@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Login from './pages/Login'
 import Home from './pages/Home'
-import Editor from './pages/Editor'
+import Editor, { ReviewPage } from './pages/Editor'
 import GhostDoor from './pages/GhostDoor'
 import Public from './pages/Public'
 import Landing from './pages/Landing'
@@ -80,6 +80,14 @@ export default function App() {
           element={
             <GhostDoor>
               <Editor />
+            </GhostDoor>
+          }
+        />
+        <Route
+          path="/r/:token"
+          element={
+            <GhostDoor>
+              <ReviewPage />
             </GhostDoor>
           }
         />

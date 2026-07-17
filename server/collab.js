@@ -172,8 +172,10 @@ function noteEdit(room) {
   const flowing = now - room.lastEdit < IDLE_SNAP_GAP
   room.lastEdit = now
   // remember who was here for the change itself — by the time the timer
-  // fires (or the room unloads and flushes), the writer may be gone
-  room.editors = [...room.names.values()]
+  // fires (or the room unloads and flushes), the writer may be gone. a
+  // commenter at the desk is reading, not writing: crediting them a version
+  // or a line of edit history would put words in a pen that can't write
+  room.editors = [...room.names.values()].filter((u) => !u.readOnly)
   if (room.idleTimer) clearTimeout(room.idleTimer)
   room.idleTimer = setTimeout(() => {
     room.idleTimer = null
@@ -356,7 +358,7 @@ export function dropRoom(docId) {
   room.ydoc.destroy()
 }
 
-export function setupCollab(ws, docId, user) {
+export function setupCollab(ws, docId, user, readOnly = false) {
   const room = getRoom(docId)
   if (room.destroyTimer) {
     clearTimeout(room.destroyTimer)
@@ -364,13 +366,16 @@ export function setupCollab(ws, docId, user) {
   }
   // a second distinct writer arriving is the co-editing boundary. distinct
   // means a different account (ghosts included — every anonymous session
-  // has its own id); the same person in two tabs doesn't count
+  // has its own id); the same person in two tabs doesn't count. a commenter
+  // arriving isn't one — their pen can't cause the merge the snapshot guards
   if (user?.id) {
-    const ids = new Set([...room.names.values()].map((u) => u.id))
-    if (ids.size === 1 && !ids.has(user.id)) {
-      snapshotOnCompany(room, user.username)
+    if (!readOnly) {
+      const ids = new Set([...room.names.values()].filter((u) => !u.readOnly).map((u) => u.id))
+      if (ids.size === 1 && !ids.has(user.id)) {
+        snapshotOnCompany(room, user.username)
+      }
     }
-    room.names.set(ws, { id: user.id, username: user.username })
+    room.names.set(ws, { id: user.id, username: user.username, readOnly })
   }
   room.conns.set(ws, new Set())
   ws.binaryType = 'arraybuffer'
@@ -382,6 +387,19 @@ export function setupCollab(ws, docId, user) {
       const messageType = decoding.readVarUint(decoder)
       switch (messageType) {
         case MESSAGE_SYNC: {
+          // a read-only socket is answered but never believed: its step 1
+          // gets our state, its step 2s and updates fall to the floor — the
+          // wire carries no signature, so the role decides, not the frame
+          if (readOnly) {
+            const t = decoding.readVarUint(decoder)
+            if (t === syncProtocol.messageYjsSyncStep1) {
+              const enc = encoding.createEncoder()
+              encoding.writeVarUint(enc, MESSAGE_SYNC)
+              syncProtocol.readSyncStep1(decoder, enc, room.ydoc)
+              send(ws, encoding.toUint8Array(enc))
+            }
+            break
+          }
           const enc = encoding.createEncoder()
           encoding.writeVarUint(enc, MESSAGE_SYNC)
           syncProtocol.readSyncMessage(decoder, enc, room.ydoc, ws)

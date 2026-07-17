@@ -98,6 +98,7 @@ type Meta = {
   published: boolean
   slug: string | null
   mine: boolean
+  role: 'owner' | 'editor' | 'commenter'
   owner: string
   header_image?: string | null
   on_profile?: boolean
@@ -171,6 +172,30 @@ function removeCommentMark(editor: TiptapEditor, id: string) {
 export default function EditorPage() {
   const { id } = useParams()
   return <EditorInner key={id} id={id!} />
+}
+
+// the review door: /r/<token> resolves to the page and enrolls this pen as
+// a commenter. the address bar keeps the token — the url a reviewer copies
+// on passes review standing, never the writing link
+export function ReviewPage() {
+  const { token } = useParams()
+  const [docId, setDocId] = useState<string | null>(null)
+  const [gone, setGone] = useState(false)
+  useEffect(() => {
+    api(`/api/review/${token}/open`, { method: 'POST' })
+      .then((m: Meta) => setDocId(m.id))
+      .catch((e) => {
+        if (e.message !== 'signed out') setGone(true)
+      })
+  }, [token])
+  if (gone)
+    return (
+      <div className="home">
+        <div className="empty-note">( nothing here )</div>
+      </div>
+    )
+  if (!docId) return null
+  return <EditorInner key={docId} id={docId} />
 }
 
 function EditorInner({ id }: { id: string }) {
@@ -274,6 +299,10 @@ function EditorInner({ id }: { id: string }) {
       CoWritten,
       CommentGutter,
     ],
+    // the pen waits for the role: until meta names this viewer an editor,
+    // nothing they type may land — a commenter's keystrokes would live only
+    // in their tab and vanish on reload (the server drops their writes)
+    editable: false,
     editorProps: {
       handlePaste: (view, event) => {
         const cd = event.clipboardData
@@ -611,6 +640,46 @@ function EditorInner({ id }: { id: string }) {
     if (tr.steps.length) editor.view.dispatch(tr.setMeta(PLUMBING, true))
   }, [comments, editor])
 
+  // a commenter reads the page, they don't write it — the server drops
+  // their doc writes either way; the surface should say so too
+  const reviewing = meta?.role === 'commenter'
+  useEffect(() => {
+    if (editor && !editor.isDestroyed && meta) editor.setEditable(meta.role !== 'commenter')
+  }, [meta, editor])
+
+  // the sweep's mirror: a commenter's own marks never cross the wire (their
+  // socket is read-only), so any editing pen adopts the orphans — an open
+  // thread whose quote still lives in the page gets its mark drawn in.
+  // idempotent and plumbing, same as the sweep.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed || !meta || reviewing) return
+    const open = comments.filter(isOpenRoot)
+    if (open.length === 0) return
+    const present = new Set<string>()
+    editor.state.doc.descendants((node) => {
+      node.marks.forEach((m) => {
+        if (m.type.name === 'comment') present.add(m.attrs.id)
+      })
+    })
+    const tr = editor.state.tr
+    let drawn = false
+    for (const c of open) {
+      if (present.has(c.id) || !c.quote) continue
+      const r = findWholeRange(editor, c.quote)
+      if (!r) continue
+      tr.addMark(
+        r.from,
+        r.to,
+        editor.state.schema.marks.comment.create({
+          id: c.id,
+          kind: c.suggestion?.trim() ? 'edit' : 'note',
+        })
+      )
+      drawn = true
+    }
+    if (drawn) editor.view.dispatch(tr.setMeta(PLUMBING, true))
+  }, [comments, editor, meta, reviewing])
+
   // the "written twice" note needs to know whether anyone else is here
   useEffect(() => {
     if (editor && !editor.isDestroyed) {
@@ -636,6 +705,8 @@ function EditorInner({ id }: { id: string }) {
     if (panel) setLastTab(panel)
   }, [panel])
   function openPanel(p: Panel) {
+    // a commenter's panel holds the conversation, not the pen's tools
+    if (reviewing && p !== 'comments' && p !== 'history') p = 'comments'
     if (p === 'versions' && isGhost) {
       track('account prompt: shown', { reason: 'versions' })
       setModalReason('versions keep what you had — that needs a desk')
@@ -707,12 +778,14 @@ function EditorInner({ id }: { id: string }) {
           </button>
         )}
         <div className="share-anchor">
-          <button
-            className={shareOpen || meta?.published ? 'on' : ''}
-            onClick={() => meta && setShareOpen(!shareOpen)}
-          >
-            {meta?.published ? '✽ share' : '[ share ]'}
-          </button>
+          {!reviewing && (
+            <button
+              className={shareOpen || meta?.published ? 'on' : ''}
+              onClick={() => meta && setShareOpen(!shareOpen)}
+            >
+              {meta?.published ? '✽ share' : '[ share ]'}
+            </button>
+          )}
           {shareOpen && meta && (
             <SharePop
               meta={meta}
@@ -773,35 +846,40 @@ function EditorInner({ id }: { id: string }) {
             {headerUrl ? (
               <div className="header-wrap">
                 <img className="header-img" src={headerUrl} alt="" />
-                <div className="header-controls">
-                  <label className="file-pick">
-                    [ change ]
-                    <input
-                      type="file"
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      onChange={uploadHeader}
-                    />
-                  </label>
-                  <button onClick={removeHeader}>[ remove ]</button>
-                </div>
+                {!reviewing && (
+                  <div className="header-controls">
+                    <label className="file-pick">
+                      [ change ]
+                      <input
+                        type="file"
+                        accept="image/*"
+                        style={{ display: 'none' }}
+                        onChange={uploadHeader}
+                      />
+                    </label>
+                    <button onClick={removeHeader}>[ remove ]</button>
+                  </div>
+                )}
               </div>
             ) : (
-              <label className="header-add">
-                [ + header image ]
-                <input
-                  type="file"
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                  onChange={uploadHeader}
-                />
-              </label>
+              !reviewing && (
+                <label className="header-add">
+                  [ + header image ]
+                  <input
+                    type="file"
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                    onChange={uploadHeader}
+                  />
+                </label>
+              )
             )}
             <input
               className="title-input"
               placeholder="untitled"
               value={title}
-              onChange={(e) => updateTitle(e.target.value)}
+              readOnly={reviewing}
+              onChange={(e) => !reviewing && updateTitle(e.target.value)}
               onKeyDown={(e) => {
                 // enter drops you into the page, same as tab
                 if (e.key === 'Enter') {
@@ -812,7 +890,7 @@ function EditorInner({ id }: { id: string }) {
             />
             <div className="ascii-rule">~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~</div>
             <EditorContent editor={editor} />
-            {editor && <FormatBubble editor={editor} />}
+            {editor && (reviewing ? <ReviewBubble editor={editor} /> : <FormatBubble editor={editor} />)}
           </div>
         </div>
         {panel && editor && (
@@ -824,10 +902,11 @@ function EditorInner({ id }: { id: string }) {
             comments={comments}
             reloadComments={reloadComments}
             focusId={focusId}
+            reviewing={reviewing}
           />
         )}
       </div>
-      {editor && <CommandBar editor={editor} setPanel={setPanel} />}
+      {editor && !reviewing && <CommandBar editor={editor} setPanel={setPanel} />}
       {composer && editor && (
         <CommentComposer
           editor={editor}
@@ -846,6 +925,7 @@ function EditorInner({ id }: { id: string }) {
           at={openPop!}
           onClose={() => setOpenPop(null)}
           onChanged={reloadComments}
+          reviewing={reviewing}
         />
       )}
       {modalReason && (
@@ -927,6 +1007,30 @@ function FormatBubble({ editor }: { editor: TiptapEditor }) {
   )
 }
 
+// a commenter's bubble: the page won't take their ink, so the default
+// bubble's shouldShow (which wants an editable view) never fires — this one
+// shows on any selection and offers the margin, nothing else
+function ReviewBubble({ editor }: { editor: TiptapEditor }) {
+  return (
+    <BubbleMenu
+      editor={editor}
+      tippyOptions={{ duration: 120, maxWidth: 'none' }}
+      shouldShow={({ state }) => !state.selection.empty}
+    >
+      <div className="fmt-bubble" role="toolbar" aria-label="review">
+        <button
+          onMouseDown={(e) => {
+            e.preventDefault() // keep the selection
+            window.dispatchEvent(new CustomEvent('author:comment'))
+          }}
+        >
+          ☞ comment
+        </button>
+      </div>
+    </BubbleMenu>
+  )
+}
+
 /* ------------------------------------------------------------------ */
 /* share popover                                                       */
 /* ------------------------------------------------------------------ */
@@ -946,10 +1050,20 @@ function SharePop({
   onProfileToggle: () => void
   onClose: () => void
 }) {
-  const [copied, setCopied] = useState<'write' | 'read' | 'as-md' | 'as-html' | null>(null)
+  const [copied, setCopied] = useState<'write' | 'review' | 'read' | 'as-md' | 'as-html' | null>(
+    null
+  )
   const copyTimer = useRef<ReturnType<typeof setTimeout>>()
   const writeUrl = `${location.origin}/d/${meta.id}`
   const readUrl = meta.slug ? `${location.origin}/p/${meta.slug}` : null
+  // the review key is minted the first time the pop opens — idempotent, so
+  // every open reads the same door
+  const [reviewUrl, setReviewUrl] = useState<string | null>(null)
+  useEffect(() => {
+    api(`/api/docs/${meta.id}/review-link`, { method: 'POST' })
+      .then((r) => setReviewUrl(`${location.origin}/r/${r.token}`))
+      .catch(() => {})
+  }, [meta.id])
 
   useEffect(() => () => clearTimeout(copyTimer.current), [])
 
@@ -959,8 +1073,10 @@ function SharePop({
     copyTimer.current = setTimeout(() => setCopied(null), 1600)
   }
 
-  function copy(url: string, which: 'write' | 'read') {
-    track('share: link copied', { kind: which === 'write' ? 'writing' : 'reading' })
+  function copy(url: string, which: 'write' | 'review' | 'read') {
+    track('share: link copied', {
+      kind: which === 'write' ? 'writing' : which === 'review' ? 'review' : 'reading',
+    })
     // clipboard API is absent in non-secure contexts; the link is visible
     // either way, so failing quietly is fine.
     navigator.clipboard?.writeText(url).catch(() => {})
@@ -1003,6 +1119,20 @@ function SharePop({
             {copied === 'write' ? '✓ copied' : '[ copy writing link ]'}
           </button>
         </div>
+        {reviewUrl && (
+          <>
+            <div className="ascii-rule" style={{ margin: '12px 0' }}>
+              · · · · · · · · · · · · · · · · · · ·
+            </div>
+            <div className="share-sec">
+              <div className="share-h">☞ comments only</div>
+              <div className="share-link">{reviewUrl}</div>
+              <button onClick={() => copy(reviewUrl, 'review')}>
+                {copied === 'review' ? '✓ copied' : '[ copy review link ]'}
+              </button>
+            </div>
+          </>
+        )}
         <div className="ascii-rule" style={{ margin: '12px 0' }}>
           · · · · · · · · · · · · · · · · · · ·
         </div>
@@ -1173,6 +1303,7 @@ function SidePanel({
   comments,
   reloadComments,
   focusId,
+  reviewing,
 }: {
   panel: Exclude<Panel, null>
   setPanel: (p: Panel) => void
@@ -1181,14 +1312,18 @@ function SidePanel({
   comments: Comment[]
   reloadComments: () => void
   focusId: string | null
+  reviewing: boolean
 }) {
   const openCount = comments.filter(isOpenRoot).length
   // internal keys keep their history; these are the names on the door
   const TAB_LABELS: Record<string, string> = { ai: 'ask', checks: 'proof' }
+  const tabs = reviewing
+    ? (['comments', 'history'] as const)
+    : (['ai', 'checks', 'comments', 'versions', 'history'] as const)
   return (
     <div className="panel">
       <div className="panel-tabs">
-        {(['ai', 'checks', 'comments', 'versions', 'history'] as const).map((p) => (
+        {tabs.map((p) => (
           <button key={p} className={panel === p ? 'on' : ''} onClick={() => setPanel(p)}>
             {p === 'comments' && openCount > 0 ? `comments·${openCount}` : (TAB_LABELS[p] ?? p)}
           </button>
@@ -1197,8 +1332,8 @@ function SidePanel({
         <button onClick={() => setPanel(null)}>✗</button>
       </div>
       <div className="panel-body">
-        {panel === 'ai' && <AskPanel editor={editor} />}
-        {panel === 'checks' && <ChecksPanel editor={editor} />}
+        {panel === 'ai' && !reviewing && <AskPanel editor={editor} />}
+        {panel === 'checks' && !reviewing && <ChecksPanel editor={editor} />}
         {panel === 'comments' && (
           <CommentsPanel
             editor={editor}
@@ -1206,9 +1341,10 @@ function SidePanel({
             comments={comments}
             reload={reloadComments}
             focusId={focusId}
+            reviewing={reviewing}
           />
         )}
-        {panel === 'versions' && <VersionsPanel editor={editor} docId={docId} />}
+        {panel === 'versions' && !reviewing && <VersionsPanel editor={editor} docId={docId} />}
         {panel === 'history' && <HistoryPanel docId={docId} />}
       </div>
     </div>
@@ -1869,6 +2005,7 @@ function CommentPop({
   at,
   onClose,
   onChanged,
+  reviewing,
 }: {
   editor: TiptapEditor
   docId: string
@@ -1877,6 +2014,7 @@ function CommentPop({
   at: { x: number; y: number; yTop: number }
   onClose: () => void
   onChanged: () => void
+  reviewing: boolean
 }) {
   const ref = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -1936,7 +2074,7 @@ function CommentPop({
           </div>
         ) : (
           <ReplyBox docId={docId} parentId={comment.id} onPosted={onChanged}>
-            {comment.suggestion?.trim() && (
+            {!reviewing && comment.suggestion?.trim() && (
               <button
                 onClick={() => {
                   onClose()
@@ -1947,21 +2085,23 @@ function CommentPop({
                 [ ✓ apply edit ]
               </button>
             )}
-            <button
-              className="faint"
-              onClick={async () => {
-                await resolveComment(
-                  editor,
-                  comment.id,
-                  undefined,
-                  comment.suggestion?.trim() ? 'rejected' : undefined
-                )
-                onChanged()
-                onClose()
-              }}
-            >
-              {comment.suggestion?.trim() ? '[ ✗ dismiss ]' : '[ ✓ resolve ]'}
-            </button>
+            {!reviewing && (
+              <button
+                className="faint"
+                onClick={async () => {
+                  await resolveComment(
+                    editor,
+                    comment.id,
+                    undefined,
+                    comment.suggestion?.trim() ? 'rejected' : undefined
+                  )
+                  onChanged()
+                  onClose()
+                }}
+              >
+                {comment.suggestion?.trim() ? '[ ✗ dismiss ]' : '[ ✓ resolve ]'}
+              </button>
+            )}
           </ReplyBox>
         )}
       </div>
@@ -1975,12 +2115,14 @@ function CommentsPanel({
   comments,
   reload,
   focusId,
+  reviewing,
 }: {
   editor: TiptapEditor
   docId: string
   comments: Comment[]
   reload: () => void
   focusId: string | null
+  reviewing: boolean
 }) {
   const open = comments.filter(isOpenRoot)
   const resolved = comments.filter((c) => c.resolved && isRoot(c))
@@ -2043,7 +2185,7 @@ function CommentsPanel({
             {c.text && <div className="body">{c.text}</div>}
             <Replies replies={repliesFor(c.id)} />
             <ReplyBox docId={docId} parentId={c.id} onPosted={reload}>
-              {c.suggestion?.trim() && (
+              {!reviewing && c.suggestion?.trim() && (
                 <button
                   onClick={() => applySuggestion(editor, c, reload)}
                   title="replace the passage with their words"
@@ -2051,20 +2193,22 @@ function CommentsPanel({
                   [ ✓ apply edit ]
                 </button>
               )}
-              <button
-                className="faint"
-                onClick={async () => {
-                  await resolveComment(
-                    editor,
-                    c.id,
-                    undefined,
-                    c.suggestion?.trim() ? 'rejected' : undefined
-                  )
-                  reload()
-                }}
-              >
-                {c.suggestion?.trim() ? '[ ✗ dismiss ]' : '[ ✓ resolve ]'}
-              </button>
+              {!reviewing && (
+                <button
+                  className="faint"
+                  onClick={async () => {
+                    await resolveComment(
+                      editor,
+                      c.id,
+                      undefined,
+                      c.suggestion?.trim() ? 'rejected' : undefined
+                    )
+                    reload()
+                  }}
+                >
+                  {c.suggestion?.trim() ? '[ ✗ dismiss ]' : '[ ✓ resolve ]'}
+                </button>
+              )}
             </ReplyBox>
           </div>
         )
