@@ -876,17 +876,17 @@ function FormatBubble({ editor }: { editor: TiptapEditor }) {
           // the block's schema would swallow silently
           const dissolved = editor.chain().focus().command(({ state, tr }) => uncodeBlocks(state, tr)).run()
           if (!dissolved) editor.chain().focus().toggleCode().run()
-        }, 'code')}
+        }, 'code', 'code ⌘E')}
         <span className="fmt-sep">·</span>
         {item('h1', editor.isActive('heading', { level: 1 }), () =>
           editor.chain().focus().toggleHeading({ level: 1 }).run(),
-          'big heading'
+          'big heading', 'big heading ⌥⌘1'
         )}
         {item('h2', editor.isActive('heading', { level: 2 }), () =>
           editor.chain().focus().toggleHeading({ level: 2 }).run(),
-          'small heading'
+          'small heading', 'small heading ⌥⌘2'
         )}
-        {item('“quote”', editor.isActive('blockquote'), () => editor.chain().focus().toggleBlockquote().run(), 'quote')}
+        {item('“quote”', editor.isActive('blockquote'), () => editor.chain().focus().toggleBlockquote().run(), 'quote', 'quote ⌘⇧B')}
         <span className="fmt-sep">·</span>
         {item('link', editor.isActive('link'), setLink, 'link', 'add or edit link')}
         {item('☞ comment', editor.isActive('comment'), () => window.dispatchEvent(new CustomEvent('author:comment')), 'comment', 'comment ⌥⌘M')}
