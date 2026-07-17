@@ -6,7 +6,7 @@ import * as awarenessProtocol from 'y-protocols/awareness.js'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import { yDocToProsemirrorJSON } from 'y-prosemirror'
-import { db, loadYDoc, saveYDoc, addEvent, addEditEvent } from './db.js'
+import { db, loadYDoc, saveYDoc, addEvent, addEditEvents } from './db.js'
 
 const MESSAGE_SYNC = 0
 const MESSAGE_AWARENESS = 1
@@ -201,16 +201,22 @@ const ownerByline = (docId) =>
 // are pure metadata — idle/flow store none, join remembers who arrived.
 // the byline carries both name and id: the name is the display snapshot,
 // the id is what a later handle rename may key on — names repeat, ids don't
-export function insertVersion(docId, name, byline, json, ts, kind) {
+export function insertVersion(docId, name, byline, json, ts, kind, editors) {
   const id = 'v_' + crypto.randomBytes(8).toString('hex')
   db.prepare(
     'INSERT INTO versions (id, doc_id, name, username, user_id, content, created_at, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   ).run(id, docId, name, byline.username, byline.id || null, json, ts, kind)
   // versions are where writing becomes history: a deliberate save is its own
   // entry, and the automatic ones (idle, flow) mark that someone wrote —
-  // join snapshots record presence, not work, so they stay out of the log
+  // join snapshots record presence, not work, so they stay out of the log.
+  // the version credits one byline; the edit entries name every pen that was
+  // at the desk, or the desk would show writers their own words as news.
+  // known wart: the entry lands when the sitting settles, minutes after the
+  // words — a reader who opened mid-gap may see the sitting flagged once
+  // more. over-shown, never lost; opening the page clears it.
   if (kind === 'manual') addEvent(docId, byline, 'version.save', name)
-  else if (kind === 'idle' || kind === 'flow') addEditEvent(docId, byline)
+  else if (kind === 'idle' || kind === 'flow')
+    addEditEvents(docId, editors?.length ? editors : [byline])
   return id
 }
 
@@ -241,7 +247,7 @@ function snapshotOnSettle(room, kind = 'idle') {
     const ids = new Set(room.editors.map((u) => u.id))
     const byline = ids.size === 1 ? room.editors[0] : ownerByline(room.id)
     room.lastSnap = Date.now()
-    insertVersion(room.id, '', byline, json, room.lastSnap, kind)
+    insertVersion(room.id, '', byline, json, room.lastSnap, kind, room.editors)
   } catch (e) {
     console.error('auto snapshot failed', room.id, e)
   }

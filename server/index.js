@@ -8,7 +8,7 @@ import { WebSocketServer } from 'ws'
 import bcrypt from 'bcryptjs'
 import { toNodeHandler, fromNodeHeaders } from 'better-auth/node'
 import { cleanHtml } from './clean-html.js'
-import { db, docExists, addEvent, markSeen } from './db.js'
+import { db, docExists, addEvent, markSeen, purgeDocRows } from './db.js'
 import { auth, runAuthMigrations, migrateLegacyUsers, TRUSTED_ORIGINS } from './auth.js'
 import { setupCollab, flushRooms, insertVersion, dropRoom, hasRoom } from './collab.js'
 import { putImage, deleteImage, pushMissing, imagesReplicated } from './images.js'
@@ -264,25 +264,21 @@ app.get('/api/docs', requireUser, (req, res) => {
     )
     .all(req.user.id, req.user.id, req.user.id)
   // what's new per doc since this reader's cursor — their own doings aren't
-  // news to them, so only other pens count
-  const unseen = new Map()
-  for (const e of db
-    .prepare(
-      `SELECT e.doc_id, e.type, COUNT(*) AS n
-       FROM doc_events e
-       LEFT JOIN read_cursors rc ON rc.doc_id = e.doc_id AND rc.user_id = ?
-       WHERE e.user_id != ? AND e.id > COALESCE(rc.last_event_id, 0)
-         AND e.doc_id IN (SELECT id FROM docs WHERE owner_id = ?
-                          UNION SELECT doc_id FROM collaborators WHERE user_id = ?)
-       GROUP BY e.doc_id, e.type`
-    )
-    .all(req.user.id, req.user.id, req.user.id, req.user.id)) {
-    const m = unseen.get(e.doc_id) || {}
-    m[e.type] = e.n
-    unseen.set(e.doc_id, m)
-  }
+  // news to them, so only other pens count. one indexed range per listed doc:
+  // the doc set is exactly the rows just fetched, and a caught-up doc costs
+  // an empty (doc_id, id) scan, not a walk of its whole log
+  const cursors = new Map(
+    db
+      .prepare('SELECT doc_id, last_event_id FROM read_cursors WHERE user_id = ?')
+      .all(req.user.id)
+      .map((c) => [c.doc_id, c.last_event_id])
+  )
+  const newsStmt = db.prepare(
+    'SELECT type, COUNT(*) AS n FROM doc_events WHERE doc_id = ? AND id > ? AND user_id != ? GROUP BY type'
+  )
   res.json(
     rows.map((r) => {
+      const news = newsStmt.all(r.id, cursors.get(r.id) || 0, req.user.id)
       const text = previewOf(r.html)
       return {
         id: r.id,
@@ -295,7 +291,7 @@ app.get('/api/docs', requireUser, (req, res) => {
         on_profile: !!r.on_profile,
         snippet: text.slice(0, 140),
         preview: text,
-        unseen: unseen.get(r.id) || null,
+        unseen: news.length ? Object.fromEntries(news.map((e) => [e.type, e.n])) : null,
       }
     })
   )
@@ -385,14 +381,7 @@ app.delete('/api/docs/:id', requireUser, (req, res) => {
   // the live room goes first — anyone still connected must be cut off, not
   // left typing into saves that match no row
   dropRoom(doc.id)
-  db.transaction(() => {
-    db.prepare('DELETE FROM docs WHERE id = ?').run(doc.id)
-    db.prepare('DELETE FROM comments WHERE doc_id = ?').run(doc.id)
-    db.prepare('DELETE FROM versions WHERE doc_id = ?').run(doc.id)
-    db.prepare('DELETE FROM collaborators WHERE doc_id = ?').run(doc.id)
-    db.prepare('DELETE FROM doc_events WHERE doc_id = ?').run(doc.id)
-    db.prepare('DELETE FROM read_cursors WHERE doc_id = ?').run(doc.id)
-  })()
+  db.transaction(() => purgeDocRows(doc.id))()
   unlinkDocImages(doc) // after the rows are gone, so this doc isn't counted as a referrer
   res.json({ ok: true })
 })
@@ -478,6 +467,8 @@ app.get('/api/docs/:id/comments', requireUser, (req, res) => {
 })
 
 app.post('/api/docs/:id/comments', requireUser, (req, res) => {
+  // a comment on no page would haunt the log forever — no sweep ever finds it
+  if (!docExists(req.params.id)) return res.status(404).json({ error: 'no such doc' })
   const { text, quote, suggestion, parent_id, id } = req.body || {}
   const note = String(text || '').trim()
   const parent = String(parent_id || '')
@@ -499,25 +490,29 @@ app.post('/api/docs/:id/comments', requireUser, (req, res) => {
     if (!p) return res.status(400).json({ error: 'that thread is settled' })
   }
   const cid = id || uid('c')
-  db.prepare(
-    'INSERT INTO comments (id, doc_id, user_id, username, quote, text, suggestion, parent_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-  ).run(
-    cid,
-    req.params.id,
-    req.user.id,
-    req.user.username,
-    parent ? '' : String(quote || '').slice(0, 500),
-    note,
-    sugg,
-    parent,
-    Date.now()
-  )
-  addEvent(
-    req.params.id,
-    req.user,
-    parent ? 'comment.reply' : sugg.trim() ? 'suggestion.add' : 'comment.add',
-    sugg.trim() || note
-  )
+  // the comment and its history entry land together or not at all — a
+  // half-written pair would be a note the desk never announces
+  db.transaction(() => {
+    db.prepare(
+      'INSERT INTO comments (id, doc_id, user_id, username, quote, text, suggestion, parent_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(
+      cid,
+      req.params.id,
+      req.user.id,
+      req.user.username,
+      parent ? '' : String(quote || '').slice(0, 500),
+      note,
+      sugg,
+      parent,
+      Date.now()
+    )
+    addEvent(
+      req.params.id,
+      req.user,
+      parent ? 'comment.reply' : sugg.trim() ? 'suggestion.add' : 'comment.add',
+      sugg.trim() || note
+    )
+  })()
   res.json({ id: cid })
 })
 
@@ -531,8 +526,23 @@ app.post('/api/comments/:cid/resolve', requireUser, (req, res) => {
   if (!c) return res.status(404).json({ error: 'no such comment' })
   const doc = db.prepare('SELECT id, owner_id FROM docs WHERE id = ?').get(c.doc_id)
   if (!doc || !canEditDoc(doc, req.user.id)) return res.status(403).json({ error: 'not yours' })
-  db.prepare('UPDATE comments SET resolved = 1 WHERE id = ?').run(req.params.cid)
-  addEvent(c.doc_id, req.user, 'comment.resolve', c.suggestion?.trim() || c.quote || c.text)
+  // how the thread ended is part of the record: a suggested edit was taken
+  // or it wasn't, and history tells them apart. a plain note just settles.
+  const wanted = (req.body || {}).outcome
+  const outcome =
+    c.suggestion?.trim() && (wanted === 'accepted' || wanted === 'rejected') ? wanted : 'resolved'
+  const type =
+    outcome === 'accepted'
+      ? 'suggestion.accept'
+      : outcome === 'rejected'
+        ? 'suggestion.reject'
+        : 'comment.resolve'
+  db.transaction(() => {
+    db.prepare(
+      'UPDATE comments SET resolved = 1, outcome = ?, resolved_by = ?, resolved_at = ? WHERE id = ?'
+    ).run(outcome, req.user.username, Date.now(), req.params.cid)
+    addEvent(c.doc_id, req.user, type, c.suggestion?.trim() || c.quote || c.text)
+  })()
   res.json({ ok: true })
 })
 
@@ -546,8 +556,13 @@ app.get('/api/docs/:id/versions', requireUser, (req, res) => {
   res.json(rows)
 })
 
-// saving a version is "keeping" — full accounts only
+// saving a version is "keeping" — full accounts only, and only pens that
+// can write this page (a version names itself into the history log, so an
+// uninvited pen could otherwise speak in any doc's history)
 app.post('/api/docs/:id/versions', requireFullUser, (req, res) => {
+  const doc = db.prepare('SELECT id, owner_id FROM docs WHERE id = ?').get(req.params.id)
+  if (!doc) return res.status(404).json({ error: 'no such doc' })
+  if (!canEditDoc(doc, req.user.id)) return res.status(403).json({ error: 'not yours' })
   const { name, content } = req.body || {}
   if (!content) return res.status(400).json({ error: 'no content' })
   // a deliberate save always wears a name, so it never blends in with the
@@ -1097,14 +1112,7 @@ function sweepGhosts() {
     // someone is there now; leave the whole ghost for a later night.
     if (docs.some((d) => hasRoom(d.id))) continue
     db.transaction(() => {
-      for (const d of docs) {
-        db.prepare('DELETE FROM comments WHERE doc_id = ?').run(d.id)
-        db.prepare('DELETE FROM versions WHERE doc_id = ?').run(d.id)
-        db.prepare('DELETE FROM collaborators WHERE doc_id = ?').run(d.id)
-        db.prepare('DELETE FROM doc_events WHERE doc_id = ?').run(d.id)
-        db.prepare('DELETE FROM read_cursors WHERE doc_id = ?').run(d.id)
-      }
-      db.prepare('DELETE FROM docs WHERE owner_id = ?').run(id)
+      for (const d of docs) purgeDocRows(d.id)
       db.prepare('DELETE FROM collaborators WHERE user_id = ?').run(id)
       db.prepare('DELETE FROM read_cursors WHERE user_id = ?').run(id)
       db.prepare('DELETE FROM activity WHERE user_id = ?').run(id)

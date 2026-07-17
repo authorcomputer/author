@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS doc_events (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_doc_events_doc ON doc_events(doc_id, id);
+CREATE INDEX IF NOT EXISTS idx_doc_events_user ON doc_events(user_id);
 CREATE TABLE IF NOT EXISTS read_cursors (
   doc_id TEXT NOT NULL,
   user_id TEXT NOT NULL,
@@ -136,6 +137,12 @@ addColumn('versions', 'user_id TEXT')
 
 // a comment can carry a proposed replacement for its quoted passage
 addColumn('comments', "suggestion TEXT DEFAULT ''")
+// how a thread ended, and who ended it: a suggested edit is accepted or
+// rejected, a note is resolved — the review loop's memory. rows settled
+// before the column existed keep an empty outcome; unknown stays unknown.
+addColumn('comments', "outcome TEXT DEFAULT ''")
+addColumn('comments', "resolved_by TEXT DEFAULT ''")
+addColumn('comments', 'resolved_at INTEGER')
 // replies thread under a parent comment
 addColumn('comments', "parent_id TEXT DEFAULT ''")
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email IS NOT NULL')
@@ -207,26 +214,46 @@ export function addEvent(docId, byline, type, detail = '') {
   ).run(docId, byline.id || '', byline.username, type, String(detail).slice(0, 200), Date.now())
 }
 
-// a long afternoon of writing is one line of history, not fifty — while
-// nothing else lands in between, a writer's consecutive edit entries
-// collapse to the freshest. anything else arriving pins the run in place.
-export function addEditEvent(docId, byline) {
-  const last = db
-    .prepare('SELECT id, user_id, type FROM doc_events WHERE doc_id = ? ORDER BY id DESC LIMIT 1')
-    .get(docId)
-  if (last && last.type === 'edit' && last.user_id === (byline.id || '')) {
+// a long afternoon of writing is one line of history per pen, not fifty —
+// while nothing else lands in between, the sitting's edit entries collapse
+// to the freshest run. anything else arriving pins the run in place. this is
+// the log's one exception to append-only, held inside a transaction so a
+// crash can't land between the delete and its replacement. every pen at the
+// desk gets its own entry: a version credits one byline, but news must name
+// whoever actually wrote, or the desk shows writers their own words as news.
+export const addEditEvents = db.transaction((docId, bylines) => {
+  const writers = new Map()
+  for (const b of bylines) writers.set(b.id || '', b)
+  while (true) {
+    const last = db
+      .prepare('SELECT id, user_id, type FROM doc_events WHERE doc_id = ? ORDER BY id DESC LIMIT 1')
+      .get(docId)
+    if (!last || last.type !== 'edit' || !writers.has(last.user_id)) break
     db.prepare('DELETE FROM doc_events WHERE id = ?').run(last.id)
   }
-  addEvent(docId, byline, 'edit')
+  for (const b of writers.values()) addEvent(docId, b, 'edit')
+})
+
+// point a reader's cursor at the end of the log — everything so far is seen.
+// one statement, and the update refuses when nothing moved, so a caught-up
+// tab's steady nudges cost a read, not a write
+export function markSeen(docId, userId) {
+  db.prepare(
+    `INSERT INTO read_cursors (doc_id, user_id, last_event_id)
+     VALUES (?, ?, (SELECT COALESCE(MAX(id), 0) FROM doc_events WHERE doc_id = ?))
+     ON CONFLICT(doc_id, user_id) DO UPDATE SET last_event_id = excluded.last_event_id
+     WHERE last_event_id != excluded.last_event_id`
+  ).run(docId, userId, docId)
 }
 
-// point a reader's cursor at the end of the log — everything so far is seen
-export function markSeen(docId, userId) {
-  const top = db
-    .prepare('SELECT COALESCE(MAX(id), 0) AS m FROM doc_events WHERE doc_id = ?')
-    .get(docId).m
-  db.prepare(
-    `INSERT INTO read_cursors (doc_id, user_id, last_event_id) VALUES (?, ?, ?)
-     ON CONFLICT(doc_id, user_id) DO UPDATE SET last_event_id = excluded.last_event_id`
-  ).run(docId, userId, top)
+// everything a page owns, gone in one breath — the delete route and the
+// ghost sweep both speak through here, so a new doc-scoped table is added
+// once, not remembered twice. callers hold the transaction.
+export function purgeDocRows(docId) {
+  db.prepare('DELETE FROM docs WHERE id = ?').run(docId)
+  db.prepare('DELETE FROM comments WHERE doc_id = ?').run(docId)
+  db.prepare('DELETE FROM versions WHERE doc_id = ?').run(docId)
+  db.prepare('DELETE FROM collaborators WHERE doc_id = ?').run(docId)
+  db.prepare('DELETE FROM doc_events WHERE doc_id = ?').run(docId)
+  db.prepare('DELETE FROM read_cursors WHERE doc_id = ?').run(docId)
 }

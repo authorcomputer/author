@@ -110,7 +110,16 @@ type Comment = {
   suggestion?: string
   parent_id?: string
   resolved: boolean
+  outcome?: string
+  resolved_by?: string
   created_at: number
+}
+
+// how a settled thread reads, wherever it shows: pop hint, panel byline
+function outcomeLabel(c: Comment) {
+  if (c.outcome === 'accepted') return `✓ accepted by ${c.resolved_by}`
+  if (c.outcome === 'rejected') return `✗ dismissed by ${c.resolved_by}`
+  return c.resolved_by ? `✓ resolved by ${c.resolved_by}` : '✓ resolved'
 }
 // the one definition of a visible thread root — badge, tab, panel, and
 // gutter sweeps all lean on it
@@ -515,6 +524,9 @@ function EditorInner({ id }: { id: string }) {
       const s = JSON.stringify(next)
       // most ticks change nothing — don't re-render the whole editor for them
       if (s !== lastCommentsJson.current) {
+        // news just rendered on this very screen — ack it now, not in 20s
+        // (except the mount load: open already moved the cursor)
+        if (lastCommentsJson.current !== '') lastSeenNudge.current = 0
         lastCommentsJson.current = s
         setComments(next)
       }
@@ -1128,12 +1140,20 @@ async function applySuggestion(editor: TiptapEditor, c: Comment, onDone: () => v
       })
       .run()
   }
-  if (await resolveComment(editor, c.id, 'suggestion')) onDone()
+  if (await resolveComment(editor, c.id, 'suggestion', 'accepted')) onDone()
 }
 
-async function resolveComment(editor: TiptapEditor, cid: string, via?: string) {
+async function resolveComment(
+  editor: TiptapEditor,
+  cid: string,
+  via?: string,
+  outcome?: 'accepted' | 'rejected'
+) {
   try {
-    await api(`/api/comments/${cid}/resolve`, { method: 'POST' })
+    await api(`/api/comments/${cid}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify(outcome ? { outcome } : {}),
+    })
   } catch {
     // the mark only comes off once the desk has heard — otherwise the
     // comment would resurrect on the next poll with its anchor gone
@@ -1912,7 +1932,7 @@ function CommentPop({
         <Replies replies={replies} />
         {comment.resolved ? (
           <div className="hint" style={{ marginTop: 8 }}>
-            ( this thread is settled )
+            ( {outcomeLabel(comment)} )
           </div>
         ) : (
           <ReplyBox docId={docId} parentId={comment.id} onPosted={onChanged}>
@@ -1930,7 +1950,12 @@ function CommentPop({
             <button
               className="faint"
               onClick={async () => {
-                await resolveComment(editor, comment.id)
+                await resolveComment(
+                  editor,
+                  comment.id,
+                  undefined,
+                  comment.suggestion?.trim() ? 'rejected' : undefined
+                )
                 onChanged()
                 onClose()
               }}
@@ -2029,7 +2054,12 @@ function CommentsPanel({
               <button
                 className="faint"
                 onClick={async () => {
-                  await resolveComment(editor, c.id)
+                  await resolveComment(
+                    editor,
+                    c.id,
+                    undefined,
+                    c.suggestion?.trim() ? 'rejected' : undefined
+                  )
                   reload()
                 }}
               >
@@ -2049,6 +2079,7 @@ function CommentsPanel({
               <div className="byline">
                 {c.username}
                 {c.suggestion?.trim() ? <span className="kind"> ↳ suggested an edit</span> : null}
+                <span className="kind"> · {outcomeLabel(c)}</span>
               </div>
               {c.suggestion?.trim() ? (
                 <div className="sugg-block">
@@ -2294,6 +2325,7 @@ const EV_VERBS: Record<string, string> = {
 function HistoryPanel({ docId }: { docId: string }) {
   const [events, setEvents] = useState<Ev[]>([])
   const [loaded, setLoaded] = useState(false)
+  const lastJson = useRef('')
 
   useEffect(() => {
     let live = true
@@ -2301,7 +2333,12 @@ function HistoryPanel({ docId }: { docId: string }) {
       api(`/api/docs/${docId}/events`)
         .then((evs) => {
           if (!live) return
-          setEvents(evs)
+          const s = JSON.stringify(evs)
+          // most ticks change nothing — same bargain the comments poll makes
+          if (s !== lastJson.current) {
+            lastJson.current = s
+            setEvents(evs)
+          }
           setLoaded(true)
         })
         .catch(() => {})
@@ -2329,7 +2366,7 @@ function HistoryPanel({ docId }: { docId: string }) {
               {e.username}
             </span>{' '}
             {EV_VERBS[e.type] ?? e.type}
-            {e.detail && <span className="ev-detail"> “{e.detail.slice(0, 90)}”</span>}
+            {e.detail && <span className="ev-detail"> “{e.detail}”</span>}
           </div>
           <div className="ev-when">{versionMoment(e.created_at)}</div>
         </div>

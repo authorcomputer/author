@@ -31,6 +31,29 @@ function newsOf(u: Record<string, number> | null) {
   return { notes, suggs, settled, wrote }
 }
 
+function DocNews({ unseen }: { unseen: Record<string, number> | null }) {
+  const n = newsOf(unseen)
+  if (!n) return null
+  const bits: [boolean, string, string][] = [
+    [n.wrote, '✎ edited', 'edited'],
+    [n.suggs > 0, `↳ ${n.suggs}`, 'suggested edits'],
+    [n.notes > 0, `☞ ${n.notes}`, 'comments'],
+    [n.settled > 0, `✓ ${n.settled}`, 'settled'],
+  ]
+  return (
+    <span className="doc-news">
+      {bits
+        .filter(([on]) => on)
+        .map(([, glyph, label]) => (
+          <span className="accent" key={label} title={label}>
+            {' · '}
+            {glyph}
+          </span>
+        ))}
+    </span>
+  )
+}
+
 function ago(t: number) {
   const s = Math.floor((Date.now() - t) / 1000)
   if (s < 60) return 'just now'
@@ -114,34 +137,7 @@ export default function Home() {
                 <span className="accent">✽ published</span>
               </>
             )}
-            {(() => {
-              const n = newsOf(d.unseen)
-              if (!n) return null
-              return (
-                <span className="doc-news">
-                  {n.wrote && (
-                    <span className="accent" title="edited since you last opened">
-                      {' · '}✎ edited
-                    </span>
-                  )}
-                  {n.suggs > 0 && (
-                    <span className="accent" title="new suggested edits">
-                      {' · '}↳ {n.suggs}
-                    </span>
-                  )}
-                  {n.notes > 0 && (
-                    <span className="accent" title="new comments">
-                      {' · '}☞ {n.notes}
-                    </span>
-                  )}
-                  {n.settled > 0 && (
-                    <span className="accent" title="threads settled since you last opened">
-                      {' · '}✓ {n.settled}
-                    </span>
-                  )}
-                </span>
-              )
-            })()}
+            <DocNews unseen={d.unseen} />
           </div>
           {d.snippet && <div className="doc-snippet">{d.snippet}</div>}
         </Link>
