@@ -978,10 +978,6 @@ function SharePop({
       <div className="share-pop">
         <div className="share-sec">
           <div className="share-h">✎ write together</div>
-          <div className="hint">
-            send this link to people you want to be able to edit and comment
-            on your writing.
-          </div>
           <div className="share-link">{writeUrl}</div>
           <button onClick={() => copy(writeUrl, 'write')}>
             {copied === 'write' ? '✓ copied' : '[ copy writing link ]'}
@@ -994,7 +990,6 @@ function SharePop({
           <div className="share-h">✽ read only</div>
           {meta.published && readUrl ? (
             <>
-              <div className="hint">a quiet public page anyone can read.</div>
               <div className="share-link">{readUrl}</div>
               <div style={{ display: 'flex', gap: 14 }}>
                 <button onClick={() => copy(readUrl, 'read')}>
@@ -1009,15 +1004,11 @@ function SharePop({
                   <button onClick={onProfileToggle}>
                     {meta.on_profile ? '[✓]' : '[ ]'} listed on your profile
                   </button>
-                  <div className="hint">
-                    when on, this page appears under your public profile’s writing.
-                  </div>
                 </div>
               )}
             </>
           ) : (
             <>
-              <div className="hint">publish a read-only page anyone can visit.</div>
               <button onClick={onToggle}>
                 {meta.published ? '[ unpublish ]' : '[ publish ]'}
               </button>
@@ -1347,12 +1338,6 @@ function AskPanel({ editor }: { editor: TiptapEditor }) {
           </div>
         </div>
       )}
-      {turns.length === 0 && (
-        <div className="hint" style={{ marginBottom: 8 }}>
-          ask for feedback on the draft — or ask a question about it. tip: ⌘K in the
-          text runs rewrite commands.
-        </div>
-      )}
       {turns.map((t, i) =>
         t.role === 'user' ? (
           <div className="ask-you" key={i}>
@@ -1541,9 +1526,6 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
 
   return (
     <div>
-      <div className="hint" style={{ marginBottom: 4 }}>
-        a proof-read for exactly what you pick — nothing else.
-      </div>
       {PROOF_CHECKS.map((c) => (
         <div className="proof-row" key={c.key}>
           <button aria-pressed={picked.has(c.key)} onClick={() => toggle(c.key)}>
@@ -1990,9 +1972,6 @@ function CommentsPanel({
       >
         [ ☞ comment on selection ]
       </button>
-      <div className="hint" style={{ marginTop: 6 }}>
-        select text and hit ⌥⌘M — leave a note, or write the edit yourself
-      </div>
       {open.length === 0 && (
         <div className="hint" style={{ marginTop: 16 }}>
           ( no open comments )
@@ -2236,9 +2215,6 @@ function VersionsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
 
   return (
     <div>
-      <div className="hint" style={{ marginBottom: 8 }}>
-        try a different way of saying it without losing what you've got.
-      </div>
       <div style={{ display: 'flex', gap: 10 }}>
         <input
           style={{ flex: 1, borderBottom: '1px solid var(--fainter)' }}

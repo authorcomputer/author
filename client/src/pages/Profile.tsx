@@ -151,7 +151,6 @@ function SettingsTab() {
           {s.profile_public ? '[✓]' : '[ ]'} public profile
         </button>
         <div className="hint">
-          a page anyone can visit — your published writing, your links, and your writing streak.
           {s.profile_public && (
             <>
               {' '}
@@ -168,7 +167,6 @@ function SettingsTab() {
         <button onClick={() => save({ ...s, show_writing: !s.show_writing })}>
           {s.show_writing ? '[✓]' : '[ ]'} list published pieces on profile
         </button>
-        <div className="hint">only drafts you've explicitly published ever appear.</div>
         {s.show_writing && <ProfilePieces />}
       </div>
 
@@ -219,7 +217,7 @@ function ProfilePieces() {
   if (pieces.length === 0)
     return (
       <div className="hint" style={{ marginTop: 10 }}>
-        ( nothing published yet — publish a page from its [ share ] menu and choose here )
+        ( nothing published yet )
       </div>
     )
 
@@ -276,7 +274,6 @@ function HandleRow({ current, onRenamed }: { current: string; onRenamed: (u: str
           {state === 'saved' ? '✓ renamed' : '[ rename ]'}
         </button>
       </div>
-      <div className="hint">your name on cursors, comments, and your public page (/u/{current}).</div>
       {state === 'error' && <div className="err">✗ {msg}</div>}
     </div>
   )
@@ -374,10 +371,6 @@ function ImportTab() {
 
   return (
     <div className="profile-body">
-      <div className="hint" style={{ marginBottom: 14 }}>
-        bring your writing with you — each .md file becomes its own draft. a leading
-        “# heading” is used as the title.
-      </div>
       <label className="file-pick">
         [ choose .md files ]
         <input

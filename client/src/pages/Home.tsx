@@ -113,7 +113,7 @@ export default function Home() {
       )}
       {loaded && docs.length === 0 && (
         <div className="empty-note">
-          ( nothing here yet — press [ + new draft ] and begin )
+          ( nothing here yet )
         </div>
       )}
       <div className="desk-rail" aria-hidden>
