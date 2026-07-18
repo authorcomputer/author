@@ -14,6 +14,61 @@ export type UpdateDay = { date: string; title: string; blocks: UpdateBlock[] }
 
 export const UPDATES: UpdateDay[] = [
   {
+    date: 'july 17, 2026',
+    title: 'the review loop grows a memory',
+    blocks: [
+      {
+        kind: 'p',
+        text: 'a page you share for feedback should be able to tell you what happened while you were away — and now it can.',
+      },
+      {
+        kind: 'bullet',
+        head: 'every page keeps a history',
+        text: 'a new history tab in the editor panel shows who did what, in order — commented, suggested, replied, settled, wrote, kept a version — with the words attached and the moment it happened.',
+      },
+      {
+        kind: 'bullet',
+        head: 'the desk shows what you missed',
+        text: 'each page on your desk now wears what arrived since you last opened it: new comments, suggested edits, settled threads, and whether anyone wrote. opening the page reads the news.',
+      },
+      {
+        kind: 'bullet',
+        head: 'suggestions settle as accepted or dismissed',
+        text: 'a suggested edit no longer just closes — it is accepted or dismissed, by name. the cards say so, the history says so, and the reviewer can finally tell whether their words landed.',
+      },
+      {
+        kind: 'bullet',
+        head: 'a comments-only link',
+        text: 'the share panel now holds a review link beside the writing link. whoever opens it can read, comment, and suggest edits — but not change a word. the writing link still grants the pen, and handing it to a reviewer later opens the page fully.',
+      },
+      {
+        kind: 'bullet',
+        head: 'take your page with you',
+        text: 'a page leaves as markdown, html, or plain text — downloaded as a file or copied straight to the clipboard, from the share panel.',
+      },
+      {
+        kind: 'bullet',
+        head: 'a quieter, straighter interface',
+        text: 'the formatting bubble grew into its shoes, the writing calendar fits narrow windows, every place that takes words wears the same box, every button speaks the same brackets, and the copy stopped explaining what the features should say themselves.',
+      },
+      {
+        kind: 'aside',
+        text: 'under the floorboards: two review passes with dozens of independent skeptics ran over the new machinery before it shipped — they caught real faults, including doors that let an uninvited pen speak in a page’s history, and all of it was mended and re-checked. the test battery grew three suites.',
+      },
+    ],
+  },
+  {
+    date: 'july 14, 2026',
+    title: 'the house naps',
+    blocks: [
+      {
+        kind: 'bullet',
+        head: 'no more cold starts',
+        text: 'the house no longer goes cold between visits — it naps when nobody is writing and wakes in a blink when someone arrives.',
+      },
+    ],
+  },
+  {
     date: 'july 9, 2026',
     title: 'paste anything, and a long list of repairs',
     blocks: [

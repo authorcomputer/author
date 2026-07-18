@@ -364,14 +364,7 @@ input, textarea {
   font-size: 12px;
 }
 .reply .byline { font-size: 11px; }
-.reply-box {
-  width: 100%;
-  font-size: 11px;
-  border: 1px dashed var(--fainter);
-  margin-top: 10px;
-  padding: 6px 9px;
-}
-.reply-box:focus { border: 1px solid var(--accent); }
+.reply-box { font-size: 11px; margin-top: 10px; }
 
 /* the floating comment card — composer and thread both */
 .comment-pop {
@@ -395,12 +388,7 @@ input, textarea {
 .comment-pop textarea { width: 100%; }
 .comment-pop .mode-row { display: flex; gap: 10px; margin-bottom: 10px; font-size: 11px; }
 .comment-pop .mode-row button.on { color: var(--accent); }
-.comment-pop .sugg-note {
-  width: 100%;
-  font-size: 11px;
-  border-bottom: 1px solid var(--fainter);
-  margin-bottom: 8px;
-}
+.comment-pop .sugg-note { font-size: 11px; margin-bottom: 8px; }
 
 /* a suggested edit: what they'd strike, then what they'd write */
 .sugg-old { text-decoration: line-through; text-decoration-color: #d8a848; }
@@ -607,14 +595,28 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
 
 .ai-actions { margin-top: 14px; display: flex; gap: 14px; }
 
-.ask-box {
+/* every place a panel or card takes words wears the same box — one solid
+   hairline, accent while the pen is in it. sizes vary; the box never does. */
+.ask-box,
+.reply-box,
+.proof-custom,
+.comment-pop .sugg-note {
   width: 100%;
   border: 1px solid var(--fainter);
   border-radius: 2px;
+  padding: 6px 9px;
+  background: #fff;
+}
+.ask-box:focus,
+.reply-box:focus,
+.proof-custom:focus,
+.comment-pop .sugg-note:focus {
+  border-color: var(--accent);
+}
+.ask-box {
   padding: 8px 10px;
   min-height: 60px;
   resize: vertical;
-  background: #fff;
 }
 
 .issue, .comment-card, .version-row {
@@ -725,22 +727,11 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
 .proof-row button { white-space: pre; }
 .proof-row button[aria-pressed='true'] { color: var(--accent); }
 .proof-row .desc { color: var(--faint); }
-.proof-custom {
-  width: 100%;
-  margin-top: 6px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--fainter);
-  font-size: 12.5px;
-}
-.proof-custom:focus { border-color: var(--accent); }
+.proof-custom { margin-top: 10px; font-size: 12.5px; }
 .proof-custom::placeholder { color: var(--fainter); }
-.proof-run {
-  margin-top: 14px;
-  border: 1px solid var(--ink);
-  padding: 7px 12px;
-}
-.proof-run:hover { border-color: var(--accent); }
-.proof-run:disabled { border-color: var(--fainter); }
+/* the run button speaks brackets like every other button here */
+.proof-run { margin-top: 14px; }
+.proof-run:disabled { color: var(--fainter); }
 
 /* hovering a version floats a peek at that save, out over the page.
    fixed positioning so the panel's own scroll can't clip it */
