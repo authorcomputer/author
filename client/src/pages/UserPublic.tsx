@@ -4,6 +4,7 @@ import { api, me } from '../api'
 import { track } from '../analytics'
 import Logo from '../Logo'
 import Chart from '../Chart'
+import Scribble from '../Scribble'
 
 type Article = {
   title: string
@@ -23,6 +24,54 @@ type ProfileData = {
   articles: Article[]
   own?: boolean
   profile_public?: boolean
+}
+
+// a closed door with the asked-for name on the plate: maybe it's private,
+// maybe nobody writes here by that name — either way, the pen inside is
+// resting and the visitor gets a door of their own to try
+function QuietProfile({ name }: { name: string }) {
+  const plate = `/u/${name}`.slice(0, 28)
+  const w = Math.max(plate.length + 8, 20)
+  const bar = (s: string) => {
+    const total = w - s.length
+    const l = Math.floor(total / 2)
+    return '│' + ' '.repeat(l) + s + ' '.repeat(total - l) + '│'
+  }
+  const door = [
+    '┌' + '─'.repeat(w) + '┐',
+    bar(''),
+    bar(plate),
+    bar(''),
+    '│' + ' '.repeat(w - 4) + '·' + '   │',
+    bar(''),
+    bar(''),
+    '└' + '─'.repeat(w) + '┘',
+  ].join('\n')
+  return (
+    <div className="pub-wrap quiet-wrap">
+      <pre className="quiet-door" aria-hidden>
+        {door}
+      </pre>
+      <div className="faint">( this profile is quiet )</div>
+      <div className="quiet-pen">
+        <Scribble
+          phrases={[
+            'the curtains are drawn…',
+            'perhaps they write at dawn…',
+            'not even a comma stirs…',
+            'a pen rests, somewhere inside…',
+          ]}
+        />
+      </div>
+      <div style={{ marginTop: 28 }}>
+        {me() && !me()!.anon ? (
+          <Link to="/">[ back to your desk ]</Link>
+        ) : (
+          <Link to="/login">[ take a desk of your own ]</Link>
+        )}
+      </div>
+    </div>
+  )
 }
 
 function linkLabel(url: string) {
@@ -98,11 +147,7 @@ export default function UserPublic() {
           <Link to="/login">[ sign in &amp; write ]</Link>
         )}
       </div>
-      {missing && (
-        <div className="pub-wrap">
-          <div className="faint">( this profile is quiet )</div>
-        </div>
-      )}
+      {missing && <QuietProfile name={name || ''} />}
       {p && (
         <div className="pub-wrap">
           <h1 className="pub-title">{p.username}</h1>

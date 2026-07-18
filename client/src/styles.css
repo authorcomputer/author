@@ -492,6 +492,21 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
+/* the quiet profile: a closed door with the asked-for name on the plate,
+   the resting pen murmuring beneath it */
+.quiet-wrap { text-align: center; padding-top: 10vh; }
+.quiet-door {
+  display: inline-block;
+  text-align: left;
+  color: var(--fainter);
+  font-size: 13px;
+  line-height: 1.35;
+  margin: 0 0 18px;
+  user-select: none;
+}
+.quiet-pen { display: inline-block; text-align: left; margin-top: 14px; }
+.quiet-pen .scribble-line { color: var(--fainter); }
+
 /* the flash that answers a click in the proof panel: the passage lights up
    and settles, so the eye can travel from the note to the words */
 .check-ping {
