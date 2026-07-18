@@ -786,7 +786,19 @@ function EditorInner({ id, entry }: { id: string; entry?: Meta }) {
   return (
     <div className="ed-wrap">
       <div className="ed-top">
-        {isGhost ? <span className="faint">✎ a ghost draft</span> : <Link to="/">← desk</Link>}
+        {/* a ghost's corner names where they are: their own draft lives only
+            in this tab — someone else's page is that person's, and says so */}
+        {isGhost ? (
+          meta ? (
+            <span className="faint">
+              {meta.mine ? '✎ a ghost draft' : `${reviewing ? '☞' : '✎'} ${meta.owner}’s page`}
+            </span>
+          ) : (
+            <span className="faint" />
+          )
+        ) : (
+          <Link to="/">← desk</Link>
+        )}
         <span className="faint">{connected ? '●' : '○'}</span>
         <div className="presence">
           <span className="who" style={{ color: colorFor(penName) }}>
