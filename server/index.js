@@ -903,40 +903,51 @@ app.get('/api/admin/stats', requireFullUser, (req, res) => {
 // (a doc id is the write capability), and a private profile only opens for
 // its owner.
 app.get('/api/profile/:username', async (req, res) => {
-  const u = db
-    .prepare('SELECT id, username FROM user WHERE username = ?')
-    .get(String(req.params.username || '').toLowerCase())
-  const p = u && profileFor(u.id)
-  const viewer = await getUser(req.headers).catch(() => null)
-  const own = !!u && viewer?.id === u.id
-  if (!u || (!p.profile_public && !own)) return res.status(404).json({ error: 'no such profile' })
-  const activity = db
-    .prepare(
-      `SELECT day, count FROM activity WHERE user_id = ? AND day >= date('now', '-181 day')`
-    )
-    .all(u.id)
-  const articles = db
-    .prepare(
-      `SELECT id, title, slug, updated_at, html, header_image, on_profile FROM docs
-       WHERE owner_id = ? AND published = 1 ${own ? '' : 'AND on_profile = 1'}
-       ORDER BY updated_at DESC`
-    )
-    .all(u.id)
-    .map((a) => ({
-      title: a.title,
-      slug: a.slug,
-      updated_at: a.updated_at,
-      header_image: a.header_image || null,
-      preview: previewOf(a.html),
-      ...(own ? { id: a.id, listed: !!a.on_profile } : {}),
-    }))
-  res.json({
-    username: u.username,
-    links: JSON.parse(p.links || '[]'),
-    activity,
-    articles,
-    ...(own ? { own: true, profile_public: !!p.profile_public } : {}),
-  })
+  // the body varies by who's asking (the owner gets doc ids — the write
+  // capability), so no cache anywhere between us and them may keep a copy.
+  // and an async handler's throw is a process-killing rejection on express 4
+  // — catch everything ourselves.
+  res.set('Cache-Control', 'no-store, private')
+  try {
+    const u = db
+      .prepare('SELECT id, username FROM user WHERE username = ?')
+      .get(String(req.params.username || '').toLowerCase())
+    const p = u && profileFor(u.id)
+    const viewer = await getUser(req.headers).catch(() => null)
+    const own = !!u && viewer?.id === u.id
+    if (!u || (!p.profile_public && !own))
+      return res.status(404).json({ error: 'no such profile' })
+    const activity = db
+      .prepare(
+        `SELECT day, count FROM activity WHERE user_id = ? AND day >= date('now', '-181 day')`
+      )
+      .all(u.id)
+    const articles = db
+      .prepare(
+        `SELECT id, title, slug, updated_at, html, header_image, on_profile FROM docs
+         WHERE owner_id = ? AND published = 1 ${own ? '' : 'AND on_profile = 1'}
+         ORDER BY updated_at DESC`
+      )
+      .all(u.id)
+      .map((a) => ({
+        title: a.title,
+        slug: a.slug,
+        updated_at: a.updated_at,
+        header_image: a.header_image || null,
+        preview: previewOf(a.html),
+        ...(own ? { id: a.id, listed: !!a.on_profile } : {}),
+      }))
+    res.json({
+      username: u.username,
+      links: JSON.parse(p.links || '[]'),
+      activity,
+      articles,
+      ...(own ? { own: true, profile_public: !!p.profile_public } : {}),
+    })
+  } catch (e) {
+    console.error('profile failed', e)
+    res.status(500).json({ error: 'the profile stuck — try again' })
+  }
 })
 
 // ---------- ai ----------

@@ -139,11 +139,18 @@ export async function migrateLegacyUsers() {
       createdAt: now,
       updatedAt: now,
     })
-    // carry profile fields over
+    // carry profile fields over. the old "list published pieces" master
+    // switch is dead — fold it here, at migration time, into the per-piece
+    // choice: a legacy account that had it off gets every piece unlisted
+    // before the server ever answers a request, so nothing they'd hidden is
+    // served for even one boot. show_writing is stored as 1 and never read.
+    if ((u.show_writing ?? 1) === 0) {
+      db.prepare('UPDATE docs SET on_profile = 0 WHERE owner_id = ?').run(created.id)
+    }
     db.prepare(
       `INSERT OR REPLACE INTO profiles (user_id, profile_public, show_writing, links)
-       VALUES (?, ?, ?, ?)`
-    ).run(created.id, u.profile_public || 0, u.show_writing ?? 1, u.links || '[]')
+       VALUES (?, ?, 1, ?)`
+    ).run(created.id, u.profile_public || 0, u.links || '[]')
     console.log(`migrated legacy account: ${u.username}`)
   }
 }
