@@ -158,7 +158,7 @@ export async function aiChecks(req, res) {
       messages: [
         {
           role: 'user',
-          content: `<draft>\n${text.slice(0, 100000)}\n</draft>\n\nRead this draft for ONLY the following, and nothing else:\n${errands}\n\nFor each issue: quote the exact excerpt from the draft (short, verbatim so it can be found by search), classify it by the check name, explain the problem in a few words, and give a suggested fix. Only report an issue when you are confident a careful copy editor would agree it is an error or clearly weaker than the fix — when something is debatable, a usage preference, or a matter of taste, let it stand. Name each problem for what it actually is: a usage or diction choice is not a "misspelling", and correctly spelled words are never a spelling error — if you recommend a change on usage grounds, say so plainly and word the note as a recommendation, not a verdict. Report every real issue; skip stylistic nitpicks that are clearly intentional voice. Each issue must point at its own distinct passage: excerpts must never overlap or repeat one another — when one passage has several problems, report it once, name each problem in the note, and give one combined fix. If the draft is clean for these checks, return an empty list.`,
+          content: `<draft>\n${text.slice(0, 100000)}\n</draft>\n\nRead this draft for ONLY the following, and nothing else:\n${errands}\n\nFor each issue: quote the exact excerpt from the draft (short, verbatim so it can be found by search), classify it by the check name, explain the problem in a few words, and give the fix. The "suggestion" field is DROP-IN REPLACEMENT TEXT: it will be swapped in for the excerpt verbatim, by a machine, with no human judgment in between. It must contain only the corrected words and read grammatically in the excerpt's exact place — never advice, never instructions, never options, never commentary, never quotation marks around the replacement. Anything you want to SAY about the fix belongs in the note. Only report an issue when you are confident a careful copy editor would agree it is an error or clearly weaker than the fix — when something is debatable, a usage preference, or a matter of taste, let it stand. Name each problem for what it actually is: a usage or diction choice is not a "misspelling", and correctly spelled words are never a spelling error — if you recommend a change on usage grounds, say so plainly and word the note as a recommendation, not a verdict. Report every real issue; skip stylistic nitpicks that are clearly intentional voice. Each issue must point at its own distinct passage: excerpts must never overlap or repeat one another — when one passage has several problems, report it once, name each problem in the note, and give a single replacement that fixes them all. If the draft is clean for these checks, return an empty list.`,
         },
       ],
       output_config: {
@@ -172,10 +172,20 @@ export async function aiChecks(req, res) {
                 items: {
                   type: 'object',
                   properties: {
-                    excerpt: { type: 'string' },
+                    excerpt: {
+                      type: 'string',
+                      description: 'short verbatim quote from the draft, findable by exact search',
+                    },
                     kind: { type: 'string', enum: kinds },
-                    note: { type: 'string' },
-                    suggestion: { type: 'string' },
+                    note: {
+                      type: 'string',
+                      description: 'what the problem is, in a few words — any advice lives here',
+                    },
+                    suggestion: {
+                      type: 'string',
+                      description:
+                        'drop-in replacement for the excerpt: only the corrected words, reading grammatically in its exact place — no advice, no options, no commentary',
+                    },
                   },
                   required: ['excerpt', 'kind', 'note', 'suggestion'],
                   additionalProperties: false,
