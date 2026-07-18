@@ -176,17 +176,27 @@ export default function EditorPage() {
 
 // the review door: /r/<token> resolves to the page and enrolls this pen as
 // a commenter. the address bar keeps the token — the url a reviewer copies
-// on passes review standing, never the writing link
+// on passes review standing, never the writing link. the resolved meta rides
+// into the editor whole, so the role is known from the first paint and the
+// editor never opens the writing door on the reviewer's behalf.
 export function ReviewPage() {
   const { token } = useParams()
-  const [docId, setDocId] = useState<string | null>(null)
+  const [entry, setEntry] = useState<Meta | null>(null)
   const [gone, setGone] = useState(false)
   useEffect(() => {
+    let live = true
     api(`/api/review/${token}/open`, { method: 'POST' })
-      .then((m: Meta) => setDocId(m.id))
-      .catch((e) => {
-        if (e.message !== 'signed out') setGone(true)
+      .then((m: Meta) => {
+        if (live) setEntry(m)
       })
+      .catch((e) => {
+        // only a dead key is terminal — a flaky network deserves a reload,
+        // not a page that swears the door never existed
+        if (live && e?.status === 404) setGone(true)
+      })
+    return () => {
+      live = false
+    }
   }, [token])
   if (gone)
     return (
@@ -194,16 +204,16 @@ export function ReviewPage() {
         <div className="empty-note">( nothing here )</div>
       </div>
     )
-  if (!docId) return null
-  return <EditorInner key={docId} id={docId} />
+  if (!entry) return null
+  return <EditorInner key={entry.id} id={entry.id} entry={entry} />
 }
 
-function EditorInner({ id }: { id: string }) {
+function EditorInner({ id, entry }: { id: string; entry?: Meta }) {
   const penName = username() || 'someone'
   const isGhost = !!me()?.anon
   const [modalReason, setModalReason] = useState<string | null>(null)
   const [memberModal, setMemberModal] = useState(false)
-  const [meta, setMeta] = useState<Meta | null>(null)
+  const [meta, setMeta] = useState<Meta | null>(entry ?? null)
   const [title, setTitle] = useState('')
   const [panel, setPanel] = useState<Panel>(null)
   // remembered so the single [ editor ] button reopens where you left off
@@ -211,7 +221,7 @@ function EditorInner({ id }: { id: string }) {
   const [shareOpen, setShareOpen] = useState(false)
   const [gone, setGone] = useState(false)
   const [headerUrl, setHeaderUrl] = useState<string | null>(null)
-  const [others, setOthers] = useState<{ name: string; color: string }[]>([])
+  const [others, setOthers] = useState<{ name: string; color: string; reviewing?: boolean }[]>([])
   const [connected, setConnected] = useState(false)
   // comments are first-class: the editor owns the list so the margin, the
   // top-bar count, the popovers, and the panel all read the same state
@@ -299,10 +309,10 @@ function EditorInner({ id }: { id: string }) {
       CoWritten,
       CommentGutter,
     ],
-    // the pen waits for the role: until meta names this viewer an editor,
-    // nothing they type may land — a commenter's keystrokes would live only
-    // in their tab and vanish on reload (the server drops their writes)
-    editable: false,
+    // through the review door the role is known before first paint, so the
+    // pen starts down; everyone else writes from the first keystroke — the
+    // writing door grants edit, so there is no window to guard against
+    editable: entry?.role !== 'commenter',
     editorProps: {
       handlePaste: (view, event) => {
         const cd = event.clipboardData
@@ -352,36 +362,46 @@ function EditorInner({ id }: { id: string }) {
 
   // lifecycle: meta, presence, teardown
   useEffect(() => {
-    api(`/api/docs/${id}/open`, { method: 'POST' })
-      .then((m: Meta) => {
-        setMeta(m)
-        const metaMap = ydoc.getMap('meta')
-        const applyMeta = () => {
-          setTitle((metaMap.get('title') as string) ?? '')
-          setHeaderUrl((metaMap.get('header') as string) ?? null)
+    const seed = (m: Meta & { promoted?: boolean }) => {
+      setMeta(m)
+      // the socket may have upgraded while this pen was still a commenter —
+      // reconnect so the server reads its restored standing
+      if (m.promoted) provider.ws?.close()
+      const metaMap = ydoc.getMap('meta')
+      const applyMeta = () => {
+        setTitle((metaMap.get('title') as string) ?? '')
+        setHeaderUrl((metaMap.get('header') as string) ?? null)
+      }
+      metaMap.observe(applyMeta)
+      let seeded = false // sync fires on every reconnect; seed only once
+      provider.on('sync', (synced: boolean) => {
+        setConnected(synced)
+        if (!synced || seeded) return
+        seeded = true
+        if (metaMap.get('title') === undefined && m.title && m.title !== 'untitled') {
+          metaMap.set('title', m.title)
         }
-        metaMap.observe(applyMeta)
-        let seeded = false // sync fires on every reconnect; seed only once
-        provider.on('sync', (synced: boolean) => {
-          setConnected(synced)
-          if (!synced || seeded) return
-          seeded = true
-          if (metaMap.get('title') === undefined && m.title && m.title !== 'untitled') {
-            metaMap.set('title', m.title)
-          }
-          // the server column is authoritative for the header image
-          if (m.header_image && metaMap.get('header') !== m.header_image) {
-            metaMap.set('header', m.header_image)
+        // the server column is authoritative for the header image
+        if (m.header_image && metaMap.get('header') !== m.header_image) {
+          metaMap.set('header', m.header_image)
+        }
+      })
+      applyMeta()
+    }
+    // the review door already opened and enrolled — opening the writing
+    // door here would promote the reviewer's own pen
+    if (entry) {
+      seed(entry)
+    } else {
+      api(`/api/docs/${id}/open`, { method: 'POST' })
+        .then(seed)
+        .catch((e) => {
+          if (e.message !== 'signed out') {
+            setGone(true)
+            provider.destroy() // stop the websocket retry loop for a missing doc
           }
         })
-        applyMeta()
-      })
-      .catch((e) => {
-        if (e.message !== 'signed out') {
-          setGone(true)
-          provider.destroy() // stop the websocket retry loop for a missing doc
-        }
-      })
+    }
     const onAwareness = () => {
       const states = Array.from(provider.awareness.getStates().entries())
       const rest = states
@@ -408,6 +428,9 @@ function EditorInner({ id }: { id: string }) {
       // a collaborator's typing fires 'update' here too — but the snapshot
       // POST credits *this* viewer's activity chart, so only their own pen
       // may send it. the writer's own tab keeps the html column fresh.
+      // a commenter's only own ink is their local comment mark — the server
+      // refuses their snapshots, so don't mint doomed requests
+      if (metaRef.current?.role === 'commenter') return
       if (!isOwnInk(transaction)) return
       clearTimeout(htmlTimer.current)
       htmlTimer.current = setTimeout(() => {
@@ -517,6 +540,9 @@ function EditorInner({ id }: { id: string }) {
     let stayTimer: ReturnType<typeof setTimeout>
     const h = (e: BeforeUnloadEvent) => {
       if (localStorage.getItem('author.ghost-nagged')) return
+      // a ghost reviewer wrote nothing that could be lost — the words on the
+      // page are the author's, and their comments are already kept
+      if (metaRef.current?.role === 'commenter') return
       if (editor.isDestroyed || editor.storage.characterCount.words() === 0) return
       localStorage.setItem('author.ghost-nagged', '1')
       e.preventDefault()
@@ -641,16 +667,27 @@ function EditorInner({ id }: { id: string }) {
   }, [comments, editor])
 
   // a commenter reads the page, they don't write it — the server drops
-  // their doc writes either way; the surface should say so too
+  // their doc writes either way; the surface should say so too. their
+  // presence flies a reviewing flag so other desks count pens, not readers
   const reviewing = meta?.role === 'commenter'
   useEffect(() => {
-    if (editor && !editor.isDestroyed && meta) editor.setEditable(meta.role !== 'commenter')
-  }, [meta, editor])
+    if (!editor || editor.isDestroyed || !meta) return
+    editor.setEditable(meta.role !== 'commenter')
+    if (meta.role === 'commenter') {
+      editor.commands.updateUser({ name: penName, color: colorFor(penName), reviewing: true })
+    }
+  }, [meta, editor, penName])
 
   // the sweep's mirror: a commenter's own marks never cross the wire (their
-  // socket is read-only), so any editing pen adopts the orphans — an open
+  // socket is read-only), so an editing pen adopts the orphans — an open
   // thread whose quote still lives in the page gets its mark drawn in.
-  // idempotent and plumbing, same as the sweep.
+  // idempotent and plumbing, same as the sweep. three refusals keep the
+  // adoption honest: a mark seen in the doc once is never redrawn (an undo
+  // or a deliberate removal stays removed), a fresh comment gets a grace
+  // period (its author's own mark may still be crossing the wire), and an
+  // ambiguous quote is left in the panel (first-occurrence guessing would
+  // anchor the thread — and a later applied edit — on the wrong passage)
+  const marksOnceSeen = useRef(new Set<string>())
   useEffect(() => {
     if (!editor || editor.isDestroyed || !meta || reviewing) return
     const open = comments.filter(isOpenRoot)
@@ -661,10 +698,25 @@ function EditorInner({ id }: { id: string }) {
         if (m.type.name === 'comment') present.add(m.attrs.id)
       })
     })
+    for (const cid of present) marksOnceSeen.current.add(cid)
+    const countInTextNodes = (needle: string) => {
+      let n = 0
+      editor.state.doc.descendants((node) => {
+        if (!node.isText || !node.text) return
+        let i = node.text.indexOf(needle)
+        while (i >= 0 && n < 2) {
+          n++
+          i = node.text.indexOf(needle, i + 1)
+        }
+      })
+      return n
+    }
     const tr = editor.state.tr
     let drawn = false
     for (const c of open) {
-      if (present.has(c.id) || !c.quote) continue
+      if (present.has(c.id) || marksOnceSeen.current.has(c.id) || !c.quote) continue
+      if (Date.now() - c.created_at < 15_000) continue
+      if (countInTextNodes(c.quote) !== 1) continue
       const r = findWholeRange(editor, c.quote)
       if (!r) continue
       tr.addMark(
@@ -675,15 +727,18 @@ function EditorInner({ id }: { id: string }) {
           kind: c.suggestion?.trim() ? 'edit' : 'note',
         })
       )
+      marksOnceSeen.current.add(c.id)
       drawn = true
     }
     if (drawn) editor.view.dispatch(tr.setMeta(PLUMBING, true))
   }, [comments, editor, meta, reviewing])
 
-  // the "written twice" note needs to know whether anyone else is here
+  // the "written twice" note needs to know whether another PEN is here — a
+  // reviewer reading along cannot land a word, so they don't count
   useEffect(() => {
     if (editor && !editor.isDestroyed) {
-      editor.view.dispatch(editor.state.tr.setMeta(coWrittenKey, { others: others.length }))
+      const pens = others.filter((o: any) => !o?.reviewing).length
+      editor.view.dispatch(editor.state.tr.setMeta(coWrittenKey, { others: pens }))
     }
   }, [others, editor])
 
@@ -738,7 +793,7 @@ function EditorInner({ id }: { id: string }) {
           </span>
           {others.map((o, i) => (
             <span className="who" key={i} style={{ color: o.color }}>
-              + {o.name}
+              {o.reviewing ? '☞' : '+'} {o.name}
             </span>
           ))}
         </div>

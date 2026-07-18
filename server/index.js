@@ -340,19 +340,30 @@ app.get('/api/docs/:id', requireUser, (req, res) => {
   res.json(docMeta(doc, req.user.id))
 })
 
-// opening a doc in the editor — this is what enrolls a collaborator
+// opening a doc in the editor — this is what enrolls a collaborator. the
+// write link is the wider key: walking through the writing door grants (or
+// restores) the pen, so a commenter later handed /d/<id> isn't locked in
+// the margins forever. the doc id was always the write capability — the
+// review key merely never carries it, so staying on /r never promotes.
 app.post('/api/docs/:id/open', requireUser, (req, res) => {
   const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
   if (!doc) return res.status(404).json({ error: 'no such doc' })
+  let promoted = false
   if (doc.owner_id !== req.user.id) {
-    db.prepare('INSERT OR IGNORE INTO collaborators (doc_id, user_id) VALUES (?, ?)').run(
-      doc.id,
-      req.user.id
-    )
+    const prev = db
+      .prepare('SELECT role FROM collaborators WHERE doc_id = ? AND user_id = ?')
+      .get(doc.id, req.user.id)
+    db.prepare(
+      `INSERT INTO collaborators (doc_id, user_id, role) VALUES (?, ?, 'editor')
+       ON CONFLICT(doc_id, user_id) DO UPDATE SET role = 'editor'`
+    ).run(doc.id, req.user.id)
+    // the socket that upgraded before this promotion still wears the old
+    // role — the client reconnects on this flag to pick up its pen
+    promoted = prev?.role === 'commenter'
   }
   // opening the page is reading it — the cursor moves to the end of the log
   markSeen(doc.id, req.user.id)
-  res.json(docMeta(doc, req.user.id))
+  res.json({ ...docMeta(doc, req.user.id), promoted })
 })
 
 // an open tab keeps reading — the client nudges this while the page is up,
@@ -384,8 +395,9 @@ app.post('/api/docs/:id/review-link', requireUser, (req, res) => {
 })
 
 // through the review door: enrolled to speak, not to write. an owner or an
-// already-enrolled editor keeps their standing — a key never demotes.
-app.post('/api/review/:token/open', requireUser, (req, res) => {
+// already-enrolled editor keeps their standing — a key never demotes. a hit
+// enrolls, so the door is throttled: guessing must not be free
+app.post('/api/review/:token/open', requireUser, rateLimit(20, 60_000), (req, res) => {
   const doc = db.prepare('SELECT * FROM docs WHERE review_token = ?').get(req.params.token)
   if (!doc) return res.status(404).json({ error: 'nothing here' })
   if (doc.owner_id !== req.user.id) {
@@ -585,7 +597,13 @@ app.post('/api/comments/:cid/resolve', requireUser, (req, res) => {
 })
 
 // ---------- versions ----------
+// version history holds every auto-snapshot — passages later deleted from
+// the page live on here, so only pens that can write the page may read its
+// past (the review door invites readers the page's history wasn't shown to)
 app.get('/api/docs/:id/versions', requireUser, (req, res) => {
+  const doc = db.prepare('SELECT id, owner_id FROM docs WHERE id = ?').get(req.params.id)
+  if (!doc) return res.status(404).json({ error: 'no such doc' })
+  if (!canEditDoc(doc, req.user.id)) return res.status(403).json({ error: 'not yours' })
   const rows = db
     .prepare(
       'SELECT id, name, username, created_at, kind FROM versions WHERE doc_id = ? ORDER BY created_at DESC'
@@ -619,6 +637,9 @@ app.post('/api/docs/:id/versions', requireFullUser, (req, res) => {
 app.get('/api/versions/:vid', requireUser, (req, res) => {
   const row = db.prepare('SELECT * FROM versions WHERE id = ?').get(req.params.vid)
   if (!row) return res.status(404).json({ error: 'no such version' })
+  // same gate as the list: a version's content is the page's past
+  const doc = db.prepare('SELECT id, owner_id FROM docs WHERE id = ?').get(row.doc_id)
+  if (!doc || !canEditDoc(doc, req.user.id)) return res.status(403).json({ error: 'not yours' })
   res.json({ id: row.id, name: row.name, content: JSON.parse(row.content) })
 })
 
