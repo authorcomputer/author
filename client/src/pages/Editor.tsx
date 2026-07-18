@@ -1622,16 +1622,22 @@ const CHECK_PHRASES = [
 
 function decorateIssues(editor: TiptapEditor, issues: Issue[]) {
   const items: MarkItem[] = []
+  const claimed: { from: number; to: number }[] = []
   issues.forEach((iss, idx) => {
     const r = findRange(editor, iss.excerpt)
-    if (r)
-      items.push({
-        from: r.from,
-        to: r.to,
-        cls: `check-mark check-${iss.kind}`,
-        title: `${iss.kind} — ${iss.note}`,
-        data: { 'data-issue-idx': String(idx) },
-      })
+    if (!r) return
+    // one pen stroke per passage: when the model flags overlapping spans,
+    // the first issue wins the ink — the later one keeps its card in the
+    // panel (its own critique may differ) but doesn't double-mark the page
+    if (claimed.some((c) => r.from < c.to && c.from < r.to)) return
+    claimed.push(r)
+    items.push({
+      from: r.from,
+      to: r.to,
+      cls: `check-mark check-${iss.kind}`,
+      title: `${iss.kind} — ${iss.note}`,
+      data: { 'data-issue-idx': String(idx) },
+    })
   })
   setMarks(editor, 'checks', items)
 }
@@ -1724,12 +1730,20 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
         method: 'POST',
         body: JSON.stringify({ text: docText(editor), checks, custom: ask }),
       })
-      setIssues(res.issues || [])
-      decorateIssues(editor, res.issues || [])
+      // the same flag twice is one flag — exact repeats drop before render
+      const seen = new Set<string>()
+      const found: Issue[] = (res.issues || []).filter((iss: Issue) => {
+        const k = `${iss.kind}|${iss.excerpt}`
+        if (seen.has(k)) return false
+        seen.add(k)
+        return true
+      })
+      setIssues(found)
+      decorateIssues(editor, found)
       track('ai: checks ran', {
         checks: checks.join(','),
         custom: !!ask,
-        issues: (res.issues || []).length,
+        issues: found.length,
       })
     } catch (e: any) {
       if (needsAccount(e)) promptAccount()
