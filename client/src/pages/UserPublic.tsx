@@ -30,22 +30,28 @@ type ProfileData = {
 // maybe nobody writes here by that name — either way, the pen inside is
 // resting and the visitor gets a door of their own to try
 function QuietProfile({ name }: { name: string }) {
-  const plate = `/u/${name}`.slice(0, 28)
-  const w = Math.max(plate.length + 8, 20)
+  const plate = `/u/${name}`.slice(0, 24)
+  // the door: a plaque with the asked-for name, a knob at hand height, and
+  // a floor running past both jambs — a door stands in a wall, a box doesn't
+  const w = Math.max(plate.length + 6, 16)
   const bar = (s: string) => {
     const total = w - s.length
     const l = Math.floor(total / 2)
     return '│' + ' '.repeat(l) + s + ' '.repeat(total - l) + '│'
   }
+  const ground = '─'.repeat(6)
+  const inset = ' '.repeat(ground.length)
   const door = [
-    '┌' + '─'.repeat(w) + '┐',
-    bar(''),
-    bar(plate),
-    bar(''),
-    '│' + ' '.repeat(w - 4) + '·' + '   │',
-    bar(''),
-    bar(''),
-    '└' + '─'.repeat(w) + '┘',
+    inset + '┌' + '─'.repeat(w) + '┐',
+    inset + bar('┌' + '─'.repeat(plate.length + 2) + '┐'),
+    inset + bar('│ ' + plate + ' │'),
+    inset + bar('└' + '─'.repeat(plate.length + 2) + '┘'),
+    inset + bar(''),
+    inset + '│' + ' '.repeat(w - 4) + '●' + '   │',
+    inset + bar(''),
+    inset + bar(''),
+    inset + bar(''),
+    ground + '┴' + '─'.repeat(w) + '┴' + ground,
   ].join('\n')
   return (
     <div className="pub-wrap quiet-wrap">
