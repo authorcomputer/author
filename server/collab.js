@@ -45,6 +45,7 @@ function getRoom(docId) {
     idleTimer: null,
     lastEdit: 0,
     lastSnap: 0, // the mid-flow clock; reset at the start of each sitting
+    sittingStart: 0, // when this unbroken stretch of writing began
     editors: [], // who was at the desk when the last change landed
     destroyTimer: null,
     brokenLoad,
@@ -170,6 +171,7 @@ function noteEdit(room) {
   // an edit within the idle gap of the previous one continues the sitting;
   // anything later begins a new one
   const flowing = now - room.lastEdit < IDLE_SNAP_GAP
+  if (!flowing) room.sittingStart = now
   room.lastEdit = now
   // remember who was here for the change itself — by the time the timer
   // fires (or the room unloads and flushes), the writer may be gone. a
@@ -203,7 +205,29 @@ const ownerByline = (docId) =>
 // are pure metadata — idle/flow store none, join remembers who arrived.
 // the byline carries both name and id: the name is the display snapshot,
 // the id is what a later handle rename may key on — names repeat, ids don't
-export function insertVersion(docId, name, byline, json, ts, kind, editors) {
+// how many words a stored snapshot holds — the measure an edit entry wears
+export function wordsOf(node) {
+  if (!node) return 0
+  let text = ''
+  const walk = (n) => {
+    if (n.text) text += n.text + ' '
+    for (const c of n.content || []) walk(c)
+  }
+  walk(node)
+  return (text.match(/\S+/g) || []).length
+}
+
+export function insertVersion(
+  docId,
+  name,
+  byline,
+  json,
+  ts,
+  kind,
+  editors,
+  editDelta = 0,
+  sittingStart = 0
+) {
   const id = 'v_' + crypto.randomBytes(8).toString('hex')
   db.prepare(
     'INSERT INTO versions (id, doc_id, name, username, user_id, content, created_at, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
@@ -218,7 +242,7 @@ export function insertVersion(docId, name, byline, json, ts, kind, editors) {
   // more. over-shown, never lost; opening the page clears it.
   if (kind === 'manual') addEvent(docId, byline, 'version.save', name)
   else if (kind === 'idle' || kind === 'flow')
-    addEditEvents(docId, editors?.length ? editors : [byline])
+    addEditEvents(docId, editors?.length ? editors : [byline], editDelta, sittingStart || ts)
   return id
 }
 
@@ -249,7 +273,25 @@ function snapshotOnSettle(room, kind = 'idle') {
     const ids = new Set(room.editors.map((u) => u.id))
     const byline = ids.size === 1 ? room.editors[0] : ownerByline(room.id)
     room.lastSnap = Date.now()
-    insertVersion(room.id, '', byline, json, room.lastSnap, kind, room.editors)
+    // this stretch's net word change — what the edit entry will wear
+    let prevWords = 0
+    if (latest) {
+      try {
+        prevWords = wordsOf(JSON.parse(latest.content))
+      } catch {}
+    }
+    const delta = wordsOf(content) - prevWords
+    insertVersion(
+      room.id,
+      '',
+      byline,
+      json,
+      room.lastSnap,
+      kind,
+      room.editors,
+      delta,
+      room.sittingStart || room.lastEdit
+    )
   } catch (e) {
     console.error('auto snapshot failed', room.id, e)
   }

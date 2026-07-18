@@ -415,7 +415,9 @@ app.get('/api/docs/:id/events', requireUser, (req, res) => {
   res.json(
     db
       .prepare(
-        'SELECT id, username, type, detail, created_at FROM doc_events WHERE doc_id = ? ORDER BY id DESC LIMIT 120'
+        `SELECT id, username, type, detail, created_at,
+                COALESCE(started_at, created_at) AS started_at
+         FROM doc_events WHERE doc_id = ? ORDER BY id DESC LIMIT 120`
       )
       .all(req.params.id)
   )

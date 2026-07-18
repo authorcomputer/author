@@ -28,6 +28,11 @@ export const UPDATES: UpdateDay[] = [
       },
       {
         kind: 'bullet',
+        head: 'history shows the change itself',
+        text: 'a sitting of writing wears its measure — +214 words — and clicking the line opens what actually changed: the passages that left, struck through, above the passages that arrived. one sitting, one line; a kept version opens the same way.',
+      },
+      {
+        kind: 'bullet',
         head: 'the desk shows what you missed',
         text: 'each page on your desk now wears what arrived since you last opened it: new comments, suggested edits, settled threads, and whether anyone wrote. opening the page reads the news.',
       },

@@ -29,6 +29,7 @@ import { Checkmarks, setMarks, clearMarks, MarkItem } from '../checkmarks'
 import { CoWritten, coWrittenKey } from '../co-written'
 import { CommentGutter } from '../comment-gutter'
 import { findRange, findWholeRange, commentRange } from '../ranges'
+import { blockTexts, diffBlocks, type DiffRow } from '../diff'
 import { isOwnInk, PLUMBING } from '../own-ink'
 import { defaultPasteKeeps } from '../paste'
 import {
@@ -1400,7 +1401,7 @@ function SidePanel({
           />
         )}
         {panel === 'versions' && !reviewing && <VersionsPanel editor={editor} docId={docId} />}
-        {panel === 'history' && <HistoryPanel docId={docId} />}
+        {panel === 'history' && <HistoryPanel docId={docId} reviewing={reviewing} />}
       </div>
     </div>
   )
@@ -2506,7 +2507,18 @@ function VersionsPanel({ editor, docId }: { editor: TiptapEditor; docId: string 
 /* history panel                                                       */
 /* ------------------------------------------------------------------ */
 
-type Ev = { id: number; username: string; type: string; detail: string; created_at: number }
+type Ev = {
+  id: number
+  username: string
+  type: string
+  detail: string
+  created_at: number
+  started_at: number
+}
+
+// the entries a click can open into a diff: a sitting of writing, or a kept
+// version — both sit between two stored snapshots
+const DIFFABLE = new Set(['edit', 'version.save'])
 
 // each entry wears its verb as state, not sentence — the glyphs match the
 // ones the rest of the interface already speaks
@@ -2521,10 +2533,14 @@ const EV_VERBS: Record<string, string> = {
   edit: '✎ wrote',
 }
 
-function HistoryPanel({ docId }: { docId: string }) {
+function HistoryPanel({ docId, reviewing }: { docId: string; reviewing: boolean }) {
   const [events, setEvents] = useState<Ev[]>([])
   const [loaded, setLoaded] = useState(false)
   const lastJson = useRef('')
+  // one open diff at a time; contents are immutable so they cache by id
+  const [openId, setOpenId] = useState<number | null>(null)
+  const [diffs, setDiffs] = useState<Map<number, DiffRow[] | 'gone'>>(new Map())
+  const versionCache = useRef(new Map<string, any>())
 
   useEffect(() => {
     let live = true
@@ -2551,6 +2567,47 @@ function HistoryPanel({ docId }: { docId: string }) {
     }
   }, [docId])
 
+  // the diff an entry opens: the snapshot the sitting settled into, against
+  // the page as it stood before the run began (started_at survives every
+  // collapse, so a long sitting diffs whole, not just its last stretch)
+  async function toggleDiff(e: Ev) {
+    if (openId === e.id) {
+      setOpenId(null)
+      return
+    }
+    setOpenId(e.id)
+    if (diffs.has(e.id)) return
+    try {
+      const versions: { id: string; created_at: number }[] = await api(
+        `/api/docs/${docId}/versions`
+      )
+      const after = versions
+        .filter((v) => Math.abs(v.created_at - e.created_at) < 5000)
+        .sort(
+          (a, b) =>
+            Math.abs(a.created_at - e.created_at) - Math.abs(b.created_at - e.created_at)
+        )[0]
+      if (!after) {
+        setDiffs((d) => new Map(d).set(e.id, 'gone'))
+        return
+      }
+      const before = versions
+        .filter((v) => v.created_at < e.started_at)
+        .sort((a, b) => b.created_at - a.created_at)[0]
+      const contentOf = async (vid: string) => {
+        if (!versionCache.current.has(vid)) {
+          versionCache.current.set(vid, (await api(`/api/versions/${vid}`)).content)
+        }
+        return versionCache.current.get(vid)
+      }
+      const afterBlocks = blockTexts(await contentOf(after.id))
+      const beforeBlocks = before ? blockTexts(await contentOf(before.id)) : []
+      setDiffs((d) => new Map(d).set(e.id, diffBlocks(beforeBlocks, afterBlocks)))
+    } catch {
+      setDiffs((d) => new Map(d).set(e.id, 'gone'))
+    }
+  }
+
   return (
     <div>
       {loaded && events.length === 0 && (
@@ -2558,18 +2615,52 @@ function HistoryPanel({ docId }: { docId: string }) {
           ( nothing has happened here yet )
         </div>
       )}
-      {events.map((e) => (
-        <div className="ev-row" key={e.id}>
-          <div>
-            <span className="byline" style={{ color: colorFor(e.username) }}>
-              {e.username}
-            </span>{' '}
-            {EV_VERBS[e.type] ?? e.type}
-            {e.detail && <span className="ev-detail"> “{e.detail}”</span>}
+      {events.map((e) => {
+        const diffable = !reviewing && DIFFABLE.has(e.type)
+        const diff = openId === e.id ? diffs.get(e.id) : undefined
+        return (
+          <div
+            className={diffable ? 'ev-row diffable' : 'ev-row'}
+            key={e.id}
+            onClick={diffable ? () => toggleDiff(e) : undefined}
+          >
+            <div>
+              <span className="byline" style={{ color: colorFor(e.username) }}>
+                {e.username}
+              </span>{' '}
+              {EV_VERBS[e.type] ?? e.type}
+              {e.detail &&
+                (e.type === 'edit' ? (
+                  <span className="ev-count"> {e.detail}</span>
+                ) : (
+                  <span className="ev-detail"> “{e.detail}”</span>
+                ))}
+              {diffable && <span className="ev-open">{openId === e.id ? ' ⌃' : ' ⌄'}</span>}
+            </div>
+            <div className="ev-when">{versionMoment(e.created_at)}</div>
+            {openId === e.id && diff === undefined && <div className="hint">( reading… )</div>}
+            {openId === e.id && diff === 'gone' && (
+              <div className="hint">( the versions this entry sat between are gone )</div>
+            )}
+            {openId === e.id && Array.isArray(diff) && (
+              <div className="ev-diff" onClick={(ev) => ev.stopPropagation()}>
+                {diff.length === 0 && <div className="hint">( no visible change )</div>}
+                {diff.map((r, i) =>
+                  r.kind === 'old' ? (
+                    <div className="diff-old" key={i}>
+                      {r.text}
+                    </div>
+                  ) : (
+                    <div className="diff-new" key={i}>
+                      {r.text}
+                    </div>
+                  )
+                )}
+              </div>
+            )}
           </div>
-          <div className="ev-when">{versionMoment(e.created_at)}</div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

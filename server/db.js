@@ -88,7 +88,8 @@ CREATE TABLE IF NOT EXISTS doc_events (
   username TEXT NOT NULL,
   type TEXT NOT NULL,
   detail TEXT DEFAULT '',
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  started_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_doc_events_doc ON doc_events(doc_id, id);
 CREATE INDEX IF NOT EXISTS idx_doc_events_user ON doc_events(user_id);
@@ -128,6 +129,11 @@ if (addColumn('versions', "kind TEXT DEFAULT 'manual'")) {
   db.exec(`UPDATE versions SET kind = 'idle' WHERE name = 'as the ink dried'`)
   db.exec(`UPDATE versions SET kind = 'flow' WHERE name = 'while the ink flowed'`)
 }
+
+// an edit entry remembers when its run of writing began, not just when it
+// settled — the diff a history row opens must reach back to the page as it
+// stood before the sitting, however many collapses the run went through
+addColumn('doc_events', 'started_at INTEGER')
 
 // a collaborator wears a role: an editor writes, a commenter only speaks in
 // the margins. everyone enrolled before roles existed was let in to write.
@@ -219,10 +225,19 @@ export function docExists(docId) {
 // last one they've seen, and everything past it is news. the byline carries
 // id and name like versions do: the name is the display snapshot, the id is
 // what renames and cursors key on.
-export function addEvent(docId, byline, type, detail = '') {
+export function addEvent(docId, byline, type, detail = '', startedAt = null) {
+  const now = Date.now()
   db.prepare(
-    'INSERT INTO doc_events (doc_id, user_id, username, type, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-  ).run(docId, byline.id || '', byline.username, type, String(detail).slice(0, 200), Date.now())
+    'INSERT INTO doc_events (doc_id, user_id, username, type, detail, created_at, started_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(
+    docId,
+    byline.id || '',
+    byline.username,
+    type,
+    String(detail).slice(0, 200),
+    now,
+    startedAt || now
+  )
 }
 
 // a long afternoon of writing is one line of history per pen, not fifty —
@@ -232,17 +247,36 @@ export function addEvent(docId, byline, type, detail = '') {
 // crash can't land between the delete and its replacement. every pen at the
 // desk gets its own entry: a version credits one byline, but news must name
 // whoever actually wrote, or the desk shows writers their own words as news.
-export const addEditEvents = db.transaction((docId, bylines) => {
+// an edit entry's detail is its net word count — additive across a run's
+// collapses (words are the one measure that sums), and only when a single
+// pen wrote: a shared stretch's count would put one writer's words in
+// another's line. the run is the SITTING: only entries minted since this
+// sitting began collapse, so yesterday's writing keeps its own line and its
+// own moment. started_at survives every collapse, pointing at the page as
+// it stood before the sitting — the far edge of the diff a row opens.
+const EDIT_DELTA_RE = /^([+-]\d+) words$/
+const fmtDelta = (n) => (n > 0 ? `+${n} words` : n < 0 ? `${n} words` : '')
+export const addEditEvents = db.transaction((docId, bylines, delta = 0, sittingStart = 0) => {
   const writers = new Map()
   for (const b of bylines) writers.set(b.id || '', b)
+  let started = null
+  let priorNet = 0
   while (true) {
     const last = db
-      .prepare('SELECT id, user_id, type FROM doc_events WHERE doc_id = ? ORDER BY id DESC LIMIT 1')
+      .prepare(
+        'SELECT id, user_id, type, detail, created_at, started_at FROM doc_events WHERE doc_id = ? ORDER BY id DESC LIMIT 1'
+      )
       .get(docId)
     if (!last || last.type !== 'edit' || !writers.has(last.user_id)) break
+    if (sittingStart && last.created_at < sittingStart) break
+    started = Math.min(started ?? Infinity, last.started_at || last.created_at)
+    priorNet += Number(EDIT_DELTA_RE.exec(last.detail)?.[1] || 0)
     db.prepare('DELETE FROM doc_events WHERE id = ?').run(last.id)
   }
-  for (const b of writers.values()) addEvent(docId, b, 'edit')
+  const solo = writers.size === 1
+  for (const b of writers.values()) {
+    addEvent(docId, b, 'edit', solo ? fmtDelta(priorNet + delta) : '', started || sittingStart)
+  }
 })
 
 // point a reader's cursor at the end of the log — everything so far is seen.

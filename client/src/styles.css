@@ -717,7 +717,30 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
 .ev-row { padding: 9px 0; border-bottom: 1px solid var(--wash); font-size: 13px; }
 .ev-row .byline { font-size: 12px; }
 .ev-row .ev-detail { font-family: var(--serif); font-style: italic; color: var(--faint); }
+.ev-row .ev-count { color: var(--faint); }
 .ev-row .ev-when { color: var(--fainter); font-size: 11px; margin-top: 2px; }
+/* an entry that opens into its diff */
+.ev-row.diffable { cursor: pointer; }
+.ev-row.diffable:hover .ev-open { color: var(--accent); }
+.ev-row .ev-open { color: var(--fainter); }
+/* the diff itself speaks the suggestion box's language: what left, struck
+   through; what arrived, plain — block by block */
+.ev-diff {
+  background: var(--wash);
+  padding: 8px 10px;
+  margin-top: 8px;
+  font-family: var(--serif);
+  font-size: 13px;
+  line-height: 1.6;
+  cursor: default;
+}
+.ev-diff .diff-old {
+  color: var(--faint);
+  text-decoration: line-through;
+  text-decoration-color: #d8a848;
+}
+.ev-diff .diff-new { margin-bottom: 2px; }
+.ev-diff .diff-old + .diff-new { margin-top: 2px; }
 
 /* news on a desk row keeps to the meta line's size, in accent */
 .doc-news { white-space: nowrap; }
