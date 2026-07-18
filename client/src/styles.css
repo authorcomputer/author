@@ -552,7 +552,9 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
 /* tabs are this panel's titles — same tier as .share-h; bold on all of
    them (not just .on) so switching tabs never reflows the row */
 .panel-tabs button { font-weight: 700; }
-.panel-tabs button.on { color: var(--accent); }
+/* the tab you're on is a fact, not an action */
+.panel-tabs button.on,
+.profile-tabs button.on { color: var(--accent); cursor: default; }
 .panel-body {
   flex: 1;
   overflow-y: auto;
