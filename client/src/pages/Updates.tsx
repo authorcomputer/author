@@ -36,7 +36,8 @@ export default function Updates() {
                 <div className="u-bullet" key={i}>
                   <span className="u-sym">✽</span>
                   <span>
-                    <span className="u-head">{b.head}</span> — {b.text}
+                    <span className="u-head">{b.head}</span>
+                    {b.text ? <> — {b.text}</> : null}
                   </span>
                 </div>
               ) : (
