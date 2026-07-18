@@ -791,7 +791,19 @@ function EditorInner({ id, entry }: { id: string; entry?: Meta }) {
         {isGhost ? (
           meta ? (
             <span className="faint">
-              {meta.mine ? '✎ a ghost draft' : `${reviewing ? '☞' : '✎'} ${meta.owner}’s page`}
+              {meta.mine ? (
+                '✎ a ghost draft'
+              ) : (
+                <>
+                  {reviewing ? '☞' : '✎'}{' '}
+                  {meta.owner === 'a ghost' ? (
+                    meta.owner
+                  ) : (
+                    <Link to={`/u/${meta.owner}`}>{meta.owner}</Link>
+                  )}
+                  ’s page
+                </>
+              )}
             </span>
           ) : (
             <span className="faint" />
