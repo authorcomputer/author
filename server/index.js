@@ -829,18 +829,17 @@ app.get('/api/settings', requireFullUser, (req, res) => {
   res.json({
     username: req.user.username,
     profile_public: !!p.profile_public,
-    show_writing: !!p.show_writing,
     links: JSON.parse(p.links || '[]'),
   })
 })
 
 app.post('/api/settings', requireFullUser, (req, res) => {
-  const { profile_public, show_writing, links } = req.body || {}
+  const { profile_public, links } = req.body || {}
   db.prepare(
-    `INSERT INTO profiles (user_id, profile_public, show_writing, links) VALUES (?, ?, ?, ?)
+    `INSERT INTO profiles (user_id, profile_public, links) VALUES (?, ?, ?)
      ON CONFLICT(user_id) DO UPDATE SET profile_public = excluded.profile_public,
-       show_writing = excluded.show_writing, links = excluded.links`
-  ).run(req.user.id, profile_public ? 1 : 0, show_writing ? 1 : 0, JSON.stringify(safeLinks(links)))
+       links = excluded.links`
+  ).run(req.user.id, profile_public ? 1 : 0, JSON.stringify(safeLinks(links)))
   res.json({ ok: true })
 })
 
@@ -898,39 +897,45 @@ app.get('/api/admin/stats', requireFullUser, (req, res) => {
   res.json({ writers, ghosts, members, regulars, pages, published, words: totalWords(), recent })
 })
 
-app.get('/api/profile/:username', (req, res) => {
+// the profile is its own curation surface: the owner sees it as visitors
+// do, plus their unlisted published pieces (with ids — theirs already) to
+// list or unlist in place. visitors get listed pieces only, never doc ids
+// (a doc id is the write capability), and a private profile only opens for
+// its owner.
+app.get('/api/profile/:username', async (req, res) => {
   const u = db
     .prepare('SELECT id, username FROM user WHERE username = ?')
     .get(String(req.params.username || '').toLowerCase())
   const p = u && profileFor(u.id)
-  if (!u || !p.profile_public) return res.status(404).json({ error: 'no such profile' })
+  const viewer = await getUser(req.headers).catch(() => null)
+  const own = !!u && viewer?.id === u.id
+  if (!u || (!p.profile_public && !own)) return res.status(404).json({ error: 'no such profile' })
   const activity = db
     .prepare(
       `SELECT day, count FROM activity WHERE user_id = ? AND day >= date('now', '-181 day')`
     )
     .all(u.id)
-  const articles = p.show_writing
-    ? db
-        .prepare(
-          `SELECT title, slug, updated_at, html, header_image FROM docs
-           WHERE owner_id = ? AND published = 1 AND on_profile = 1
-           ORDER BY updated_at DESC`
-        )
-        .all(u.id)
-        .map((a) => ({
-          title: a.title,
-          slug: a.slug,
-          updated_at: a.updated_at,
-          header_image: a.header_image || null,
-          preview: previewOf(a.html),
-        }))
-    : []
+  const articles = db
+    .prepare(
+      `SELECT id, title, slug, updated_at, html, header_image, on_profile FROM docs
+       WHERE owner_id = ? AND published = 1 ${own ? '' : 'AND on_profile = 1'}
+       ORDER BY updated_at DESC`
+    )
+    .all(u.id)
+    .map((a) => ({
+      title: a.title,
+      slug: a.slug,
+      updated_at: a.updated_at,
+      header_image: a.header_image || null,
+      preview: previewOf(a.html),
+      ...(own ? { id: a.id, listed: !!a.on_profile } : {}),
+    }))
   res.json({
     username: u.username,
     links: JSON.parse(p.links || '[]'),
-    show_writing: !!p.show_writing,
     activity,
     articles,
+    ...(own ? { own: true, profile_public: !!p.profile_public } : {}),
   })
 })
 

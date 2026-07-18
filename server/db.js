@@ -130,6 +130,16 @@ if (addColumn('versions', "kind TEXT DEFAULT 'manual'")) {
   db.exec(`UPDATE versions SET kind = 'flow' WHERE name = 'while the ink flowed'`)
 }
 
+// the old "list published pieces" master switch folds into the per-piece
+// choice it duplicated: whoever had it off gets every piece unlisted once,
+// so nothing they'd hidden appears. idempotent — after the fold no row
+// keeps show_writing = 0, and the flag is never read again.
+db.exec(`
+  UPDATE docs SET on_profile = 0
+  WHERE owner_id IN (SELECT user_id FROM profiles WHERE show_writing = 0);
+  UPDATE profiles SET show_writing = 1 WHERE show_writing = 0;
+`)
+
 // an edit entry remembers when its run of writing began, not just when it
 // settled — the diff a history row opens must reach back to the page as it
 // stood before the sitting, however many collapses the run went through

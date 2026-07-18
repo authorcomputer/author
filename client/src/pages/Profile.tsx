@@ -16,7 +16,6 @@ import Logo from '../Logo'
 type Settings = {
   username: string
   profile_public: boolean
-  show_writing: boolean
   links: string[]
 }
 
@@ -125,7 +124,6 @@ function SettingsTab() {
       method: 'POST',
       body: JSON.stringify({
         profile_public: next.profile_public,
-        show_writing: next.show_writing,
         links: linksText
           .split('\n')
           .map((l) => l.trim())
@@ -136,10 +134,7 @@ function SettingsTab() {
     const stored: Settings = await api('/api/settings')
     setS(stored)
     setLinksText(stored.links.join('\n'))
-    track('profile: settings saved', {
-      public: next.profile_public,
-      show_writing: next.show_writing,
-    })
+    track('profile: settings saved', { public: next.profile_public })
     setSaved(true)
     setTimeout(() => setSaved(false), 1500)
   }
@@ -151,23 +146,12 @@ function SettingsTab() {
           {s.profile_public ? '[✓]' : '[ ]'} public profile
         </button>
         <div className="hint">
-          {s.profile_public && (
-            <>
-              {' '}
-              yours is at{' '}
-              <Link className="accent" to={`/u/${s.username}`}>
-                /u/{s.username}
-              </Link>
-            </>
-          )}
+          {' '}
+          {s.profile_public ? 'yours is at' : 'private —'}{' '}
+          <Link className="accent" to={`/u/${s.username}`}>
+            /u/{s.username}
+          </Link>
         </div>
-      </div>
-
-      <div className="setting-row">
-        <button onClick={() => save({ ...s, show_writing: !s.show_writing })}>
-          {s.show_writing ? '[✓]' : '[ ]'} list published pieces on profile
-        </button>
-        {s.show_writing && <ProfilePieces />}
       </div>
 
       <HandleRow current={s.username} onRenamed={(u) => setS({ ...s, username: u })} />
@@ -187,49 +171,6 @@ function SettingsTab() {
           <span className="hint">one per line, up to six — full https:// urls</span>
         </div>
       </div>
-    </div>
-  )
-}
-
-type PieceRow = { id: string; title: string; published: boolean; mine: boolean; on_profile: boolean }
-
-// pick which published pieces appear on the public profile
-function ProfilePieces() {
-  const [pieces, setPieces] = useState<PieceRow[]>([])
-
-  useEffect(() => {
-    api('/api/docs').then((docs: PieceRow[]) =>
-      setPieces(docs.filter((d) => d.mine && d.published))
-    )
-  }, [])
-
-  async function toggle(p: PieceRow) {
-    const res = await api(`/api/docs/${p.id}/profile`, {
-      method: 'POST',
-      body: JSON.stringify({ show: !p.on_profile }),
-    })
-    track('doc: profile listing toggled', { on: res.on_profile })
-    setPieces((prev) =>
-      prev.map((x) => (x.id === p.id ? { ...x, on_profile: res.on_profile } : x))
-    )
-  }
-
-  if (pieces.length === 0)
-    return (
-      <div className="hint" style={{ marginTop: 10 }}>
-        ( nothing published yet )
-      </div>
-    )
-
-  return (
-    <div style={{ marginTop: 10 }}>
-      {pieces.map((p) => (
-        <div key={p.id} style={{ padding: '4px 0' }}>
-          <button onClick={() => toggle(p)}>
-            {p.on_profile ? '[✓]' : '[ ]'} {p.title || 'untitled'}
-          </button>
-        </div>
-      ))}
     </div>
   )
 }

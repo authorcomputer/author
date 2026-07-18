@@ -128,6 +128,10 @@ input, textarea {
 }
 .doc-row .del { float: right; color: var(--fainter); }
 .doc-row .del:hover { color: var(--accent); }
+/* the owner's view of their profile: unlisted pieces sit faint among the
+   listed, each with its own list/unlist control in the del's seat */
+.doc-row.unlisted { opacity: 0.55; }
+.doc-row .del.list { font-size: 11px; white-space: nowrap; }
 .empty-note { color: var(--faint); margin-top: 48px; text-align: center; }
 .show-older { text-align: center; padding: 24px 0 8px; }
 

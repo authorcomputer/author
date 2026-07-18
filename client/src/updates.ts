@@ -1,9 +1,7 @@
 // The public changelog. Curated from the actual commit history — one entry
-// per day, telling the story of what that day brought. Internal plumbing
-// (build config, CI fixes) is folded in where it matters.
-//
-// Each day is a small composition: an opening line, ✽ bullets for the
-// things themselves, and an aside for what happened under the floorboards.
+// per day. Written for readers with zero context: each bullet plainly
+// states what changed and what it does, in a sentence or two. No metaphors,
+// no internal process — if a user wouldn't notice it, it isn't listed.
 
 export type UpdateBlock =
   | { kind: 'p'; text: string }
@@ -14,223 +12,221 @@ export type UpdateDay = { date: string; title: string; blocks: UpdateBlock[] }
 
 export const UPDATES: UpdateDay[] = [
   {
-    date: 'july 17, 2026',
-    title: 'the review loop grows a memory',
+    date: 'july 18, 2026',
+    title: 'curate your profile on the profile itself',
     blocks: [
       {
-        kind: 'p',
-        text: 'a page you share for feedback should be able to tell you what happened while you were away — and now it can.',
+        kind: 'bullet',
+        head: 'pick profile pieces on the profile page',
+        text: 'the checkbox list in settings is gone. open /u/yourname and you see the page as visitors do — unlisted pieces appear faded with a [ list ] button, listed ones have an ✗ to remove them. the share menu toggle still works too.',
       },
       {
         kind: 'bullet',
-        head: 'every page keeps a history',
-        text: 'a new history tab in the editor panel shows who did what, in order — commented, suggested, replied, settled, wrote, kept a version — with the words attached and the moment it happened.',
+        head: 'one switch fewer',
+        text: 'the “list published pieces on profile” master switch is gone — each piece has its own toggle. if you had the switch off, your pieces were all unlisted once, so nothing you had hidden became visible.',
       },
       {
         kind: 'bullet',
-        head: 'history shows the change itself',
-        text: 'a sitting of writing wears its measure — +214 words — and clicking the line opens what actually changed: the passages that left, struck through, above the passages that arrived. one sitting, one line; a kept version opens the same way.',
+        head: 'preview a private profile',
+        text: 'your own profile page now opens for you while it is still private, so you can arrange it before making it public.',
       },
       {
         kind: 'bullet',
-        head: 'the desk shows what you missed',
-        text: 'each page on your desk now wears what arrived since you last opened it: new comments, suggested edits, settled threads, and whether anyone wrote. opening the page reads the news.',
+        head: 'this page, rewritten',
+        text: 'every update below was rewritten in plain language — what changed and what it does, without the flourishes.',
+      },
+    ],
+  },
+  {
+    date: 'july 17, 2026',
+    title: 'page history, unread marks, comment-only links',
+    blocks: [
+      {
+        kind: 'bullet',
+        head: 'every page has a history',
+        text: 'a new history tab shows who commented, suggested, replied, wrote, or saved a version — and when.',
       },
       {
         kind: 'bullet',
-        head: 'suggestions settle as accepted or dismissed',
-        text: 'a suggested edit no longer just closes — it is accepted or dismissed, by name. the cards say so, the history says so, and the reviewer can finally tell whether their words landed.',
+        head: 'see what an edit changed',
+        text: 'writing sessions in the history show their word count (+214 words). click one to see the actual change: removed text struck through, new text below it.',
       },
       {
         kind: 'bullet',
-        head: 'a comments-only link',
-        text: 'the share panel now holds a review link beside the writing link. whoever opens it can read, comment, and suggest edits — but not change a word. the writing link still grants the pen, and handing it to a reviewer later opens the page fully.',
+        head: 'unread marks on your pages',
+        text: 'your home page now marks what arrived on each page since you last opened it: new comments, suggested edits, and changes to the text.',
       },
       {
         kind: 'bullet',
-        head: 'take your page with you',
-        text: 'a page leaves as markdown, html, or plain text — downloaded as a file or copied straight to the clipboard, from the share panel.',
+        head: 'accepted or dismissed',
+        text: 'resolved suggestions now say whether the edit was accepted or dismissed, and by whom.',
       },
       {
         kind: 'bullet',
-        head: 'a quieter, straighter interface',
-        text: 'the formatting bubble grew into its shoes, the writing calendar fits narrow windows, every place that takes words wears the same box, every button speaks the same brackets, and the copy stopped explaining what the features should say themselves.',
+        head: 'comment-only sharing',
+        text: 'the share menu has a new link type: people who open it can read and comment, but not edit. the regular link still allows editing.',
       },
       {
-        kind: 'aside',
-        text: 'under the floorboards: two review passes with dozens of independent skeptics ran over the new machinery before it shipped — they caught real faults, including doors that let an uninvited pen speak in a page’s history, and all of it was mended and re-checked. the test battery grew three suites.',
+        kind: 'bullet',
+        head: 'download your pages',
+        text: 'download any page as markdown, html, or plain text — or copy it to the clipboard in those formats — from the share menu.',
+      },
+      {
+        kind: 'bullet',
+        head: 'polish',
+        text: 'input boxes and buttons now look the same everywhere, the formatting bar is bigger, and the writing calendar fits small windows.',
       },
     ],
   },
   {
     date: 'july 14, 2026',
-    title: 'the house naps',
+    title: 'faster loading',
     blocks: [
       {
         kind: 'bullet',
-        head: 'no more cold starts',
-        text: 'the house no longer goes cold between visits — it naps when nobody is writing and wakes in a blink when someone arrives.',
+        head: 'first load is ~5 seconds faster after idle periods',
+        text: 'when nobody had visited for a while, the server shut down completely and the next visit waited 5–10 seconds for it to boot. it now suspends instead of shutting down and resumes in under a second.',
       },
     ],
   },
   {
     date: 'july 9, 2026',
-    title: 'paste anything, and a long list of repairs',
+    title: 'paste anything, plus fixes',
     blocks: [
       {
-        kind: 'p',
-        text: 'mostly a day of mending things you should never have had to think about.',
+        kind: 'bullet',
+        head: 'pasted text keeps its formatting',
+        text: 'paste from a chat app, notes app, or .md file and you get real headings, bold, and dividers instead of raw # and ** symbols. if text lands as a grey code block, select it and press the code button to turn it into normal text.',
       },
       {
         kind: 'bullet',
-        head: 'paste a document, keep its shape',
-        text: 'copy a draft out of a chat, a notes app, or a .md file and it now arrives as writing — real headings, bold, dividers — instead of a wall of #, **, and ---. if something still lands as one grey block of code, select it and press the code button to turn it back into prose.',
-      },
-      {
-        kind: 'bullet',
-        head: 'images are backed up now',
-        text: 'your words were always copied to safe storage every second. your pictures were not — a lost disk would have returned the writing without them. now both travel together.',
+        head: 'images are backed up',
+        text: 'images are now continuously backed up off-site, the way your text already was.',
       },
       {
         kind: 'bullet',
         head: 'fixed',
-        text: 'anyone signed in could resolve a comment on someone else’s page. a suggested edit could duplicate a line or swallow the words around it. losing wifi for a moment could erase your cursor from everyone else’s screen. a ⌘K request that failed still spent one of your monthly requests. deleting a page could throw away edits a collaborator was still typing. the checkboxes on your profile showed the wrong answer, and the first click hid the piece you meant to show.',
+        text: 'only people who can edit a page can resolve its comments. suggested edits no longer duplicate or delete surrounding text. a brief wifi drop no longer hides your cursor from collaborators. failed AI requests no longer count against your monthly limit. deleting a page no longer discards edits a collaborator is still typing. profile checkboxes now show the correct state.',
       },
       {
         kind: 'aside',
-        text: 'under the floorboards: twenty-two faults, each confirmed by two skeptics before it was mended and checked by two more after — plus sturdier locks on the sign-up and password doors.',
+        text: 'also: stronger security on sign-up and password changes.',
       },
     ],
   },
   {
     date: 'july 8, 2026',
-    title: 'threads become conversations',
+    title: 'comment replies',
     blocks: [
       {
         kind: 'bullet',
-        head: 'reply is the answer',
-        text: 'threads now lead with ↩ reply — write back as long as the talk takes. resolving is the quiet button beside it.',
+        head: 'reply to comments',
+        text: 'comment threads now support replies — write back and forth as long as needed. resolve is the smaller button beside reply.',
       },
       {
         kind: 'bullet',
-        head: '“✽ written twice” calms down',
-        text: 'the note appears only when two pens truly rework the same paragraph — commenting, resolving, and rearranging no longer count.',
-      },
-      {
-        kind: 'aside',
-        text: 'under the floorboards: a pressure test now walks two make-believe writers through every collision before the note ships.',
+        head: 'fewer false “✽ written twice” marks',
+        text: 'the marker now appears only when two people actually rewrite the same paragraph. commenting, resolving, and rearranging no longer trigger it.',
       },
     ],
   },
   {
     date: 'july 7, 2026',
-    title: 'the page keeps itself',
+    title: 'pick your proofreading checks',
     blocks: [
       {
         kind: 'bullet',
-        head: 'the proof reads for what you pick',
-        text: 'checks became proof: choose exactly what the pen reads for — grammar, clarity, clichés, hedging, or a check in your own words — instead of everything at once. every fix is one click from incorporated. the titles tab retired; share copy tightened.',
+        head: 'proofreading, your way',
+        text: 'the proof tab lets you choose what to check for — grammar, clarity, clichés, hedging, or a check you write yourself. each fix applies with one click.',
       },
       {
         kind: 'bullet',
-        head: 'comments point both ways',
-        text: 'clicking the glyph in the margin now lights up the comment it points at in the sidebar. comment cards always open where you can see them, and a thread takes as many replies as the conversation needs.',
+        head: 'comments are easier to follow',
+        text: 'clicking a comment marker in the text highlights that comment in the sidebar, and comment popups always open on screen.',
       },
       {
         kind: 'bullet',
-        head: 'versions save themselves',
-        text: 'five quiet minutes after your last change — or every ten of unbroken writing — a version is kept automatically, listed by its date and time. hover any version to peek inside before restoring.',
+        head: 'automatic versions',
+        text: 'a version is saved after five quiet minutes, or every ten minutes of continuous writing. hover a version to preview it before restoring.',
       },
     ],
   },
   {
     date: 'july 3, 2026',
-    title: 'the door opens for readers',
+    title: 'share without signup',
     blocks: [
       {
         kind: 'bullet',
-        head: 'a name is enough',
-        text: 'send someone your draft link and they can write with you, leave notes, and suggest edits — no signup, no password, just a name at the door. sharing works without an account on either end.',
+        head: 'no account needed to collaborate',
+        text: 'send someone your draft link and they can write, comment, and suggest edits without creating an account — they just enter a name.',
       },
     ],
   },
   {
     date: 'july 2, 2026',
-    title: 'the page grows richer',
+    title: 'images, embeds, and suggested edits',
     blocks: [
-      { kind: 'p', text: 'the page learned to hold more than words today.' },
       {
         kind: 'bullet',
         head: 'embeds',
-        text: 'paste a youtube, vimeo, loom, spotify, or tweet link on its own line and it becomes a player.',
+        text: 'paste a youtube, vimeo, loom, spotify, or twitter link on its own line and it becomes a player.',
       },
       {
         kind: 'bullet',
         head: 'images',
-        text: 'paste or drag one straight into your writing and it lands where you dropped it.',
+        text: 'paste or drag an image into the page and it lands where you dropped it.',
       },
       {
         kind: 'bullet',
-        head: 'truer publishing',
-        text: 'headings keep their size and the “· · ·” divider carries over to the published page.',
+        head: 'published pages match the editor',
+        text: 'heading sizes and dividers now carry over to the published page.',
       },
       {
         kind: 'bullet',
-        head: 'profiles, rearranged',
-        text: 'name, links, chart, then pages — and hovering an article floats a preview card.',
+        head: 'suggested edits',
+        text: 'select text to leave a comment or suggest a specific edit (⌥⌘M). “apply edit” inserts the reviewer’s exact words — no AI involved.',
       },
       {
         kind: 'bullet',
-        head: 'comments & suggested edits',
-        text: 'select any text to ☞ leave a note or ↳ write the edit yourself (⌥⌘M) — and “apply edit” swaps in the reviewer’s exact words, no model in between.',
+        head: 'safer collaboration',
+        text: 'when a second writer joins, the current text is saved as a version first. restoring an old version also saves the current text.',
       },
       {
         kind: 'bullet',
-        head: 'versions',
-        text: 'a second writer joining saves the text as-it-was, restoring keeps your current text as its own version first, and twice-rewritten paragraphs wear a “✽ written twice” note.',
-      },
-      {
-        kind: 'bullet',
-        head: 'this page, day by day',
-        text: 'the updates page reads as one entry per day, and links to it unfurl with a card.',
+        head: 'profiles rearranged',
+        text: 'name, links, activity chart, then pages — and hovering a page shows a preview.',
       },
       {
         kind: 'aside',
-        text: 'under the floorboards: continuous backups to separate storage, restorable in minutes — and the site moved to the west coast.',
+        text: 'also: continuous off-site backups, restorable in minutes.',
       },
     ],
   },
   {
     date: 'july 1, 2026',
-    title: 'author* opens its doors',
+    title: 'author* launches',
     blocks: [
-      { kind: 'p', text: 'born in the morning, open to the public by evening.' },
       {
         kind: 'bullet',
-        head: 'the first word',
-        text: 'live multiplayer editing with named cursors, ⌘K rewrites and feedback, margin comments, versions, and one-click publishing.',
+        head: 'writing together',
+        text: 'live collaborative editing with named cursors, ⌘K rewrites and feedback, margin comments, version history, and one-click publishing.',
       },
       {
         kind: 'bullet',
-        head: 'the doors open',
-        text: 'invite codes retired; a desk costs an email and a password, and ghosts can write with no account at all.',
+        head: 'open to everyone',
+        text: 'sign up with an email and password — or write without an account at all.',
       },
       {
         kind: 'bullet',
-        head: 'a place of your own',
-        text: 'public profiles at /u/you with contribution charts, social links, header images — and .md import, formatting intact.',
+        head: 'a page of your own',
+        text: 'public profiles at /u/yourname with an activity chart, social links, and header images. .md import keeps formatting.',
       },
       {
         kind: 'bullet',
-        head: 'small kindnesses',
-        text: 'the formatting bubble, click anywhere to start typing, ⌘U underlines, and a chart in your own timezone.',
+        head: 'security',
+        text: 'hashed passwords, rate-limited sign-in, expiring sessions, and cookie-free analytics.',
       },
-      {
-        kind: 'bullet',
-        head: 'locks on the doors',
-        text: 'hashed passwords, rate-limited sign-in, expiring sessions, cookie-free analytics.',
-      },
-      { kind: 'aside', text: 'and by nightfall, a home at author.computer.' },
+      { kind: 'aside', text: 'live at author.computer.' },
     ],
   },
 ]

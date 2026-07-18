@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { me } from '../api'
+import { api, me } from '../api'
+import { track } from '../analytics'
 import Logo from '../Logo'
 import Chart from '../Chart'
 
@@ -10,14 +11,18 @@ type Article = {
   updated_at: number
   header_image: string | null
   preview: string
+  // owner's view only: the piece's id (theirs already) and whether it shows
+  id?: string
+  listed?: boolean
 }
 
 type ProfileData = {
   username: string
   links: string[]
-  show_writing: boolean
   activity: { day: string; count: number }[]
   articles: Article[]
+  own?: boolean
+  profile_public?: boolean
 }
 
 function linkLabel(url: string) {
@@ -60,6 +65,26 @@ export default function UserPublic() {
     }
   }, [p])
 
+  // the owner curates the page by standing in front of it: list or unlist
+  // a piece where it appears (or would appear)
+  async function toggle(a: Article) {
+    const res = await api(`/api/docs/${a.id}/profile`, {
+      method: 'POST',
+      body: JSON.stringify({ show: !a.listed }),
+    })
+    track('doc: profile listing toggled', { on: res.on_profile, via: 'profile' })
+    setP((prev) =>
+      prev
+        ? {
+            ...prev,
+            articles: prev.articles.map((x) =>
+              x.id === a.id ? { ...x, listed: res.on_profile } : x
+            ),
+          }
+        : prev
+    )
+  }
+
   return (
     <>
       <div className="pub-head">
@@ -81,6 +106,11 @@ export default function UserPublic() {
       {p && (
         <div className="pub-wrap">
           <h1 className="pub-title">{p.username}</h1>
+          {p.own && !p.profile_public && (
+            <div className="hint" style={{ marginTop: 4 }}>
+              ( private — <Link to="/me">settings</Link> )
+            </div>
+          )}
           {p.links.length > 0 && (
             <div className="profile-links">
               {p.links.map((l, i) => (
@@ -98,10 +128,10 @@ export default function UserPublic() {
           <div className="ascii-rule" style={{ margin: '24px 0 8px' }}>
             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
           </div>
-          {p.show_writing && p.articles.length > 0 ? (
+          {p.articles.length > 0 ? (
             p.articles.map((a) => (
               <Link
-                className="doc-row"
+                className={p.own && !a.listed ? 'doc-row unlisted' : 'doc-row'}
                 key={a.slug}
                 to={`/p/${a.slug}`}
                 onMouseEnter={(e) =>
@@ -109,6 +139,18 @@ export default function UserPublic() {
                 }
                 onMouseLeave={() => setPeek(null)}
               >
+                {p.own && (
+                  <button
+                    className={a.listed ? 'del' : 'del list'}
+                    onClick={(e) => {
+                      e.preventDefault()
+                      toggle(a)
+                    }}
+                    title={a.listed ? 'unlist' : 'list'}
+                  >
+                    {a.listed ? '✗' : '[ list ]'}
+                  </button>
+                )}
                 <div className="doc-title">{a.title || 'untitled'}</div>
                 <div className="doc-meta">
                   {new Date(a.updated_at).toLocaleDateString(undefined, {
@@ -116,6 +158,12 @@ export default function UserPublic() {
                     month: 'long',
                     day: 'numeric',
                   })}
+                  {p.own && !a.listed && (
+                    <>
+                      {' · '}
+                      <span>unlisted</span>
+                    </>
+                  )}
                 </div>
               </Link>
             ))
