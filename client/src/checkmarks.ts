@@ -17,6 +17,8 @@ export type MarkItem = {
 const KEYS = {
   checks: new PluginKey('author-checks'),
   pending: new PluginKey('author-pending'),
+  // the momentary flash that answers a click in the panel — "here, this one"
+  ping: new PluginKey('author-ping'),
 } as const
 
 export const Checkmarks = Extension.create({

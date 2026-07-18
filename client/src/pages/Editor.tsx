@@ -1655,9 +1655,29 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
   const [err, setErr] = useState('')
   const [active, setActive] = useState<number | null>(null)
   const [taken, setTaken] = useState<Set<number>>(new Set())
+  const pingTimer = useRef<ReturnType<typeof setTimeout>>()
 
   // the pen lifts when the panel closes
-  useEffect(() => () => clearMarks(editor, 'checks'), [editor])
+  useEffect(
+    () => () => {
+      clearMarks(editor, 'checks')
+      clearMarks(editor, 'ping')
+      clearTimeout(pingTimer.current)
+    },
+    [editor]
+  )
+
+  // the sidebar answers back: clicking a note scrolls its passage into view
+  // and flashes it — the reader's eyes are in the panel, the words are in
+  // the page, and the flash is the bridge
+  function ping(iss: Issue) {
+    const r = findRange(editor, iss.excerpt)
+    if (!r) return
+    selectRange(editor, r)
+    setMarks(editor, 'ping', [{ from: r.from, to: r.to, cls: 'check-ping' }])
+    clearTimeout(pingTimer.current)
+    pingTimer.current = setTimeout(() => clearMarks(editor, 'ping'), 1400)
+  }
 
   // clicking a marked passage scrolls its note into view and lights it up
   useEffect(() => {
@@ -1805,24 +1825,24 @@ function ChecksPanel({ editor }: { editor: TiptapEditor }) {
           className={`issue ${active === i ? 'active' : ''} ${taken.has(i) ? 'taken' : ''}`}
           id={`check-issue-${i}`}
           key={i}
+          onClick={() => ping(iss)}
+          title="show me in the page"
         >
           <span className="kind">[{iss.kind}]</span>
-          <span
-            className="excerpt"
-            onClick={() => {
-              const r = findRange(editor, iss.excerpt)
-              if (r) selectRange(editor, r)
-            }}
-          >
-            “{iss.excerpt}”
-          </span>
+          <span className="excerpt">“{iss.excerpt}”</span>
           <div>{iss.note}</div>
           <div className="fix">→ {iss.suggestion}</div>
           <div className="row-actions">
             {taken.has(i) ? (
               <span className="hint">✓ incorporated</span>
             ) : (
-              <button onClick={() => takeFix(iss, i)} title="replace the passage with the fix">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation()
+                  takeFix(iss, i)
+                }}
+                title="replace the passage with the fix"
+              >
                 [ ✓ incorporate ]
               </button>
             )}

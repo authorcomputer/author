@@ -492,6 +492,17 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
 }
+/* the flash that answers a click in the proof panel: the passage lights up
+   and settles, so the eye can travel from the note to the words */
+.check-ping {
+  box-decoration-break: clone;
+  animation: check-ping-fade 1.4s ease-out;
+}
+@keyframes check-ping-fade {
+  0% { background: #f2dcb4; }
+  100% { background: transparent; }
+}
+
 .pen-hover {
   background: #f6ead7;
   box-decoration-break: clone;
@@ -629,6 +640,7 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
   padding: 12px 0;
   border-bottom: 1px solid var(--wash);
 }
+.issue { cursor: pointer; }
 .issue .kind { color: var(--accent); font-size: 11px; text-transform: lowercase; }
 .issue .excerpt {
   font-family: var(--serif);
