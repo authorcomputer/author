@@ -56,13 +56,16 @@ const editRows = async () => {
 }
 
 // sitting one: five words, then the pen rests
+const sittingOneAt = Date.now()
 write('one two three four five')
 await sleep(GAP + 1100)
 let rows = await editRows()
 ok(rows.length === 1, 'one sitting, one line')
 ok(rows[0].detail === '+5 words', `the line wears its words (${rows[0].detail})`)
 
-// sitting two: a separate line, not a swollen first one
+// sitting two: a separate line, not a swollen first one. its far edge is
+// the version sitting one settled into — after sitting one began, before
+// sitting two's own words
 const sittingTwoAt = Date.now()
 write('six seven eight')
 await sleep(GAP + 1100)
@@ -70,7 +73,10 @@ rows = await editRows()
 ok(rows.length === 2, 'a new sitting gets its own line')
 ok(rows[0].detail === '+3 words', `the new line counts only its own (${rows[0].detail})`)
 ok(rows[1].detail === '+5 words', 'the old line keeps its count')
-ok(rows[0].started_at >= sittingTwoAt - 1000, 'the new line knows when its sitting began')
+ok(
+  rows[0].started_at > sittingOneAt && rows[0].started_at <= sittingTwoAt + 1000,
+  'the new line anchors past the old sitting'
+)
 
 // sitting three: flow long enough to snapshot mid-run — the run stays one
 // line and the counts sum
@@ -86,7 +92,10 @@ await sleep(GAP + 1100)
 rows = await editRows()
 ok(rows.length === 3, 'a long sitting collapses to one line')
 ok(rows[0].detail === `+${words} words`, `the collapsed line sums the run (+${words} vs ${rows[0].detail})`)
-ok(rows[0].started_at >= sittingThreeAt - 1000 && rows[0].started_at <= sittingThreeAt + 2000, 'started_at survives the collapse')
+ok(
+  rows[0].started_at > sittingTwoAt && rows[0].started_at <= sittingThreeAt + 1000,
+  'the collapsed line anchors past the previous sitting'
+)
 
 provider.destroy()
 process.exit(failed)

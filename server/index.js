@@ -409,17 +409,21 @@ app.post('/api/review/:token/open', requireUser, rateLimit(20, 60_000), (req, re
   res.json(docMeta(doc, req.user.id))
 })
 
-// the history log, newest first — who did what to this page, and when
+// the history log, newest first — who did what to this page, and when.
+// ?before=<id> pages into the past: a long-lived page accrues a line per
+// sitting, and the older story must stay reachable, not fall off the end
 app.get('/api/docs/:id/events', requireUser, (req, res) => {
   if (!docExists(req.params.id)) return res.status(404).json({ error: 'no such doc' })
+  const before = Number(req.query.before) || 0
   res.json(
     db
       .prepare(
         `SELECT id, username, type, detail, created_at,
                 COALESCE(started_at, created_at) AS started_at
-         FROM doc_events WHERE doc_id = ? ORDER BY id DESC LIMIT 120`
+         FROM doc_events WHERE doc_id = ? AND (? = 0 OR id < ?)
+         ORDER BY id DESC LIMIT 120`
       )
-      .all(req.params.id)
+      .all(req.params.id, before, before)
   )
 })
 

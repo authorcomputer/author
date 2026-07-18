@@ -64,6 +64,30 @@ const marked = blockTexts({
   ],
 })
 ok(marked[0] === 'really', 'a bold mid-word does not split the word')
+// a line break separates its neighbors; it never fuses them
+const broken = blockTexts({
+  type: 'doc',
+  content: [
+    {
+      type: 'paragraph',
+      content: [
+        { type: 'text', text: 'end of verse one' },
+        { type: 'hardBreak' },
+        { type: 'text', text: 'start of verse two' },
+      ],
+    },
+  ],
+})
+ok(broken[0] === 'end of verse one start of verse two', 'a line break keeps its neighbors apart')
+// a quote's paragraphs are their own blocks — one edited line must not
+// mark the whole quote changed
+const quoted = blockTexts(
+  doc({ type: 'blockquote', content: [p('first line of the quote'), p('second line')] })
+)
+ok(
+  JSON.stringify(quoted) === JSON.stringify(['first line of the quote', 'second line']),
+  'a blockquote walks paragraph by paragraph'
+)
 
 // ---- diffBlocks ----
 ok(diffBlocks(['a', 'b'], ['a', 'b']).length === 0, 'no change tells no story')

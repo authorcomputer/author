@@ -217,17 +217,7 @@ export function wordsOf(node) {
   return (text.match(/\S+/g) || []).length
 }
 
-export function insertVersion(
-  docId,
-  name,
-  byline,
-  json,
-  ts,
-  kind,
-  editors,
-  editDelta = 0,
-  sittingStart = 0
-) {
+export function insertVersion(docId, name, byline, json, ts, kind, editors, editInfo) {
   const id = 'v_' + crypto.randomBytes(8).toString('hex')
   db.prepare(
     'INSERT INTO versions (id, doc_id, name, username, user_id, content, created_at, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
@@ -237,12 +227,14 @@ export function insertVersion(
   // join snapshots record presence, not work, so they stay out of the log.
   // the version credits one byline; the edit entries name every pen that was
   // at the desk, or the desk would show writers their own words as news.
+  // a save's entry wears the version's own ts, so the diff it opens can
+  // never mistake the kept version for the page before it.
   // known wart: the entry lands when the sitting settles, minutes after the
   // words — a reader who opened mid-gap may see the sitting flagged once
   // more. over-shown, never lost; opening the page clears it.
-  if (kind === 'manual') addEvent(docId, byline, 'version.save', name)
+  if (kind === 'manual') addEvent(docId, byline, 'version.save', name, ts)
   else if (kind === 'idle' || kind === 'flow')
-    addEditEvents(docId, editors?.length ? editors : [byline], editDelta, sittingStart || ts)
+    addEditEvents(docId, editors?.length ? editors : [byline], editInfo || {})
   return id
 }
 
@@ -273,25 +265,27 @@ function snapshotOnSettle(room, kind = 'idle') {
     const ids = new Set(room.editors.map((u) => u.id))
     const byline = ids.size === 1 ? room.editors[0] : ownerByline(room.id)
     room.lastSnap = Date.now()
-    // this stretch's net word change — what the edit entry will wear
+    // this stretch's net word change, measured against the last version
+    // that counted as work — join snapshots record presence, so measuring
+    // against one would erase the words it happened to capture. the stretch
+    // anchors just past its baseline: the count and the diff a history row
+    // opens must always cover the same span.
+    const base = db
+      .prepare(
+        "SELECT content, created_at FROM versions WHERE doc_id = ? AND kind != 'join' ORDER BY created_at DESC LIMIT 1"
+      )
+      .get(room.id)
     let prevWords = 0
-    if (latest) {
+    if (base) {
       try {
-        prevWords = wordsOf(JSON.parse(latest.content))
+        prevWords = wordsOf(JSON.parse(base.content))
       } catch {}
     }
-    const delta = wordsOf(content) - prevWords
-    insertVersion(
-      room.id,
-      '',
-      byline,
-      json,
-      room.lastSnap,
-      kind,
-      room.editors,
-      delta,
-      room.sittingStart || room.lastEdit
-    )
+    insertVersion(room.id, '', byline, json, room.lastSnap, kind, room.editors, {
+      delta: wordsOf(content) - prevWords,
+      sittingStart: room.sittingStart || room.lastEdit,
+      stretchStart: base ? base.created_at + 1 : room.sittingStart || room.lastEdit,
+    })
   } catch (e) {
     console.error('auto snapshot failed', room.id, e)
   }

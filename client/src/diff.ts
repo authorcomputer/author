@@ -8,11 +8,16 @@
 // marks vanish (they split words across text nodes); empty blocks are
 // structure, not content, and don't count.
 export function blockTexts(doc: any): string[] {
-  const textOf = (n: any): string =>
-    n.text ??
-    (n.content || [])
-      .map(textOf)
-      .join(n.type === 'paragraph' || n.type === 'heading' ? '' : ' ')
+  const textOf = (n: any): string => {
+    // a line break is a break, not a fusion of its neighbors
+    if (n.type === 'hardBreak') return ' '
+    return (
+      n.text ??
+      (n.content || [])
+        .map(textOf)
+        .join(n.type === 'paragraph' || n.type === 'heading' ? '' : ' ')
+    )
+  }
   const out: string[] = []
   const push = (b: any) => {
     if (b.type === 'image') out.push('[ image ]')
@@ -22,6 +27,10 @@ export function blockTexts(doc: any): string[] {
         const t = textOf(li).trim()
         if (t) out.push('· ' + t)
       }
+    } else if (b.type === 'blockquote') {
+      // a quote's paragraphs are blocks of their own — flattening the whole
+      // quote would mark all of it changed when one line moves
+      for (const child of b.content || []) push(child)
     } else {
       const t = textOf(b).trim()
       if (t) out.push(t)

@@ -248,36 +248,48 @@ export function addEvent(docId, byline, type, detail = '', startedAt = null) {
 // desk gets its own entry: a version credits one byline, but news must name
 // whoever actually wrote, or the desk shows writers their own words as news.
 // an edit entry's detail is its net word count — additive across a run's
-// collapses (words are the one measure that sums), and only when a single
-// pen wrote: a shared stretch's count would put one writer's words in
-// another's line. the run is the SITTING: only entries minted since this
-// sitting began collapse, so yesterday's writing keeps its own line and its
-// own moment. started_at survives every collapse, pointing at the page as
-// it stood before the sitting — the far edge of the diff a row opens.
+// collapses (words are the one measure that sums), and each pen keeps its
+// own arithmetic: a stretch several pens shared counts for no one, but the
+// counts a pen earned alone survive every collapse. the run is the SITTING:
+// only entries minted since this sitting began collapse, so yesterday's
+// writing keeps its own line and its own moment. started_at points at the
+// version each row's words were measured against — the far edge of the
+// diff the row opens — and never reaches past a pin into another row's span.
 const EDIT_DELTA_RE = /^([+-]\d+) words$/
 const fmtDelta = (n) => (n > 0 ? `+${n} words` : n < 0 ? `${n} words` : '')
-export const addEditEvents = db.transaction((docId, bylines, delta = 0, sittingStart = 0) => {
-  const writers = new Map()
-  for (const b of bylines) writers.set(b.id || '', b)
-  let started = null
-  let priorNet = 0
-  while (true) {
-    const last = db
+export const addEditEvents = db.transaction(
+  (docId, bylines, { delta = 0, sittingStart = 0, stretchStart = 0 } = {}) => {
+    const writers = new Map()
+    for (const b of bylines) writers.set(b.id || '', b)
+    // per-pen ledger from the rows this collapse absorbs. the walk covers
+    // the sitting's trailing edit rows: rows by pens writing NOW are
+    // absorbed; another pen's line from earlier in the sitting stands where
+    // it is — skipped, never a wall (or a pen returning to solo work after
+    // company could never rejoin its own earlier count)
+    const carried = new Map() // user_id -> { net, started }
+    for (const last of db
       .prepare(
-        'SELECT id, user_id, type, detail, created_at, started_at FROM doc_events WHERE doc_id = ? ORDER BY id DESC LIMIT 1'
+        'SELECT id, user_id, type, detail, created_at, started_at FROM doc_events WHERE doc_id = ? ORDER BY id DESC LIMIT 50'
       )
-      .get(docId)
-    if (!last || last.type !== 'edit' || !writers.has(last.user_id)) break
-    if (sittingStart && last.created_at < sittingStart) break
-    started = Math.min(started ?? Infinity, last.started_at || last.created_at)
-    priorNet += Number(EDIT_DELTA_RE.exec(last.detail)?.[1] || 0)
-    db.prepare('DELETE FROM doc_events WHERE id = ?').run(last.id)
+      .all(docId)) {
+      if (last.type !== 'edit') break
+      if (sittingStart && last.created_at < sittingStart) break
+      if (!writers.has(last.user_id)) continue
+      const prev = carried.get(last.user_id) || { net: 0, started: Infinity }
+      carried.set(last.user_id, {
+        net: prev.net + Number(EDIT_DELTA_RE.exec(last.detail)?.[1] || 0),
+        started: Math.min(prev.started, last.started_at || last.created_at),
+      })
+      db.prepare('DELETE FROM doc_events WHERE id = ?').run(last.id)
+    }
+    const solo = writers.size === 1
+    for (const [uid, b] of writers) {
+      const c = carried.get(uid) || { net: 0, started: Infinity }
+      const net = c.net + (solo ? delta : 0)
+      addEvent(docId, b, 'edit', fmtDelta(net), Math.min(c.started, stretchStart || Infinity) || sittingStart)
+    }
   }
-  const solo = writers.size === 1
-  for (const b of writers.values()) {
-    addEvent(docId, b, 'edit', solo ? fmtDelta(priorNet + delta) : '', started || sittingStart)
-  }
-})
+)
 
 // point a reader's cursor at the end of the log — everything so far is seen.
 // one statement, and the update refuses when nothing moved, so a caught-up

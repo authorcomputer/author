@@ -2537,10 +2537,27 @@ function HistoryPanel({ docId, reviewing }: { docId: string; reviewing: boolean 
   const [events, setEvents] = useState<Ev[]>([])
   const [loaded, setLoaded] = useState(false)
   const lastJson = useRef('')
+  // the poll refreshes the newest page; older pages load on request and
+  // keep their place beneath it
+  const [older, setOlder] = useState<Ev[]>([])
+  const [olderDone, setOlderDone] = useState(false)
   // one open diff at a time; contents are immutable so they cache by id
   const [openId, setOpenId] = useState<number | null>(null)
   const [diffs, setDiffs] = useState<Map<number, DiffRow[] | 'gone'>>(new Map())
   const versionCache = useRef(new Map<string, any>())
+
+  const shown = [...events, ...older.filter((o) => !events.some((e) => e.id === o.id))]
+
+  async function loadOlder() {
+    const min = Math.min(...shown.map((e) => e.id))
+    try {
+      const batch: Ev[] = await api(`/api/docs/${docId}/events?before=${min}`)
+      setOlder((o) => [...o, ...batch])
+      if (batch.length < 120) setOlderDone(true)
+    } catch {
+      /* the button stays — trying again is one click */
+    }
+  }
 
   useEffect(() => {
     let live = true
@@ -2567,32 +2584,38 @@ function HistoryPanel({ docId, reviewing }: { docId: string; reviewing: boolean 
     }
   }, [docId])
 
-  // the diff an entry opens: the snapshot the sitting settled into, against
-  // the page as it stood before the run began (started_at survives every
-  // collapse, so a long sitting diffs whole, not just its last stretch)
+  // the diff an entry opens: the snapshot the row settled into, against the
+  // page as it stood at the row's far edge (started_at survives every
+  // collapse, so a long sitting diffs whole, not just its last stretch).
+  // the after-version is matched by span, not proximity — a stalled settle
+  // can stamp the entry seconds after its version, and must still find it
   async function toggleDiff(e: Ev) {
     if (openId === e.id) {
       setOpenId(null)
       return
     }
     setOpenId(e.id)
-    if (diffs.has(e.id)) return
+    // a failed read is not a verdict — clicking again tries again
+    if (Array.isArray(diffs.get(e.id))) return
     try {
       const versions: { id: string; created_at: number }[] = await api(
         `/api/docs/${docId}/versions`
       )
       const after = versions
-        .filter((v) => Math.abs(v.created_at - e.created_at) < 5000)
-        .sort(
-          (a, b) =>
-            Math.abs(a.created_at - e.created_at) - Math.abs(b.created_at - e.created_at)
-        )[0]
+        .filter(
+          (v) => v.created_at >= e.started_at - 5000 && v.created_at <= e.created_at + 5000
+        )
+        .sort((a, b) => b.created_at - a.created_at)[0]
       if (!after) {
         setDiffs((d) => new Map(d).set(e.id, 'gone'))
         return
       }
+      // the kept version itself must never play its own "before" — exclude
+      // it by id, and for a save anchor on the version's moment, not the
+      // entry's (they can sit a millisecond apart)
+      const edge = e.type === 'version.save' ? after.created_at : e.started_at
       const before = versions
-        .filter((v) => v.created_at < e.started_at)
+        .filter((v) => v.id !== after.id && v.created_at < edge)
         .sort((a, b) => b.created_at - a.created_at)[0]
       const contentOf = async (vid: string) => {
         if (!versionCache.current.has(vid)) {
@@ -2610,12 +2633,12 @@ function HistoryPanel({ docId, reviewing }: { docId: string; reviewing: boolean 
 
   return (
     <div>
-      {loaded && events.length === 0 && (
+      {loaded && shown.length === 0 && (
         <div className="hint" style={{ marginTop: 16 }}>
           ( nothing has happened here yet )
         </div>
       )}
-      {events.map((e) => {
+      {shown.map((e) => {
         const diffable = !reviewing && DIFFABLE.has(e.type)
         const diff = openId === e.id ? diffs.get(e.id) : undefined
         return (
@@ -2661,6 +2684,13 @@ function HistoryPanel({ docId, reviewing }: { docId: string; reviewing: boolean 
           </div>
         )
       })}
+      {shown.length >= 120 && !olderDone && (
+        <div className="show-older">
+          <button className="faint" onClick={loadOlder}>
+            · · · show older · · ·
+          </button>
+        </div>
+      )}
     </div>
   )
 }
