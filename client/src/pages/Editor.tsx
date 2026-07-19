@@ -1242,7 +1242,6 @@ function SharePop({
       <div className="share-pop">
         <div className="share-sec">
           <div className="share-h">✎ write together</div>
-          <div className="share-link">{writeUrl}</div>
           <button onClick={() => copy(writeUrl, 'write')}>
             {copied === 'write' ? '✓ copied' : '[ copy writing link ]'}
           </button>
@@ -1254,7 +1253,6 @@ function SharePop({
             </div>
             <div className="share-sec">
               <div className="share-h"><Bubble /> comments only</div>
-              <div className="share-link">{reviewUrl}</div>
               <button onClick={() => copy(reviewUrl, 'review')}>
                 {copied === 'review' ? '✓ copied' : '[ copy review link ]'}
               </button>
@@ -1285,7 +1283,6 @@ function SharePop({
           <div className="share-h">✽ read only</div>
           {meta.published && readUrl ? (
             <>
-              <div className="share-link">{readUrl}</div>
               <div style={{ display: 'flex', gap: 14 }}>
                 <button onClick={() => copy(readUrl, 'read')}>
                   {copied === 'read' ? '✓ copied' : '[ copy reading link ]'}
@@ -1332,7 +1329,7 @@ function SharePop({
               · · · · · · · · · · · · · · · · · · ·
             </div>
             <div className="share-sec">
-              <div className="share-h">⇩ take it with you</div>
+              <div className="share-h">⇩ export as</div>
               <div className="share-row">
                 <button onClick={() => exportAs('md')}>[ markdown ]</button>
                 <button onClick={() => exportAs('html')}>[ html ]</button>
@@ -1340,7 +1337,7 @@ function SharePop({
               </div>
             </div>
             <div className="share-sec" style={{ marginTop: 10 }}>
-              <div className="share-h">⧉ copy the page as</div>
+              <div className="share-h">⧉ copy as</div>
               <div className="share-row">
                 <button onClick={() => copyAs('md')}>
                   {copied === 'as-md' ? '✓ copied' : '[ markdown ]'}
