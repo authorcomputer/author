@@ -171,10 +171,30 @@ function SettingsTab() {
           placeholder={'https://x.com/you\nhttps://github.com/you'}
           value={linksText}
           onChange={(e) => setLinksText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== 'Tab' || e.shiftKey) return
+            // ⇥ finishes the scaffolding the placeholder shows: an empty
+            // line gets its example's prefix, a half-typed one is completed.
+            // when there's nothing to fill, the key keeps its focus job.
+            const ta = e.currentTarget
+            const at = ta.selectionStart
+            const before = ta.value.slice(0, at)
+            const line = before.slice(before.lastIndexOf('\n') + 1)
+            const lineIdx = (before.match(/\n/g) || []).length
+            const starts = ['https://x.com/', 'https://github.com/', 'https://']
+            const first = starts[Math.min(lineIdx, starts.length - 1)]
+            const pick = line
+              ? [first, ...starts].find((p) => p.startsWith(line) && p !== line)
+              : first
+            if (!pick) return
+            e.preventDefault()
+            ta.setRangeText(pick.slice(line.length), at, ta.selectionEnd, 'end')
+            setLinksText(ta.value)
+          }}
         />
         <div className="ai-actions">
           <button onClick={() => save(s)}>{saved ? '✓ saved' : '[ save links ]'}</button>
-          <span className="hint">one per line, up to six — full https:// urls</span>
+          <span className="hint">one per line, up to six — ⇥ fills the https:// part</span>
         </div>
       </div>
     </div>
