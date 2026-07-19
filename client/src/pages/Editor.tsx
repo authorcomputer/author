@@ -1161,6 +1161,12 @@ function SharePop({
 
   async function doPost() {
     if (posting) return
+    if (
+      !confirm(
+        `Post this piece to ${boxCount} address${boxCount === 1 ? '' : 'es'}? A piece posts once.`
+      )
+    )
+      return
     setPosting(true)
     track('letterbox: posted', { addresses: boxCount })
     try {
