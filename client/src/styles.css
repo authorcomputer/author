@@ -361,7 +361,7 @@ input, textarea {
 }
 .comment-mark:hover { background: #f7e6c3; }
 
-/* the gutter ledger: what each paragraph holds — ☜ notes, ↳ suggested
+/* the gutter ledger: what each paragraph holds — ☚ notes, ↳ suggested
    edits, counts when there's more than one. click to open the panel. */
 .tiptap :has(> .comment-gutter) { position: relative; }
 .comment-gutter {
@@ -1227,7 +1227,7 @@ a:has(> .logo) {
   [data-mode='dark'] .panel { box-shadow: -8px 0 24px rgba(0, 0, 0, 0.4); }
 }
 
-/* the hairline dingbats (☞ ✎ ✽ ⇩ ⧉ ☜ ↳) thin out light-on-dark; a
+/* the hairline dingbats (☛ ✎ ✽ ⇩ ⧉ ☚ ↳) thin out light-on-dark; a
    half-pixel stroke gives every icon-bearing spot its daylight weight */
 [data-mode='dark'] .ed-top,
 [data-mode='dark'] .share-pop .share-h,

@@ -795,7 +795,7 @@ function EditorInner({ id, entry }: { id: string; entry?: Meta }) {
                 '✎ a ghost draft'
               ) : (
                 <>
-                  {reviewing ? '☞' : '✎'}{' '}
+                  {reviewing ? '☛' : '✎'}{' '}
                   {meta.owner === 'a ghost' ? (
                     meta.owner
                   ) : (
@@ -818,7 +818,7 @@ function EditorInner({ id, entry }: { id: string; entry?: Meta }) {
           </span>
           {others.map((o, i) => (
             <span className="who" key={i} style={{ color: o.color }}>
-              {o.reviewing ? '☞' : '+'} {o.name}
+              {o.reviewing ? '☛' : '+'} {o.name}
             </span>
           ))}
         </div>
@@ -832,7 +832,7 @@ function EditorInner({ id, entry }: { id: string; entry?: Meta }) {
             onClick={() => (panel === 'comments' ? setPanel(null) : openPanel('comments'))}
             title="open comments"
           >
-            ☞ {openComments.length}
+            ☛ {openComments.length}
           </button>
         )}
         <button
@@ -1080,7 +1080,7 @@ function FormatBubble({ editor }: { editor: TiptapEditor }) {
         {item('“quote”', editor.isActive('blockquote'), () => editor.chain().focus().toggleBlockquote().run(), 'quote', 'quote ⌘⇧B')}
         <span className="fmt-sep">·</span>
         {item('link', editor.isActive('link'), setLink, 'link', 'add or edit link')}
-        {item('☞ comment', editor.isActive('comment'), () => window.dispatchEvent(new CustomEvent('author:comment')), 'comment', 'comment ⌥⌘M')}
+        {item('☛ comment', editor.isActive('comment'), () => window.dispatchEvent(new CustomEvent('author:comment')), 'comment', 'comment ⌥⌘M')}
         {item('✎ ai', false, () => window.dispatchEvent(new CustomEvent('author:open-cmdk')), 'ai', 'rewrite with ⌘K')}
       </div>
     </BubbleMenu>
@@ -1104,7 +1104,7 @@ function ReviewBubble({ editor }: { editor: TiptapEditor }) {
             window.dispatchEvent(new CustomEvent('author:comment'))
           }}
         >
-          ☞ comment
+          ☛ comment
         </button>
       </div>
     </BubbleMenu>
@@ -1224,7 +1224,7 @@ function SharePop({
               · · · · · · · · · · · · · · · · · · ·
             </div>
             <div className="share-sec">
-              <div className="share-h">☞ comments only</div>
+              <div className="share-h">☛ comments only</div>
               <div className="share-link">{reviewUrl}</div>
               <button onClick={() => copy(reviewUrl, 'review')}>
                 {copied === 'review' ? '✓ copied' : '[ copy review link ]'}
@@ -2094,7 +2094,7 @@ function CommentComposer({
       >
         <div className="mode-row">
           <button className={mode === 'note' ? 'on' : ''} onClick={() => setMode('note')}>
-            [ ☞ note ]
+            [ ☛ note ]
           </button>
           <button className={mode === 'edit' ? 'on' : ''} onClick={() => setMode('edit')}>
             [ ↳ suggest an edit ]
@@ -2296,7 +2296,7 @@ function CommentsPanel({
           window.dispatchEvent(new CustomEvent('author:comment'))
         }}
       >
-        [ ☞ comment on selection ]
+        [ ☛ comment on selection ]
       </button>
       {open.length === 0 && (
         <div className="hint" style={{ marginTop: 16 }}>
@@ -2617,7 +2617,7 @@ const DIFFABLE = new Set(['edit', 'version.save'])
 // each entry wears its verb as state, not sentence — the glyphs match the
 // ones the rest of the interface already speaks
 const EV_VERBS: Record<string, string> = {
-  'comment.add': '☞ commented',
+  'comment.add': '☛ commented',
   'comment.reply': '↩ replied',
   'suggestion.add': '↳ suggested',
   'suggestion.accept': '✓ accepted',

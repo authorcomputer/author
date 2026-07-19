@@ -1,4 +1,4 @@
-// The gutter ledger: each commented line shows what it holds — ☜ for notes
+// The gutter ledger: each commented line shows what it holds — ☚ for notes
 // (the manicule pointing back at the text), ↳ for suggested edits, with a
 // count when there's more than one. Clicking it opens the comments panel.
 // Widget decorations, so the glyphs can actually count marks.
@@ -48,7 +48,7 @@ function build(doc: PMNode): GutterState {
     const edits = [...kinds.values()].filter((k) => k === 'edit').length
     const notes = kinds.size - edits
     const text = [
-      notes ? `☜${notes > 1 ? notes : ''}` : '',
+      notes ? `☚${notes > 1 ? notes : ''}` : '',
       edits ? `↳${edits > 1 ? edits : ''}` : '',
     ]
       .filter(Boolean)

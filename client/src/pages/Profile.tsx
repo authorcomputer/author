@@ -262,7 +262,7 @@ function FirstReadersRow() {
       <div className="setting-h">✉ first readers</div>
       {readers.map((r) => (
         <div className="import-row" key={r.id}>
-          <span className="faint">☞ </span>
+          <span className="faint">☛ </span>
           <Link to={`/u/${r.username}`}>{r.username}</Link>{' '}
           <button className="faint" title="remove" onClick={() => drop(r.id)}>
             ✗

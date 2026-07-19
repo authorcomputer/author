@@ -47,7 +47,7 @@ function DocNews({ unseen }: { unseen: Record<string, number> | null }) {
     [n.sent, '✉ sent to you', 'sent for your review'],
     [n.wrote, '✎ edited', 'edited'],
     [n.suggs > 0, `↳ ${n.suggs}`, 'suggested edits'],
-    [n.notes > 0, `☞ ${n.notes}`, 'comments'],
+    [n.notes > 0, `☛ ${n.notes}`, 'comments'],
     [n.settled > 0, `✓ ${n.settled}`, 'settled'],
   ]
   return (

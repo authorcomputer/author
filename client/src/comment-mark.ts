@@ -23,7 +23,7 @@ export const CommentMark = Mark.create({
         parseHTML: (el) => el.getAttribute('data-comment-id'),
         renderHTML: (attrs) => (attrs.id ? { 'data-comment-id': attrs.id } : {}),
       },
-      // a note (☞) or a suggested edit (↳) — the gutter tells them apart
+      // a note (☛) or a suggested edit (↳) — the gutter tells them apart
       kind: {
         default: 'note',
         parseHTML: (el) => el.getAttribute('data-comment-kind') || 'note',
