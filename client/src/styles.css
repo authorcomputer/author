@@ -651,7 +651,7 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
   white-space: pre-wrap;
 }
 
-.ai-actions { margin-top: 14px; display: flex; gap: 14px; }
+.ai-actions { margin-top: 14px; display: flex; flex-wrap: wrap; gap: 14px; }
 
 /* every place a panel or card takes words wears the same box — one solid
    hairline, accent while the pen is in it. sizes vary; the box never does. */
@@ -844,7 +844,15 @@ body:has(.cmdk-backdrop) .fmt-bubble { display: none; }
   background: linear-gradient(transparent, var(--paper));
 }
 
-.row-actions { display: flex; gap: 12px; margin-top: 6px; font-size: 12px; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; font-size: 12px; }
+
+/* a bracketed label is one word — it never breaks mid-bracket; when a row
+   runs short of room, a whole button steps down to the next line */
+.row-actions button,
+.ai-actions button,
+.share-pop button {
+  white-space: nowrap;
+}
 
 .panel-foot {
   border-top: 1px solid var(--wash);
