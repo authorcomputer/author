@@ -361,9 +361,13 @@ input, textarea {
 }
 .comment-mark:hover { background: #f7e6c3; }
 
-/* the pointing hand, a step larger than its line so the solid glyph still
-   reads as a hand and not a blot */
-.manicule { font-size: 1.25em; line-height: 1; }
+/* the comment bubble: drawn, not typed, so it weighs the same everywhere.
+   sized to sit in running text like a character would */
+.bubble {
+  width: 0.95em;
+  height: 0.95em;
+  vertical-align: -0.12em;
+}
 
 /* the gutter ledger: what each paragraph holds — ☚ notes, ↳ suggested
    edits, counts when there's more than one. click to open the panel. */

@@ -1,6 +1,6 @@
-// The gutter ledger: each commented line shows what it holds — ☚ for notes
-// (the manicule pointing back at the text), ↳ for suggested edits, with a
-// count when there's more than one. Clicking it opens the comments panel.
+// The gutter ledger: each commented line shows what it holds — a speech
+// bubble for notes, ↳ for suggested edits, with a count when there's more
+// than one. Clicking it opens the comments panel.
 // Widget decorations, so the glyphs can actually count marks.
 //
 // Widgets live inside each TEXTBLOCK (a paragraph, a heading, a line of a
@@ -11,6 +11,7 @@ import { Extension } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import type { Node as PMNode } from '@tiptap/pm/model'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
+import { BUBBLE_SVG } from './Bubble'
 
 const key = new PluginKey<GutterState>('comment-gutter')
 
@@ -19,8 +20,9 @@ type GutterState = { set: DecorationSet; sig: string }
 const makeEl = (text: string, ids: string[]) => () => {
   const el = document.createElement('span')
   el.className = 'comment-gutter'
-  // the hand wears its size-up span (see .manicule); the counts stay in line
-  el.innerHTML = text.replace('☚', '<span class="manicule">☚</span>')
+  // ☚ is the note marker inside `text` (and its dedupe key); it renders as
+  // the drawn bubble, the same glyph the buttons wear
+  el.innerHTML = text.replace('☚', BUBBLE_SVG)
   el.title = 'open comments'
   el.contentEditable = 'false'
   // the glyph is a button, not text — don't let the editor move the caret

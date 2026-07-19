@@ -15,7 +15,7 @@ import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { api, apiStream, me, username, colorFor, localDay } from '../api'
 import { CommentMark } from '../comment-mark'
-import Manicule from '../Manicule'
+import Bubble from '../Bubble'
 import { Embed } from '../embed-node'
 import { parseEmbed } from '../embeds'
 import { renderMarkdown } from '../markdown'
@@ -797,7 +797,7 @@ function EditorInner({ id, entry }: { id: string; entry?: Meta }) {
                 '✎ a ghost draft'
               ) : (
                 <>
-                  {reviewing ? <Manicule /> : '✎'}{' '}
+                  {reviewing ? <Bubble /> : '✎'}{' '}
                   {meta.owner === 'a ghost' ? (
                     meta.owner
                   ) : (
@@ -820,7 +820,7 @@ function EditorInner({ id, entry }: { id: string; entry?: Meta }) {
           </span>
           {others.map((o, i) => (
             <span className="who" key={i} style={{ color: o.color }}>
-              {o.reviewing ? <Manicule /> : '+'} {o.name}
+              {o.reviewing ? <Bubble /> : '+'} {o.name}
             </span>
           ))}
         </div>
@@ -834,7 +834,7 @@ function EditorInner({ id, entry }: { id: string; entry?: Meta }) {
             onClick={() => (panel === 'comments' ? setPanel(null) : openPanel('comments'))}
             title="open comments"
           >
-            <Manicule /> {openComments.length}
+            <Bubble /> {openComments.length}
           </button>
         )}
         <button
@@ -1082,7 +1082,7 @@ function FormatBubble({ editor }: { editor: TiptapEditor }) {
         {item('“quote”', editor.isActive('blockquote'), () => editor.chain().focus().toggleBlockquote().run(), 'quote', 'quote ⌘⇧B')}
         <span className="fmt-sep">·</span>
         {item('link', editor.isActive('link'), setLink, 'link', 'add or edit link')}
-        {item(<><Manicule /> comment</>, editor.isActive('comment'), () => window.dispatchEvent(new CustomEvent('author:comment')), 'comment', 'comment ⌥⌘M')}
+        {item(<><Bubble /> comment</>, editor.isActive('comment'), () => window.dispatchEvent(new CustomEvent('author:comment')), 'comment', 'comment ⌥⌘M')}
         {item('✎ ai', false, () => window.dispatchEvent(new CustomEvent('author:open-cmdk')), 'ai', 'rewrite with ⌘K')}
       </div>
     </BubbleMenu>
@@ -1106,7 +1106,7 @@ function ReviewBubble({ editor }: { editor: TiptapEditor }) {
             window.dispatchEvent(new CustomEvent('author:comment'))
           }}
         >
-          <Manicule /> comment
+          <Bubble /> comment
         </button>
       </div>
     </BubbleMenu>
@@ -1247,7 +1247,7 @@ function SharePop({
               · · · · · · · · · · · · · · · · · · ·
             </div>
             <div className="share-sec">
-              <div className="share-h"><Manicule /> comments only</div>
+              <div className="share-h"><Bubble /> comments only</div>
               <div className="share-link">{reviewUrl}</div>
               <button onClick={() => copy(reviewUrl, 'review')}>
                 {copied === 'review' ? '✓ copied' : '[ copy review link ]'}
@@ -2131,7 +2131,7 @@ function CommentComposer({
       >
         <div className="mode-row">
           <button className={mode === 'note' ? 'on' : ''} onClick={() => setMode('note')}>
-            [ <Manicule /> note ]
+            [ <Bubble /> note ]
           </button>
           <button className={mode === 'edit' ? 'on' : ''} onClick={() => setMode('edit')}>
             [ ↳ suggest an edit ]
@@ -2333,7 +2333,7 @@ function CommentsPanel({
           window.dispatchEvent(new CustomEvent('author:comment'))
         }}
       >
-        [ <Manicule /> comment on selection ]
+        [ <Bubble /> comment on selection ]
       </button>
       {open.length === 0 && (
         <div className="hint" style={{ marginTop: 16 }}>
@@ -2656,7 +2656,7 @@ const DIFFABLE = new Set(['edit', 'version.save'])
 const EV_VERBS: Record<string, ReactNode> = {
   'comment.add': (
     <>
-      <Manicule /> commented
+      <Bubble /> commented
     </>
   ),
   'comment.reply': '↩ replied',

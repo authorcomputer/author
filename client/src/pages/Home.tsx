@@ -2,7 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, username, signOut } from '../api'
 import Logo from '../Logo'
-import Manicule from '../Manicule'
+import Bubble from '../Bubble'
 import Chart from '../Chart'
 import { track } from '../analytics'
 
@@ -48,7 +48,7 @@ function DocNews({ unseen }: { unseen: Record<string, number> | null }) {
     [n.sent, '✉ sent to you', 'sent for your review'],
     [n.wrote, '✎ edited', 'edited'],
     [n.suggs > 0, `↳ ${n.suggs}`, 'suggested edits'],
-    [n.notes > 0, <><Manicule /> {n.notes}</>, 'comments'],
+    [n.notes > 0, <><Bubble /> {n.notes}</>, 'comments'],
     [n.settled > 0, `✓ ${n.settled}`, 'settled'],
   ]
   return (

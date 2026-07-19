@@ -10,7 +10,7 @@ import { WebsocketProvider } from 'y-websocket'
 import { prosemirrorJSONToYDoc } from 'y-prosemirror'
 import { api, localDay, setMe, username } from '../api'
 import { track } from '../analytics'
-import Manicule from '../Manicule'
+import Bubble from '../Bubble'
 import { CommentMark } from '../comment-mark'
 import Logo from '../Logo'
 
@@ -266,7 +266,7 @@ function FirstReadersRow() {
       {readers.map((r) => (
         <div className="import-row" key={r.id}>
           <span className="faint">
-            <Manicule />{' '}
+            <Bubble />{' '}
           </span>
           <Link to={`/u/${r.username}`}>{r.username}</Link>{' '}
           <button className="faint" title="remove" onClick={() => drop(r.id)}>
