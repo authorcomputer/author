@@ -13,8 +13,18 @@ export type UpdateDay = { date: string; title: string; blocks: UpdateBlock[] }
 export const UPDATES: UpdateDay[] = [
   {
     date: 'july 19, 2026',
-    title: 'dark mode',
+    title: 'first readers, rss, dark mode',
     blocks: [
+      {
+        kind: 'bullet',
+        head: 'first readers',
+        text: 'keep a circle of trusted readers in settings. [ ✉ send ] in a draft’s share popover puts it on all their desks at once, for comments and suggested edits.',
+      },
+      {
+        kind: 'bullet',
+        head: 'rss',
+        text: 'public profiles have a feed at /u/handle/feed.xml — the pieces you list, readable in any feed reader.',
+      },
       {
         kind: 'bullet',
         head: 'dark mode',
