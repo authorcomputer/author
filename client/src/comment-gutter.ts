@@ -19,7 +19,8 @@ type GutterState = { set: DecorationSet; sig: string }
 const makeEl = (text: string, ids: string[]) => () => {
   const el = document.createElement('span')
   el.className = 'comment-gutter'
-  el.textContent = text
+  // the hand wears its size-up span (see .manicule); the counts stay in line
+  el.innerHTML = text.replace('☚', '<span class="manicule">☚</span>')
   el.title = 'open comments'
   el.contentEditable = 'false'
   // the glyph is a button, not text — don't let the editor move the caret

@@ -105,6 +105,24 @@ CREATE TABLE IF NOT EXISTS first_readers (
   created_at INTEGER NOT NULL,
   PRIMARY KEY (owner_id, reader_id)
 );
+CREATE TABLE IF NOT EXISTS subscribers (
+  id TEXT PRIMARY KEY,
+  author_id TEXT NOT NULL,
+  email TEXT NOT NULL,
+  confirmed INTEGER DEFAULT 0,
+  confirm_token TEXT,
+  unsub_token TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  confirmed_at INTEGER,
+  UNIQUE (author_id, email)
+);
+CREATE INDEX IF NOT EXISTS idx_subscribers_author ON subscribers(author_id, confirmed);
+CREATE TABLE IF NOT EXISTS email_usage (
+  user_id TEXT NOT NULL,
+  day TEXT NOT NULL,
+  count INTEGER DEFAULT 0,
+  PRIMARY KEY (user_id, day)
+);
 `)
 
 // lightweight migrations for pre-existing databases. returns whether the
@@ -175,6 +193,12 @@ addColumn('versions', 'user_id TEXT')
 if (addColumn('docs', 'published_at INTEGER')) {
   db.exec('UPDATE docs SET published_at = updated_at WHERE published = 1')
 }
+
+// the letterbox: a slot on the door readers drop their address through.
+// closed until its owner opens it; a piece is posted to the letterbox at
+// most once, and the stamp remembers when
+addColumn('profiles', 'letterbox INTEGER DEFAULT 0')
+addColumn('docs', 'posted_at INTEGER')
 
 // a comment can carry a proposed replacement for its quoted passage
 addColumn('comments', "suggestion TEXT DEFAULT ''")

@@ -13,8 +13,13 @@ export type UpdateDay = { date: string; title: string; blocks: UpdateBlock[] }
 export const UPDATES: UpdateDay[] = [
   {
     date: 'july 19, 2026',
-    title: 'first readers, rss, dark mode',
+    title: 'the letterbox, first readers, rss, dark mode',
     blocks: [
+      {
+        kind: 'bullet',
+        head: 'the letterbox',
+        text: 'open it in settings and readers can leave their email on your published pages and profile. [ ✉ post ] sends a published piece to every confirmed address — free accounts hold 25 addresses with 200 letters a month, members 1,000 and 5,000.',
+      },
       {
         kind: 'bullet',
         head: 'first readers',

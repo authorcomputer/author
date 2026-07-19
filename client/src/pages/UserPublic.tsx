@@ -5,6 +5,7 @@ import { track } from '../analytics'
 import Logo from '../Logo'
 import Chart from '../Chart'
 import Scribble from '../Scribble'
+import LetterSlot from '../LetterSlot'
 
 type Article = {
   title: string
@@ -22,6 +23,7 @@ type ProfileData = {
   links: string[]
   activity: { day: string; count: number }[]
   articles: Article[]
+  letterbox?: boolean
   own?: boolean
   profile_public?: boolean
 }
@@ -233,6 +235,11 @@ export default function UserPublic() {
               <div className="peek-title">{peek.a.title || 'untitled'}</div>
               <div className="ascii-rule">~~~~~~~~~~~~~~~~~~</div>
               <div className="peek-body">{peek.a.preview}</div>
+            </div>
+          )}
+          {p.letterbox && (
+            <div style={{ marginTop: 40 }}>
+              <LetterSlot author={p.username} />
             </div>
           )}
           <div className="pub-foot">

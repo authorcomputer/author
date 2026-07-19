@@ -13,6 +13,7 @@ import { auth, runAuthMigrations, migrateLegacyUsers, TRUSTED_ORIGINS } from './
 import { setupCollab, flushRooms, insertVersion, dropRoom, hasRoom } from './collab.js'
 import { putImage, deleteImage, pushMissing, imagesReplicated } from './images.js'
 import { aiFeedback, aiCommand, aiChecks } from './ai.js'
+import { sendEmail, sendBatch } from './email.js'
 
 const app = express()
 
@@ -81,6 +82,14 @@ function textOf(html) {
 function previewOf(html, n = 420) {
   return textOf(html).replace(/\s+/g, ' ').trim().slice(0, n)
 }
+
+// stored html points at /files/ by relative path; feeds and letters leave
+// the origin behind and must carry it along
+const absFiles = (html, origin) =>
+  String(html || '').replace(/(src|href)="\/files\//g, `$1="${origin}/files/`)
+
+const originOf = (req) =>
+  (process.env.BETTER_AUTH_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '')
 
 // ---------- auth (better-auth cookie sessions; ghosts are anonymous users) ----------
 async function getUser(headers) {
@@ -335,6 +344,7 @@ function docMeta(doc, userId) {
     owner: owner?.username || 'a ghost',
     header_image: doc.header_image || null,
     on_profile: !!doc.on_profile,
+    posted_at: doc.posted_at || null,
   }
 }
 
@@ -496,6 +506,204 @@ app.post('/api/docs/:id/send', requireFullUser, (req, res) => {
   res.json({ sent, circle: readers.length })
 })
 
+// ---------- the letterbox ----------
+// a slot on the door: readers drop an address through it, and when the
+// writer chooses [ ✉ post ], a published piece goes out as a letter. the
+// economics are enforced here, not hoped for: per-writer monthly postage
+// (members buy more than they can ever cost), and a global ceiling that
+// sits inside the email provider's free tier until it is raised by hand —
+// the platform can never owe money for postage no one paid for.
+const EMAILS_FREE_MONTHLY = Number(process.env.EMAILS_FREE_MONTHLY || 200)
+const EMAILS_MEMBER_MONTHLY = Number(process.env.EMAILS_MEMBER_MONTHLY || 5000)
+const EMAILS_GLOBAL_DAILY = Number(process.env.EMAILS_GLOBAL_DAILY || 90)
+const EMAILS_GLOBAL_MONTHLY = Number(process.env.EMAILS_GLOBAL_MONTHLY || 2800)
+const SUBSCRIBERS_FREE_MAX = Number(process.env.SUBSCRIBERS_FREE_MAX || 25)
+const SUBSCRIBERS_MEMBER_MAX = Number(process.env.SUBSCRIBERS_MEMBER_MAX || 1000)
+
+const emailDay = () => new Date().toISOString().slice(0, 10)
+function bumpEmails(key, n) {
+  if (n <= 0) return
+  db.prepare(
+    `INSERT INTO email_usage (user_id, day, count) VALUES (?, ?, ?)
+     ON CONFLICT(user_id, day) DO UPDATE SET count = count + excluded.count`
+  ).run(key, emailDay(), n)
+}
+const monthEmailsOf = (key) =>
+  db
+    .prepare(
+      `SELECT COALESCE(SUM(count), 0) AS s FROM email_usage
+       WHERE user_id = ? AND day >= date('now', 'start of month')`
+    )
+    .get(key).s
+const dayEmailsOf = (key) =>
+  db.prepare('SELECT COALESCE(count, 0) AS c FROM email_usage WHERE user_id = ? AND day = ?').get(key, emailDay())
+    ?.c || 0
+// room under the global ceiling for n more letters today
+const globalRoom = (n) =>
+  dayEmailsOf('global') + n <= EMAILS_GLOBAL_DAILY && monthEmailsOf('global') + n <= EMAILS_GLOBAL_MONTHLY
+
+const postageOf = (userId) => (profileFor(userId).member ? EMAILS_MEMBER_MONTHLY : EMAILS_FREE_MONTHLY)
+const letterboxMax = (userId) =>
+  profileFor(userId).member ? SUBSCRIBERS_MEMBER_MAX : SUBSCRIBERS_FREE_MAX
+
+const ownLetterbox = (userId) => ({
+  on: !!profileFor(userId).letterbox,
+  subscribers: db
+    .prepare(
+      'SELECT id, email, confirmed, created_at FROM subscribers WHERE author_id = ? ORDER BY created_at'
+    )
+    .all(userId)
+    .map((s) => ({ ...s, confirmed: !!s.confirmed })),
+  postage: { used: monthEmailsOf(userId), allowance: postageOf(userId) },
+  capacity: letterboxMax(userId),
+})
+
+app.get('/api/letterbox', requireFullUser, (req, res) => res.json(ownLetterbox(req.user.id)))
+
+app.post('/api/letterbox', requireFullUser, (req, res) => {
+  const on = !!(req.body || {}).on
+  db.prepare(
+    `INSERT INTO profiles (user_id, letterbox) VALUES (?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET letterbox = excluded.letterbox`
+  ).run(req.user.id, on ? 1 : 0)
+  res.json(ownLetterbox(req.user.id))
+})
+
+app.delete('/api/letterbox/:subId', requireFullUser, (req, res) => {
+  db.prepare('DELETE FROM subscribers WHERE id = ? AND author_id = ?').run(
+    req.params.subId,
+    req.user.id
+  )
+  res.json(ownLetterbox(req.user.id))
+})
+
+// a reader drops their address through the slot. the answer is flat no
+// matter what happened — this door must not say whose letterbox exists,
+// is open, is full, or already holds the address. confirmation is asked
+// by email (double opt-in), re-asked at most every ten minutes, and only
+// while the global ceiling has room.
+app.post('/api/letterbox/:username/subscribe', rateLimit(6, 10 * 60_000), async (req, res) => {
+  res.json({ ok: true }) // answered before the work — the reply carries no verdict
+  try {
+    const addr = String((req.body || {}).email || '').toLowerCase().trim()
+    if (!/^\S+@\S+\.\S+$/.test(addr) || addr.length > 254) return
+    const u = db
+      .prepare('SELECT id, username FROM user WHERE username = ?')
+      .get(String(req.params.username || '').toLowerCase())
+    if (!u || !profileFor(u.id).letterbox) return
+    const existing = db
+      .prepare('SELECT * FROM subscribers WHERE author_id = ? AND email = ?')
+      .get(u.id, addr)
+    if (existing?.confirmed) return
+    if (existing && Date.now() - existing.created_at < 10 * 60_000) return
+    const confirmed = db
+      .prepare('SELECT COUNT(*) AS c FROM subscribers WHERE author_id = ? AND confirmed = 1')
+      .get(u.id).c
+    const waiting = db
+      .prepare('SELECT COUNT(*) AS c FROM subscribers WHERE author_id = ?')
+      .get(u.id).c
+    const cap = letterboxMax(u.id)
+    if (!existing && (confirmed >= cap || waiting >= cap * 2)) return
+    if (!globalRoom(1)) return
+    const token = crypto.randomBytes(16).toString('hex')
+    if (existing) {
+      db.prepare('UPDATE subscribers SET confirm_token = ?, created_at = ? WHERE id = ?').run(
+        token,
+        Date.now(),
+        existing.id
+      )
+    } else {
+      db.prepare(
+        `INSERT INTO subscribers (id, author_id, email, confirmed, confirm_token, unsub_token, created_at)
+         VALUES (?, ?, ?, 0, ?, ?, ?)`
+      ).run(uid('sub'), u.id, addr, token, crypto.randomBytes(16).toString('hex'), Date.now())
+    }
+    const origin = originOf(req)
+    const link = `${origin}/letter/confirm/${token}`
+    await sendEmail({
+      to: addr,
+      fromName: `${u.username} · author*`,
+      subject: `letters from ${u.username}`,
+      link,
+      html: letterShell(
+        `<p style="margin:0 0 20px">this address was left in <strong>${esc(u.username)}</strong>&rsquo;s letterbox on author*.</p>
+         <p style="margin:0 0 20px"><a href="${esc(link)}" style="color:#1a1a1a">[ yes — send me their letters ]</a></p>
+         <p style="margin:0;color:#999;font-size:13px">wasn&rsquo;t you? let this note drift.</p>`
+      ),
+    })
+    bumpEmails('global', 1)
+  } catch (e) {
+    console.error('subscribe failed', e)
+  }
+})
+
+// the letter itself: the piece, dressed for the mail — serif, no chrome,
+// its own address and a way out at the bottom
+const letterShell = (inner) =>
+  `<div style="font-family:Georgia,'Times New Roman',serif;max-width:560px;margin:0 auto;padding:32px 20px;color:#1a1a1a;line-height:1.6">${inner}</div>`
+function letterHtml(doc, origin, author, unsubUrl) {
+  const url = `${origin}/p/${doc.slug}`
+  return letterShell(
+    `<div style="color:#999;font-size:13px;margin-bottom:18px">${esc(author)} &middot; author*</div>
+     <h1 style="font-size:26px;font-weight:normal;margin:0 0 6px">${esc(doc.title || 'untitled')}</h1>
+     <div style="color:#bbb;margin-bottom:26px">~~~~~~~~~~~~~~~~~~</div>
+     ${absFiles(doc.html, origin)}
+     <div style="color:#bbb;margin:32px 0 12px">~~~~~~~~~~~~~~~~~~</div>
+     <div style="color:#999;font-size:13px">✽ <a href="${esc(url)}" style="color:#999">read on author*</a> &middot; <a href="${esc(unsubUrl)}" style="color:#999">no more letters</a></div>`
+  )
+}
+
+// [ ✉ post ]: a published piece goes to every confirmed address, once.
+// the ledger settles on what actually left the building — a walk that
+// stops partway charges (and stamps) only the letters that made it out.
+app.post('/api/docs/:id/post', requireFullUser, async (req, res) => {
+  try {
+    const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
+    if (!doc) return res.status(404).json({ error: 'no such doc' })
+    if (doc.owner_id !== req.user.id) return res.status(403).json({ error: 'not yours' })
+    if (!doc.published || !doc.slug) return res.status(400).json({ error: 'publish it first' })
+    if (doc.posted_at) return res.status(400).json({ error: 'already posted' })
+    if (!profileFor(req.user.id).letterbox)
+      return res.status(400).json({ error: 'the letterbox is closed' })
+    const subs = db
+      .prepare('SELECT email, unsub_token FROM subscribers WHERE author_id = ? AND confirmed = 1')
+      .all(req.user.id)
+    if (!subs.length) return res.status(400).json({ error: 'the letterbox is empty' })
+    if (monthEmailsOf(req.user.id) + subs.length > postageOf(req.user.id))
+      return res.status(429).json({ error: 'past this month’s postage' })
+    if (!globalRoom(subs.length))
+      return res.status(503).json({ error: 'the post office is at capacity — try tomorrow' })
+    const origin = originOf(req)
+    const sent = await sendBatch(
+      subs.map((s) => {
+        const unsubUrl = `${origin}/letter/leave/${s.unsub_token}`
+        return {
+          to: s.email,
+          fromName: `${req.user.username} · author*`,
+          subject: doc.title || 'untitled',
+          link: `${origin}/p/${doc.slug}`,
+          unsubUrl,
+          html: letterHtml(doc, origin, req.user.username, unsubUrl),
+        }
+      })
+    )
+    if (sent === 0) return res.status(502).json({ error: 'the post stuck — nothing was charged' })
+    bumpEmails(req.user.id, sent)
+    bumpEmails('global', sent)
+    db.prepare('UPDATE docs SET posted_at = ? WHERE id = ?').run(Date.now(), doc.id)
+    addEvent(
+      doc.id,
+      { id: req.user.id, username: req.user.username },
+      'post',
+      `to ${sent} address${sent === 1 ? '' : 'es'}`
+    )
+    res.json({ posted: sent })
+  } catch (e) {
+    console.error('post failed', e)
+    res.status(502).json({ error: 'the post stuck — try again' })
+  }
+})
+
 // the history log, newest first — who did what to this page, and when.
 // ?before=<id> pages into the past: a long-lived page accrues a line per
 // sitting, and the older story must stay reachable, not fall off the end
@@ -597,7 +805,8 @@ app.get('/api/public/:slug', (req, res) => {
   const doc = db
     .prepare(
       `SELECT d.title, d.html, d.header_image, d.updated_at,
-              u.username AS author, COALESCE(p.profile_public, 0) AS author_public
+              u.username AS author, COALESCE(p.profile_public, 0) AS author_public,
+              COALESCE(p.letterbox, 0) AS letterbox
        FROM docs d
        JOIN user u ON u.id = d.owner_id
        LEFT JOIN profiles p ON p.user_id = d.owner_id
@@ -605,7 +814,7 @@ app.get('/api/public/:slug', (req, res) => {
     )
     .get(req.params.slug)
   if (!doc) return res.status(404).json({ error: 'nothing here' })
-  res.json({ ...doc, author_public: !!doc.author_public })
+  res.json({ ...doc, author_public: !!doc.author_public, letterbox: !!doc.letterbox })
 })
 
 // ---------- comments ----------
@@ -1036,6 +1245,7 @@ app.get('/api/profile/:username', async (req, res) => {
       links: JSON.parse(p.links || '[]'),
       activity,
       articles,
+      letterbox: !!p.letterbox,
       ...(own ? { own: true, profile_public: !!p.profile_public } : {}),
     })
   } catch (e) {
@@ -1229,6 +1439,41 @@ app.get('/updates', (req, res) => {
     `<meta name="twitter:image" content="${origin}/og-updates.png" />`,
   ].join('\n    ')
   res.type('html').send(strippedShell.replace('</head>', `    ${tags}\n  </head>`))
+})
+
+// the two doors a letter's own links open: confirming an address, and
+// letting it back out. tokens are the whole capability; the pages are
+// server-drawn slips of paper, not the app.
+const letterPage = (lines) =>
+  `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>author*</title></head>
+<body style="font-family:ui-monospace,Menlo,monospace;background:#faf9f6;color:#1a1a1a;display:flex;min-height:90vh;align-items:center;justify-content:center;text-align:center;padding:24px">
+<div><div style="font-size:15px;margin-bottom:14px">${lines[0]}</div>
+<div style="color:#999;font-size:13px">${lines[1] || ''}</div>
+<div style="margin-top:26px;font-size:13px"><a href="/" style="color:#1a1a1a">author*</a></div></div></body></html>`
+
+app.get('/letter/confirm/:token', (req, res) => {
+  const sub = db
+    .prepare('SELECT s.*, u.username FROM subscribers s JOIN user u ON u.id = s.author_id WHERE s.confirm_token = ?')
+    .get(req.params.token)
+  if (!sub) return res.status(404).type('html').send(letterPage(['( nothing here )']))
+  db.prepare(
+    'UPDATE subscribers SET confirmed = 1, confirmed_at = ?, confirm_token = NULL WHERE id = ?'
+  ).run(Date.now(), sub.id)
+  res.type('html').send(
+    letterPage([`✉ your address is in ${esc(sub.username)}&rsquo;s letterbox`, 'their letters will find you'])
+  )
+})
+
+// one-click unsubscribe arrives as POST, a clicked link as GET — same door
+app.all('/letter/leave/:token', (req, res) => {
+  const sub = db
+    .prepare('SELECT s.*, u.username FROM subscribers s JOIN user u ON u.id = s.author_id WHERE s.unsub_token = ?')
+    .get(req.params.token)
+  if (!sub) return res.status(404).type('html').send(letterPage(['( nothing here )']))
+  db.prepare('DELETE FROM subscribers WHERE id = ?').run(sub.id)
+  res.type('html').send(
+    letterPage([`✉ your address slipped back out of ${esc(sub.username)}&rsquo;s letterbox`, 'no more letters'])
+  )
 })
 
 // a public profile speaks rss: the pieces it lists, as a feed — quiet

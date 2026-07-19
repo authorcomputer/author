@@ -15,6 +15,7 @@ import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { api, apiStream, me, username, colorFor, localDay } from '../api'
 import { CommentMark } from '../comment-mark'
+import Manicule from '../Manicule'
 import { Embed } from '../embed-node'
 import { parseEmbed } from '../embeds'
 import { renderMarkdown } from '../markdown'
@@ -103,6 +104,7 @@ type Meta = {
   owner: string
   header_image?: string | null
   on_profile?: boolean
+  posted_at?: number | null
 }
 type Comment = {
   id: string
@@ -795,7 +797,7 @@ function EditorInner({ id, entry }: { id: string; entry?: Meta }) {
                 '✎ a ghost draft'
               ) : (
                 <>
-                  {reviewing ? '☛' : '✎'}{' '}
+                  {reviewing ? <Manicule /> : '✎'}{' '}
                   {meta.owner === 'a ghost' ? (
                     meta.owner
                   ) : (
@@ -818,7 +820,7 @@ function EditorInner({ id, entry }: { id: string; entry?: Meta }) {
           </span>
           {others.map((o, i) => (
             <span className="who" key={i} style={{ color: o.color }}>
-              {o.reviewing ? '☛' : '+'} {o.name}
+              {o.reviewing ? <Manicule /> : '+'} {o.name}
             </span>
           ))}
         </div>
@@ -832,7 +834,7 @@ function EditorInner({ id, entry }: { id: string; entry?: Meta }) {
             onClick={() => (panel === 'comments' ? setPanel(null) : openPanel('comments'))}
             title="open comments"
           >
-            ☛ {openComments.length}
+            <Manicule /> {openComments.length}
           </button>
         )}
         <button
@@ -1080,7 +1082,7 @@ function FormatBubble({ editor }: { editor: TiptapEditor }) {
         {item('“quote”', editor.isActive('blockquote'), () => editor.chain().focus().toggleBlockquote().run(), 'quote', 'quote ⌘⇧B')}
         <span className="fmt-sep">·</span>
         {item('link', editor.isActive('link'), setLink, 'link', 'add or edit link')}
-        {item('☛ comment', editor.isActive('comment'), () => window.dispatchEvent(new CustomEvent('author:comment')), 'comment', 'comment ⌥⌘M')}
+        {item(<><Manicule /> comment</>, editor.isActive('comment'), () => window.dispatchEvent(new CustomEvent('author:comment')), 'comment', 'comment ⌥⌘M')}
         {item('✎ ai', false, () => window.dispatchEvent(new CustomEvent('author:open-cmdk')), 'ai', 'rewrite with ⌘K')}
       </div>
     </BubbleMenu>
@@ -1104,7 +1106,7 @@ function ReviewBubble({ editor }: { editor: TiptapEditor }) {
             window.dispatchEvent(new CustomEvent('author:comment'))
           }}
         >
-          ☛ comment
+          <Manicule /> comment
         </button>
       </div>
     </BubbleMenu>
@@ -1152,6 +1154,27 @@ function SharePop({
       .then((r) => setReaders(r.readers))
       .catch(() => setReaders([]))
   }, [])
+
+  // the letterbox, for [ ✉ post ] — only the owner's popover asks
+  const [boxCount, setBoxCount] = useState(0)
+  const [posted, setPosted] = useState<number | 'prior' | null>(meta.posted_at ? 'prior' : null)
+  const [postErr, setPostErr] = useState('')
+  useEffect(() => {
+    if (!meta.mine) return
+    api('/api/letterbox')
+      .then((b) => setBoxCount(b.on ? b.subscribers.filter((s: any) => s.confirmed).length : 0))
+      .catch(() => {})
+  }, [meta.mine])
+
+  async function doPost() {
+    track('letterbox: posted', { addresses: boxCount })
+    try {
+      const r = await api(`/api/docs/${meta.id}/post`, { method: 'POST', body: '{}' })
+      setPosted(r.posted)
+    } catch (e: any) {
+      setPostErr(e.message)
+    }
+  }
 
   async function sendToReaders() {
     if (!readers) return
@@ -1224,7 +1247,7 @@ function SharePop({
               · · · · · · · · · · · · · · · · · · ·
             </div>
             <div className="share-sec">
-              <div className="share-h">☛ comments only</div>
+              <div className="share-h"><Manicule /> comments only</div>
               <div className="share-link">{reviewUrl}</div>
               <button onClick={() => copy(reviewUrl, 'review')}>
                 {copied === 'review' ? '✓ copied' : '[ copy review link ]'}
@@ -1270,6 +1293,20 @@ function SharePop({
                   <button onClick={onProfileToggle}>
                     {meta.on_profile ? '[✓]' : '[ ]'} listed on your profile
                   </button>
+                </div>
+              )}
+              {meta.mine && (posted !== null || boxCount > 0) && (
+                <div style={{ marginTop: 10 }}>
+                  {posted !== null ? (
+                    <span className="faint">
+                      ✉ posted{typeof posted === 'number' ? ` to ${posted} address${posted === 1 ? '' : 'es'}` : ''}
+                    </span>
+                  ) : (
+                    <button onClick={doPost}>
+                      [ ✉ post to {boxCount} address{boxCount === 1 ? '' : 'es'} ]
+                    </button>
+                  )}
+                  {postErr && <div className="err">✗ {postErr}</div>}
                 </div>
               )}
             </>
@@ -2094,7 +2131,7 @@ function CommentComposer({
       >
         <div className="mode-row">
           <button className={mode === 'note' ? 'on' : ''} onClick={() => setMode('note')}>
-            [ ☛ note ]
+            [ <Manicule /> note ]
           </button>
           <button className={mode === 'edit' ? 'on' : ''} onClick={() => setMode('edit')}>
             [ ↳ suggest an edit ]
@@ -2296,7 +2333,7 @@ function CommentsPanel({
           window.dispatchEvent(new CustomEvent('author:comment'))
         }}
       >
-        [ ☛ comment on selection ]
+        [ <Manicule /> comment on selection ]
       </button>
       {open.length === 0 && (
         <div className="hint" style={{ marginTop: 16 }}>
@@ -2616,8 +2653,12 @@ const DIFFABLE = new Set(['edit', 'version.save'])
 
 // each entry wears its verb as state, not sentence — the glyphs match the
 // ones the rest of the interface already speaks
-const EV_VERBS: Record<string, string> = {
-  'comment.add': '☛ commented',
+const EV_VERBS: Record<string, ReactNode> = {
+  'comment.add': (
+    <>
+      <Manicule /> commented
+    </>
+  ),
   'comment.reply': '↩ replied',
   'suggestion.add': '↳ suggested',
   'suggestion.accept': '✓ accepted',
@@ -2626,10 +2667,11 @@ const EV_VERBS: Record<string, string> = {
   'version.save': '⛃ kept',
   edit: '✎ wrote',
   send: '✉ sent',
+  post: '✉ posted',
 }
 
 // entries whose detail reads as part of the sentence, not a quotation
-const PLAIN_DETAIL = new Set(['edit', 'send'])
+const PLAIN_DETAIL = new Set(['edit', 'send', 'post'])
 
 function HistoryPanel({ docId, reviewing }: { docId: string; reviewing: boolean }) {
   const [events, setEvents] = useState<Ev[]>([])

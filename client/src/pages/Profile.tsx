@@ -10,6 +10,7 @@ import { WebsocketProvider } from 'y-websocket'
 import { prosemirrorJSONToYDoc } from 'y-prosemirror'
 import { api, localDay, setMe, username } from '../api'
 import { track } from '../analytics'
+import Manicule from '../Manicule'
 import { CommentMark } from '../comment-mark'
 import Logo from '../Logo'
 
@@ -158,6 +159,8 @@ function SettingsTab() {
 
       <FirstReadersRow />
 
+      <LetterboxRow />
+
       <PasswordRow />
 
       <div className="setting-row">
@@ -262,7 +265,9 @@ function FirstReadersRow() {
       <div className="setting-h">✉ first readers</div>
       {readers.map((r) => (
         <div className="import-row" key={r.id}>
-          <span className="faint">☛ </span>
+          <span className="faint">
+            <Manicule />{' '}
+          </span>
           <Link to={`/u/${r.username}`}>{r.username}</Link>{' '}
           <button className="faint" title="remove" onClick={() => drop(r.id)}>
             ✗
@@ -286,6 +291,62 @@ function FirstReadersRow() {
         </button>
       </div>
       {msg && <div className="err">✗ {msg}</div>}
+    </div>
+  )
+}
+
+type Letterbox = {
+  on: boolean
+  subscribers: { id: string; email: string; confirmed: boolean }[]
+  postage: { used: number; allowance: number }
+  capacity: number
+}
+
+// the slot on the door: open it and readers can leave their address on
+// your public pages; [ ✉ post ] in a published draft's share popover
+// mails the piece to every confirmed one
+function LetterboxRow() {
+  const [box, setBox] = useState<Letterbox | null>(null)
+
+  useEffect(() => {
+    api('/api/letterbox').then(setBox).catch(() => {})
+  }, [])
+
+  if (!box) return null
+  const confirmed = box.subscribers.filter((s) => s.confirmed)
+  const waiting = box.subscribers.length - confirmed.length
+
+  async function toggle() {
+    if (!box) return
+    track('letterbox: toggled', { on: !box.on })
+    setBox(await api('/api/letterbox', { method: 'POST', body: JSON.stringify({ on: !box.on }) }))
+  }
+
+  async function drop(id: string) {
+    setBox(await api(`/api/letterbox/${id}`, { method: 'DELETE' }))
+  }
+
+  return (
+    <div className="setting-row">
+      <button onClick={toggle}>{box.on ? '[✓]' : '[ ]'} ✉ letterbox</button>
+      {box.on && (
+        <>
+          <div className="hint">
+            {confirmed.length}/{box.capacity} addresses
+            {waiting > 0 ? ` · ${waiting} unconfirmed` : ''} · postage {box.postage.used}/
+            {box.postage.allowance} this month
+          </div>
+          {confirmed.map((s) => (
+            <div className="import-row" key={s.id}>
+              <span className="faint">✉ </span>
+              {s.email}{' '}
+              <button className="faint" title="remove" onClick={() => drop(s.id)}>
+                ✗
+              </button>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   )
 }

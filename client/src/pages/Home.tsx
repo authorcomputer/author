@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, username, signOut } from '../api'
 import Logo from '../Logo'
+import Manicule from '../Manicule'
 import Chart from '../Chart'
 import { track } from '../analytics'
 
@@ -43,11 +44,11 @@ function newsOf(u: Record<string, number> | null) {
 function DocNews({ unseen }: { unseen: Record<string, number> | null }) {
   const n = newsOf(unseen)
   if (!n) return null
-  const bits: [boolean, string, string][] = [
+  const bits: [boolean, ReactNode, string][] = [
     [n.sent, '✉ sent to you', 'sent for your review'],
     [n.wrote, '✎ edited', 'edited'],
     [n.suggs > 0, `↳ ${n.suggs}`, 'suggested edits'],
-    [n.notes > 0, `☛ ${n.notes}`, 'comments'],
+    [n.notes > 0, <><Manicule /> {n.notes}</>, 'comments'],
     [n.settled > 0, `✓ ${n.settled}`, 'settled'],
   ]
   return (

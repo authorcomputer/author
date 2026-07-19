@@ -49,6 +49,10 @@ function getRoom(docId) {
     editors: [], // who was at the desk when the last change landed
     destroyTimer: null,
     brokenLoad,
+    // a visit is not a change: only a real update earns a write (and the
+    // updated_at bump that puts the page atop the desk). the stored state is
+    // applied above, before the update hook exists, so loading never dirties
+    dirty: false,
   }
 
   awareness.on('update', ({ added, updated, removed }) => {
@@ -67,6 +71,7 @@ function getRoom(docId) {
     encoding.writeVarUint(enc, MESSAGE_SYNC)
     syncProtocol.writeUpdate(enc, update)
     broadcast(room, encoding.toUint8Array(enc))
+    room.dirty = true
     scheduleSave(room)
     noteEdit(room)
   })
@@ -115,6 +120,9 @@ function send(ws, buf) {
 }
 
 function persist(room) {
+  // nothing changed since the last write — leave the stored bytes and their
+  // timestamp alone, or every glance at a page would shuffle the desk
+  if (!room.dirty) return
   // the empty stand-in for a blob that wouldn't load is not the document —
   // saving it would turn maybe-recoverable corruption into a certain blank.
   // but real content — a restored version, or words deliberately typed — is
@@ -133,6 +141,7 @@ function persist(room) {
   try {
     const title = room.ydoc.getMap('meta').get('title')
     saveYDoc(room.id, Buffer.from(Y.encodeStateAsUpdate(room.ydoc)), title)
+    room.dirty = false
   } catch (e) {
     console.error('persist failed', room.id, e)
   }

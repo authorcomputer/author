@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { me } from '../api'
 import Logo from '../Logo'
+import LetterSlot from '../LetterSlot'
 
 export default function Public() {
   const { slug } = useParams()
@@ -11,6 +12,7 @@ export default function Public() {
     header_image?: string | null
     author?: string
     author_public?: boolean
+    letterbox?: boolean
   } | null>(null)
   const [missing, setMissing] = useState(false)
   const m = me()
@@ -81,6 +83,11 @@ export default function Public() {
             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
           </div>
           <div className="pub-body" dangerouslySetInnerHTML={{ __html: doc.html }} />
+          {doc.letterbox && doc.author && (
+            <div style={{ marginTop: 40 }}>
+              <LetterSlot author={doc.author} />
+            </div>
+          )}
           <div className="pub-foot">
             ✽ set down with{' '}
             <Link to="/" style={{ borderBottom: '1px dotted' }}>
