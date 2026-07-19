@@ -257,12 +257,13 @@ app.get('/api/docs', requireUser, (req, res) => {
   const rows = db
     .prepare(
       `SELECT d.id, d.title, d.updated_at, d.published, d.slug, d.owner_id, d.html,
-              d.header_image, d.on_profile, (d.owner_id = ?) AS mine
+              d.header_image, d.on_profile, d.review_token, (d.owner_id = ?) AS mine,
+              (SELECT role FROM collaborators c WHERE c.doc_id = d.id AND c.user_id = ?) AS role
        FROM docs d
        WHERE d.owner_id = ? OR d.id IN (SELECT doc_id FROM collaborators WHERE user_id = ?)
        ORDER BY d.updated_at DESC`
     )
-    .all(req.user.id, req.user.id, req.user.id)
+    .all(req.user.id, req.user.id, req.user.id, req.user.id)
   // what's new per doc since this reader's cursor — their own doings aren't
   // news to them, so only other pens count. one indexed range per listed doc:
   // the doc set is exactly the rows just fetched, and a caught-up doc costs
@@ -280,6 +281,7 @@ app.get('/api/docs', requireUser, (req, res) => {
     rows.map((r) => {
       const news = newsStmt.all(r.id, cursors.get(r.id) || 0, req.user.id)
       const text = previewOf(r.html)
+      const role = r.mine ? 'owner' : r.role || 'editor'
       return {
         id: r.id,
         title: r.title,
@@ -287,6 +289,10 @@ app.get('/api/docs', requireUser, (req, res) => {
         published: !!r.published,
         slug: r.slug,
         mine: !!r.mine,
+        role,
+        // a commenter's desk row opens the review door, so it carries the
+        // review key — the narrower one they were sent through, never wider
+        review_token: role === 'commenter' ? r.review_token : null,
         header_image: r.header_image || null,
         on_profile: !!r.on_profile,
         snippet: text.slice(0, 140),
@@ -409,6 +415,87 @@ app.post('/api/review/:token/open', requireUser, rateLimit(20, 60_000), (req, re
   res.json(docMeta(doc, req.user.id))
 })
 
+// ---------- first readers ----------
+// the standing circle: the pens a writer trusts with early pages. kept in
+// settings, spent by the send button — a send walks the whole circle
+// through the review door at once, enrolled to speak, never to write.
+const FIRST_READERS_MAX = 24
+const listFirstReaders = (ownerId) =>
+  db
+    .prepare(
+      `SELECT u.id, u.username FROM first_readers f JOIN user u ON u.id = f.reader_id
+       WHERE f.owner_id = ? ORDER BY f.created_at`
+    )
+    .all(ownerId)
+
+app.get('/api/first-readers', requireFullUser, (req, res) => {
+  res.json({ readers: listFirstReaders(req.user.id) })
+})
+
+app.post('/api/first-readers', requireFullUser, (req, res) => {
+  const handle = String((req.body || {}).handle || '').toLowerCase().trim()
+  // handles only — a ghost's pen name is not an address
+  const u = db.prepare('SELECT id, username FROM user WHERE username = ?').get(handle)
+  if (!u) return res.status(404).json({ error: 'no desk by that handle' })
+  if (u.id === req.user.id)
+    return res.status(400).json({ error: 'you already read your own pages first' })
+  const n = db
+    .prepare('SELECT COUNT(*) AS c FROM first_readers WHERE owner_id = ?')
+    .get(req.user.id).c
+  if (n >= FIRST_READERS_MAX)
+    return res.status(400).json({ error: `the circle holds ${FIRST_READERS_MAX}` })
+  db.prepare(
+    'INSERT OR IGNORE INTO first_readers (owner_id, reader_id, created_at) VALUES (?, ?, ?)'
+  ).run(req.user.id, u.id, Date.now())
+  res.json({ readers: listFirstReaders(req.user.id) })
+})
+
+app.delete('/api/first-readers/:id', requireFullUser, (req, res) => {
+  db.prepare('DELETE FROM first_readers WHERE owner_id = ? AND reader_id = ?').run(
+    req.user.id,
+    req.params.id
+  )
+  res.json({ readers: listFirstReaders(req.user.id) })
+})
+
+// send a draft to the sender's circle: each reader is enrolled as a
+// commenter (an already-enrolled pen keeps its standing — a send never
+// demotes) and the doc lands on their desk wearing the review key. one
+// history line per delivery that changed something — re-sending to a
+// circle already holding the page is a quiet no-op, not a drumbeat.
+app.post('/api/docs/:id/send', requireFullUser, (req, res) => {
+  const doc = db
+    .prepare('SELECT id, owner_id, review_token FROM docs WHERE id = ?')
+    .get(req.params.id)
+  if (!doc) return res.status(404).json({ error: 'no such doc' })
+  if (!canEditDoc(doc, req.user.id)) return res.status(403).json({ error: 'not yours' })
+  const readers = listFirstReaders(req.user.id)
+  if (!readers.length) return res.status(400).json({ error: 'no first readers yet' })
+  // the circle enters through the review door, so the door must exist first
+  if (!doc.review_token) {
+    db.prepare('UPDATE docs SET review_token = ? WHERE id = ? AND review_token IS NULL').run(
+      crypto.randomBytes(10).toString('hex'),
+      doc.id
+    )
+  }
+  const enroll = db.prepare(
+    "INSERT OR IGNORE INTO collaborators (doc_id, user_id, role) VALUES (?, ?, 'commenter')"
+  )
+  let sent = 0
+  for (const r of readers) {
+    if (r.id === doc.owner_id) continue
+    sent += enroll.run(doc.id, r.id).changes
+  }
+  if (sent > 0)
+    addEvent(
+      doc.id,
+      { id: req.user.id, username: req.user.username },
+      'send',
+      `to ${sent} first reader${sent === 1 ? '' : 's'}`
+    )
+  res.json({ sent, circle: readers.length })
+})
+
 // the history log, newest first — who did what to this page, and when.
 // ?before=<id> pages into the past: a long-lived page accrues a line per
 // sitting, and the older story must stay reachable, not fall off the end
@@ -494,6 +581,13 @@ app.post('/api/docs/:id/publish', requireFullUser, (req, res) => {
     slug,
     doc.id
   )
+  // the first walk through the door is the publication date — republishing
+  // after an unpublish keeps it (the feed shouldn't see the piece as new)
+  if (publish)
+    db.prepare('UPDATE docs SET published_at = COALESCE(published_at, ?) WHERE id = ?').run(
+      Date.now(),
+      doc.id
+    )
   res.json({ published: publish, slug })
 })
 
@@ -1133,6 +1227,76 @@ app.get('/updates', (req, res) => {
     `<meta name="twitter:title" content="updates · author*" />`,
     `<meta name="twitter:description" content="${desc}" />`,
     `<meta name="twitter:image" content="${origin}/og-updates.png" />`,
+  ].join('\n    ')
+  res.type('html').send(strippedShell.replace('</head>', `    ${tags}\n  </head>`))
+})
+
+// a public profile speaks rss: the pieces it lists, as a feed — quiet
+// syndication for readers' own tools, no follower graph on our side. the
+// body is the same public-only view the profile shows visitors, so it
+// caches briefly; a private or unknown profile stays a quiet 404.
+app.get('/u/:username/feed.xml', (req, res) => {
+  const u = db
+    .prepare('SELECT id, username FROM user WHERE username = ?')
+    .get(String(req.params.username || '').toLowerCase())
+  if (!u || !profileFor(u.id).profile_public)
+    return res.status(404).type('text/plain').send('nothing here')
+  const origin = (process.env.BETTER_AUTH_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '')
+  const items = db
+    .prepare(
+      `SELECT title, slug, html, COALESCE(published_at, updated_at) AS at FROM docs
+       WHERE owner_id = ? AND published = 1 AND on_profile = 1
+       ORDER BY at DESC LIMIT 50`
+    )
+    .all(u.id)
+  const cdata = (s) => `<![CDATA[${String(s || '').replace(/\]\]>/g, ']]]]><![CDATA[>')}]]>`
+  // the stored html points at /files/ by relative path; a feed reader has
+  // no origin to resolve against
+  const abs = (html) => String(html || '').replace(/(src|href)="\/files\//g, `$1="${origin}/files/`)
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+<channel>
+<title>${esc(u.username)} · author*</title>
+<link>${esc(`${origin}/u/${u.username}`)}</link>
+<atom:link href="${esc(`${origin}/u/${u.username}/feed.xml`)}" rel="self" type="application/rss+xml"/>
+<description>${esc(`pieces by ${u.username}`)}</description>
+${items
+  .map(
+    (d) => `<item>
+<title>${esc(d.title || 'untitled')}</title>
+<link>${esc(`${origin}/p/${d.slug}`)}</link>
+<guid isPermaLink="true">${esc(`${origin}/p/${d.slug}`)}</guid>
+<pubDate>${new Date(d.at).toUTCString()}</pubDate>
+<description>${esc(previewOf(d.html, 300))}</description>
+<content:encoded>${cdata(abs(d.html))}</content:encoded>
+</item>`
+  )
+  .join('\n')}
+</channel>
+</rss>`
+  res.set('Cache-Control', 'public, max-age=300')
+  res.type('application/rss+xml').send(xml)
+})
+
+// the profile shell carries its feed's address (and its own share tags), so
+// feed readers and unfurlers find a public profile by its page alone
+app.get('/u/:username', (req, res) => {
+  res.set('Cache-Control', 'no-cache')
+  const u = db
+    .prepare('SELECT id, username FROM user WHERE username = ?')
+    .get(String(req.params.username || '').toLowerCase())
+  if (!u || !profileFor(u.id).profile_public || !strippedShell)
+    return res.sendFile(path.join(dist, 'index.html'))
+  const origin = (process.env.BETTER_AUTH_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '')
+  const title = esc(`${u.username} · author*`)
+  const tags = [
+    `<link rel="alternate" type="application/rss+xml" title="${title}" href="${esc(`${origin}/u/${u.username}/feed.xml`)}" />`,
+    `<meta property="og:type" content="profile" />`,
+    `<meta property="og:site_name" content="author*" />`,
+    `<meta property="og:title" content="${title}" />`,
+    `<meta property="og:url" content="${esc(`${origin}/u/${u.username}`)}" />`,
+    `<meta name="twitter:card" content="summary" />`,
+    `<meta name="twitter:title" content="${title}" />`,
   ].join('\n    ')
   res.type('html').send(strippedShell.replace('</head>', `    ${tags}\n  </head>`))
 })

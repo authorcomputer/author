@@ -1227,6 +1227,27 @@ a:has(> .logo) {
   [data-mode='dark'] .panel { box-shadow: -8px 0 24px rgba(0, 0, 0, 0.4); }
 }
 
+/* the hairline dingbats (☞ ✎ ✽ ⇩ ⧉ ☜ ↳) thin out light-on-dark; a
+   half-pixel stroke gives every icon-bearing spot its daylight weight */
+[data-mode='dark'] .ed-top,
+[data-mode='dark'] .share-pop .share-h,
+[data-mode='dark'] .comment-gutter,
+[data-mode='dark'] .doc-news,
+[data-mode='dark'] .doc-meta,
+[data-mode='dark'] .u-sym,
+[data-mode='dark'] .pub-foot,
+[data-mode='dark'] .fmt-bubble button,
+[data-mode='dark'] .comment-pop .mode-row,
+[data-mode='dark'] .byline .kind,
+[data-mode='dark'] .sugg-new,
+[data-mode='dark'] .land-glyph,
+[data-mode='dark'] .lamp,
+[data-mode='dark'] .scribble-line,
+[data-mode='dark'] .ev-open,
+[data-mode='dark'] .tiptap .co-written::after {
+  text-shadow: 0 0 0.6px currentColor;
+}
+
 /* the writing chart's ramp, ember-lit */
 [data-mode='dark'] .contrib-cell.lv1 { background: #3b2415; }
 [data-mode='dark'] .contrib-cell.lv2 { background: #6f3a19; }

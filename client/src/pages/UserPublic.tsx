@@ -240,6 +240,14 @@ export default function UserPublic() {
             <Link to="/" style={{ borderBottom: '1px dotted' }}>
               author*
             </Link>
+            {(!p.own || p.profile_public) && (
+              <>
+                {' · '}
+                <a className="faint" href={`/u/${p.username}/feed.xml`}>
+                  rss
+                </a>
+              </>
+            )}
           </div>
         </div>
       )}

@@ -12,10 +12,18 @@ type DocRow = {
   published: boolean
   slug: string | null
   mine: boolean
+  role: string
+  review_token: string | null
   header_image: string | null
   snippet: string
   preview: string
   unseen: Record<string, number> | null
+}
+
+// a commenter's desk row opens the review door — the writing door would
+// hand them the pen on the way in
+function doorOf(d: DocRow) {
+  return d.role === 'commenter' && d.review_token ? `/r/${d.review_token}` : `/d/${d.id}`
 }
 
 // the log's types folded to what a desk row can wear: notes, suggested
@@ -27,14 +35,16 @@ function newsOf(u: Record<string, number> | null) {
   const settled =
     (u['suggestion.accept'] || 0) + (u['suggestion.reject'] || 0) + (u['comment.resolve'] || 0)
   const wrote = (u['edit'] || 0) + (u['version.save'] || 0) > 0
-  if (!notes && !suggs && !settled && !wrote) return null
-  return { notes, suggs, settled, wrote }
+  const sent = (u['send'] || 0) > 0
+  if (!notes && !suggs && !settled && !wrote && !sent) return null
+  return { notes, suggs, settled, wrote, sent }
 }
 
 function DocNews({ unseen }: { unseen: Record<string, number> | null }) {
   const n = newsOf(unseen)
   if (!n) return null
   const bits: [boolean, string, string][] = [
+    [n.sent, '✉ sent to you', 'sent for your review'],
     [n.wrote, '✎ edited', 'edited'],
     [n.suggs > 0, `↳ ${n.suggs}`, 'suggested edits'],
     [n.notes > 0, `☞ ${n.notes}`, 'comments'],
@@ -118,7 +128,7 @@ export default function Home() {
         <Link
           className="doc-row"
           key={d.id}
-          to={`/d/${d.id}`}
+          to={doorOf(d)}
           onMouseEnter={(e) => setPeek({ doc: d, top: e.currentTarget.getBoundingClientRect().top })}
           onMouseLeave={() => setPeek(null)}
         >
@@ -130,7 +140,7 @@ export default function Home() {
           <div className="doc-title">{d.title || 'untitled'}</div>
           <div className="doc-meta">
             {ago(d.updated_at)}
-            {!d.mine && ' · shared with you'}
+            {!d.mine && (d.role === 'commenter' ? ' · for your review' : ' · shared with you')}
             {d.published && (
               <>
                 {' · '}

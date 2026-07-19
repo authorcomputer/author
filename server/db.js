@@ -99,6 +99,12 @@ CREATE TABLE IF NOT EXISTS read_cursors (
   last_event_id INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (doc_id, user_id)
 );
+CREATE TABLE IF NOT EXISTS first_readers (
+  owner_id TEXT NOT NULL,
+  reader_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (owner_id, reader_id)
+);
 `)
 
 // lightweight migrations for pre-existing databases. returns whether the
@@ -161,6 +167,14 @@ db.exec(
 // name alone proves nothing. no backfill: guessing owners for old rows by
 // that same string match is the misattribution the column exists to end
 addColumn('versions', 'user_id TEXT')
+
+// a published piece remembers the day it stepped out — edits keep moving
+// updated_at, but a feed dates a piece by its publication. pieces already
+// out before the column existed get their latest touch as the best date
+// on record.
+if (addColumn('docs', 'published_at INTEGER')) {
+  db.exec('UPDATE docs SET published_at = updated_at WHERE published = 1')
+}
 
 // a comment can carry a proposed replacement for its quoted passage
 addColumn('comments', "suggestion TEXT DEFAULT ''")

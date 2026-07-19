@@ -156,6 +156,8 @@ function SettingsTab() {
 
       <HandleRow current={s.username} onRenamed={(u) => setS({ ...s, username: u })} />
 
+      <FirstReadersRow />
+
       <PasswordRow />
 
       <div className="setting-row">
@@ -216,6 +218,74 @@ function HandleRow({ current, onRenamed }: { current: string; onRenamed: (u: str
         </button>
       </div>
       {state === 'error' && <div className="err">✗ {msg}</div>}
+    </div>
+  )
+}
+
+// the standing circle: handles the [ ✉ send ] button in a draft's share
+// popover delivers to, each enrolled through the review door
+function FirstReadersRow() {
+  const [readers, setReaders] = useState<{ id: string; username: string }[] | null>(null)
+  const [handle, setHandle] = useState('')
+  const [msg, setMsg] = useState('')
+
+  useEffect(() => {
+    api('/api/first-readers')
+      .then((r) => setReaders(r.readers))
+      .catch(() => {})
+  }, [])
+
+  async function add() {
+    try {
+      const r = await api('/api/first-readers', {
+        method: 'POST',
+        body: JSON.stringify({ handle }),
+      })
+      track('first readers: added', { count: r.readers.length })
+      setReaders(r.readers)
+      setHandle('')
+      setMsg('')
+    } catch (e: any) {
+      setMsg(e.message)
+    }
+  }
+
+  async function drop(id: string) {
+    const r = await api(`/api/first-readers/${id}`, { method: 'DELETE' })
+    track('first readers: removed', { count: r.readers.length })
+    setReaders(r.readers)
+  }
+
+  if (!readers) return null
+  return (
+    <div className="setting-row">
+      <div className="setting-h">✉ first readers</div>
+      {readers.map((r) => (
+        <div className="import-row" key={r.id}>
+          <span className="faint">☞ </span>
+          <Link to={`/u/${r.username}`}>{r.username}</Link>{' '}
+          <button className="faint" title="remove" onClick={() => drop(r.id)}>
+            ✗
+          </button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 12, marginTop: readers.length ? 10 : 0 }}>
+        <input
+          style={{ flex: 1, borderBottom: '1px solid var(--fainter)' }}
+          placeholder="their handle"
+          autoCapitalize="none"
+          value={handle}
+          onChange={(e) => {
+            setHandle(e.target.value)
+            setMsg('')
+          }}
+          onKeyDown={(e) => e.key === 'Enter' && handle.trim() && add()}
+        />
+        <button onClick={add} disabled={!handle.trim()}>
+          [ add ]
+        </button>
+      </div>
+      {msg && <div className="err">✗ {msg}</div>}
     </div>
   )
 }
