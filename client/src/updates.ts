@@ -17,6 +17,11 @@ export const UPDATES: UpdateDay[] = [
     blocks: [
       {
         kind: 'bullet',
+        head: 'author.computer/new',
+        text: 'opens a fresh draft — signed in or not.',
+      },
+      {
+        kind: 'bullet',
         head: 'the letterbox',
         text: 'open it in settings and readers can leave their email on your published pages and profile. [ ✉ post ] sends a published piece to every confirmed address — free accounts hold 25 addresses with 200 letters a month, members 1,000 and 5,000.',
       },

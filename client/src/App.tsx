@@ -12,7 +12,9 @@ import Updates from './pages/Updates'
 import Admin from './pages/Admin'
 import Privacy from './pages/Privacy'
 import Terms from './pages/Terms'
-import { me, refreshMe } from './api'
+import { api, me, refreshMe } from './api'
+import { authClient } from './auth-client'
+import { track } from './analytics'
 import Lamp from './Lamp'
 
 // the browser keeps the old scroll position across client-side navigations;
@@ -33,6 +35,36 @@ function RequireAccount({ children }: { children: JSX.Element }) {
     return <Navigate to={`/login?next=${encodeURIComponent(dest)}`} replace />
   }
   return children
+}
+
+// /new — a fresh page, no questions asked: whoever arrives gets a new
+// draft under their own pen. no session mints a ghost first, the same
+// door the landing opens.
+function NewDoc() {
+  const nav = useNavigate()
+  useEffect(() => {
+    let stale = false
+    ;(async () => {
+      try {
+        const m = me() ?? (await refreshMe())
+        if (!m) {
+          const result = await authClient.signIn.anonymous()
+          if (result.error) throw new Error(result.error.message)
+          await refreshMe()
+          track('ghost: started writing', { via: 'new' })
+        }
+        track('doc: created', { via: 'new' })
+        const { id } = await api('/api/docs', { method: 'POST', body: '{}' })
+        if (!stale) nav(`/d/${id}`, { replace: true })
+      } catch {
+        if (!stale) nav('/login', { replace: true })
+      }
+    })()
+    return () => {
+      stale = true
+    }
+  }, [])
+  return null
 }
 
 // Rendered fresh on every navigation to "/", so the auth check isn't frozen
@@ -61,6 +93,7 @@ export default function App() {
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />
         <Route path="/" element={<RootGate />} />
+        <Route path="/new" element={<NewDoc />} />
         <Route
           path="/admin"
           element={
