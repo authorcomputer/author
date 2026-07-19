@@ -9,6 +9,7 @@
   --wash: #f4f1ea;
   --mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
   --serif: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -196,6 +197,20 @@ input, textarea {
 @media (max-width: 1240px) {
   .desk-peek { display: none; }
 }
+
+/* the lamp: the corner-nav's opposite corner, one glyph, every page */
+.lamp {
+  position: fixed;
+  left: 18px;
+  bottom: 14px;
+  z-index: 20;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--fainter);
+  padding: 12px;
+  margin: -12px;
+}
+.lamp:hover { color: var(--accent); }
 
 /* always-reachable, never-prominent */
 .corner-nav {
@@ -1122,3 +1137,96 @@ a:has(> .logo) {
 @media (max-width: 900px) {
   .panel { position: fixed; right: 0; top: 0; bottom: 0; background: var(--paper); z-index: 30; box-shadow: -8px 0 24px rgba(0,0,0,0.06); }
 }
+
+/* ---------- lamplight ---------- */
+/* the same desk after dark: warm near-black paper, the accent as an ember.
+   everything var-driven inverts itself; below, only the literals that had a
+   daylight color baked in get their nighttime one. */
+[data-mode='dark'] {
+  --ink: #e7e2d6;
+  --faint: #938b7c;
+  --fainter: #57503f;
+  --paper: #191713;
+  --accent: #e56a2b;
+  --wash: #252119;
+  color-scheme: dark;
+}
+
+[data-mode='dark'] ::selection { background: #4a3421; }
+
+/* soft-ink prose (blockquotes, the peek card's body) */
+[data-mode='dark'] .peek-body,
+[data-mode='dark'] .tiptap blockquote,
+[data-mode='dark'] .ai-out blockquote { color: #b8b1a3; }
+
+/* glassy paper strips */
+[data-mode='dark'] .corner-nav { background: rgba(25, 23, 19, 0.94); }
+[data-mode='dark'] .header-controls { background: rgba(25, 23, 19, 0.92); }
+
+/* the comment gold, embered down */
+[data-mode='dark'] .comment-mark { background: #3a2f15; }
+[data-mode='dark'] .comment-mark:hover { background: #493b1a; }
+[data-mode='dark'] .ed-top .comment-count { color: #d8a848; }
+[data-mode='dark'] .byline .kind { color: #d8a848; }
+
+/* the editor's pen keeps its inks, brightened to read on dark paper */
+[data-mode='dark'] .check-grammar {
+  text-decoration: underline wavy #38bdd8;
+  text-decoration-thickness: 1px;
+}
+[data-mode='dark'] .check-repetition { background: #3a2f15; }
+[data-mode='dark'] .check-cliche {
+  background: #3d251a;
+  text-decoration-color: rgba(229, 106, 43, 0.6);
+}
+[data-mode='dark'] .check-clarity {
+  text-decoration: underline dotted #a78bfa;
+  text-decoration-thickness: 1px;
+}
+[data-mode='dark'] .check-brevity { background: #272c1e; }
+[data-mode='dark'] .check-hedging {
+  text-decoration: underline dashed #cfa14a;
+  text-decoration-thickness: 1px;
+}
+
+/* flashes and breaths, by lamplight */
+[data-mode='dark'] .check-ping { animation-name: check-ping-fade-dark; }
+@keyframes check-ping-fade-dark {
+  0% { background: #4d3a1c; }
+  100% { background: transparent; }
+}
+[data-mode='dark'] .pen-hover { animation-name: pen-hover-breathe-dark; background: #3a2f18; }
+@keyframes pen-hover-breathe-dark {
+  0%, 100% { background-color: #3a2f18; }
+  50% { background-color: #46391d; }
+}
+[data-mode='dark'] .issue.active { background: #2c2414; animation-name: issue-flash-dark; }
+@keyframes issue-flash-dark {
+  0% { background: #4d3a1c; }
+  100% { background: #2c2414; }
+}
+[data-mode='dark'] .comment-card.focus { background: #2a2114; animation-name: issue-flash-dark; }
+
+/* boxes that take words sit a shade above the paper, not on white */
+[data-mode='dark'] .ask-box,
+[data-mode='dark'] .reply-box,
+[data-mode='dark'] .proof-custom,
+[data-mode='dark'] .comment-pop .sugg-note { background: #211e18; }
+
+/* shadows deepen after dark */
+[data-mode='dark'] .comment-pop,
+[data-mode='dark'] .cmdk,
+[data-mode='dark'] .share-pop { box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.45); }
+[data-mode='dark'] .fmt-bubble { box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.4); }
+[data-mode='dark'] .v-preview { box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45); }
+[data-mode='dark'] .cmdk-backdrop { background: rgba(0, 0, 0, 0.5); }
+@media (max-width: 900px) {
+  [data-mode='dark'] .panel { box-shadow: -8px 0 24px rgba(0, 0, 0, 0.4); }
+}
+
+/* the writing chart's ramp, ember-lit */
+[data-mode='dark'] .contrib-cell.lv1 { background: #3b2415; }
+[data-mode='dark'] .contrib-cell.lv2 { background: #6f3a19; }
+[data-mode='dark'] .contrib-cell.lv3 { background: #a9531f; }
+[data-mode='dark'] .contrib-cell.lv4 { background: #e56a2b; }
+

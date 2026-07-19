@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- the lamp, before first paint: a chosen mode wins, otherwise the OS's -->
+    <script>
+      try {
+        var m = localStorage.getItem('author-mode')
+        if (!m && matchMedia('(prefers-color-scheme: dark)').matches) m = 'dark'
+        if (m === 'dark') document.documentElement.dataset.mode = 'dark'
+      } catch (e) {}
+    </script>
     <script
       async
       src="https://cdn.seline.com/seline.js"

@@ -13,6 +13,7 @@ import Admin from './pages/Admin'
 import Privacy from './pages/Privacy'
 import Terms from './pages/Terms'
 import { me, refreshMe } from './api'
+import Lamp from './Lamp'
 
 // the browser keeps the old scroll position across client-side navigations;
 // reset to the top on every path change (hash links still win)
@@ -51,6 +52,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <ScrollToTop />
+      <Lamp />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/p/:slug" element={<Public />} />

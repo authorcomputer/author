@@ -12,6 +12,17 @@ export type UpdateDay = { date: string; title: string; blocks: UpdateBlock[] }
 
 export const UPDATES: UpdateDay[] = [
   {
+    date: 'july 19, 2026',
+    title: 'dark mode',
+    blocks: [
+      {
+        kind: 'bullet',
+        head: 'dark mode',
+        text: 'the ☾ in the bottom-left corner switches it. first visit follows your system setting; your choice sticks in this browser. works signed out too, including on published pages.',
+      },
+    ],
+  },
+  {
     date: 'july 18, 2026',
     title: 'curate your profile on the profile itself',
     blocks: [
