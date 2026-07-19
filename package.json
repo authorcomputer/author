@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "tsc --noEmit && vite build",
     "start": "node server/index.js",
     "dev": "node server/index.js",
     "deploy": "sh scripts/deploy.sh"
