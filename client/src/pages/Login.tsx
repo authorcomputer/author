@@ -4,6 +4,7 @@ import { authClient } from '../auth-client'
 import { refreshMe } from '../api'
 import { track } from '../analytics'
 import Logo from '../Logo'
+import PasswordInput from '../PasswordInput'
 
 export default function Login() {
   const [mode, setMode] = useState<'in' | 'up'>('in')
@@ -84,12 +85,7 @@ export default function Login() {
           </div>
         )}
         <div className="field">
-          <input
-            placeholder="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <PasswordInput value={password} onChange={setPassword} />
         </div>
         {mode === 'up' && (
           <div className="faint" style={{ marginTop: 10, fontSize: 11 }}>

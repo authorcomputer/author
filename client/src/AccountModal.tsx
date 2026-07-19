@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { refreshMe } from './api'
 import { track } from './analytics'
+import PasswordInput from './PasswordInput'
 
 // The one prompt a ghost sees: create an account to keep what they wrote.
 export default function AccountModal({
@@ -59,11 +60,10 @@ export default function AccountModal({
           />
         </div>
         <div className="field">
-          <input
+          <PasswordInput
             placeholder="password (fresh, not reused)"
-            type="password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={setPassword}
           />
         </div>
         <div className="ai-actions" style={{ marginTop: 18 }}>

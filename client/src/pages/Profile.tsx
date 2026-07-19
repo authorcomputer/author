@@ -13,6 +13,7 @@ import { track } from '../analytics'
 import Bubble from '../Bubble'
 import { CommentMark } from '../comment-mark'
 import Logo from '../Logo'
+import PasswordInput from '../PasswordInput'
 
 type Settings = {
   username: string
@@ -380,24 +381,23 @@ function PasswordRow() {
     <div className="setting-row">
       <div className="setting-h">change password</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <input
-          type="password"
-          style={{ borderBottom: '1px solid var(--fainter)' }}
+        <PasswordInput
+          inputStyle={{ borderBottom: '1px solid var(--fainter)' }}
           placeholder="current password"
           value={cur}
-          onChange={(e) => {
-            setCur(e.target.value)
+          onChange={(v) => {
+            setCur(v)
             setState('idle')
           }}
         />
         <div style={{ display: 'flex', gap: 12 }}>
-          <input
-            type="password"
-            style={{ flex: 1, borderBottom: '1px solid var(--fainter)' }}
+          <PasswordInput
+            style={{ flex: 1 }}
+            inputStyle={{ borderBottom: '1px solid var(--fainter)' }}
             placeholder="new password"
             value={pw}
-            onChange={(e) => {
-              setPw(e.target.value)
+            onChange={(v) => {
+              setPw(v)
               setState('idle')
             }}
           />
