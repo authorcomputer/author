@@ -594,6 +594,7 @@ function letterHtml(doc, origin, author, unsubUrl) {
   const url = `${origin}/p/${doc.slug}`
   return letterShell(
     `<div style="color:#999;font-size:13px;margin-bottom:18px">${esc(author)} &middot; author*</div>
+     ${doc.header_image ? `<img src="${esc(origin + doc.header_image)}" alt="" style="max-width:100%;display:block;margin:0 0 20px" />` : ''}
      <h1 style="font-size:26px;font-weight:normal;margin:0 0 6px">${esc(doc.title || 'untitled')}</h1>
      <div style="color:#bbb;margin-bottom:26px">~~~~~~~~~~~~~~~~~~</div>
      ${absFiles(doc.html, origin)}
@@ -1507,7 +1508,7 @@ app.get('/u/:username/feed.xml', (req, res) => {
   const origin = (process.env.BETTER_AUTH_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '')
   const items = db
     .prepare(
-      `SELECT title, slug, html, COALESCE(published_at, updated_at) AS at FROM docs
+      `SELECT title, slug, html, header_image, COALESCE(published_at, updated_at) AS at FROM docs
        WHERE owner_id = ? AND published = 1 AND on_profile = 1
        ORDER BY at DESC LIMIT 50`
     )
@@ -1531,7 +1532,7 @@ ${items
 <guid isPermaLink="true">${esc(`${origin}/p/${d.slug}`)}</guid>
 <pubDate>${new Date(d.at).toUTCString()}</pubDate>
 <description>${esc(previewOf(d.html, 300))}</description>
-<content:encoded>${cdata(abs(d.html))}</content:encoded>
+<content:encoded>${cdata((d.header_image ? `<img src="${esc(origin + d.header_image)}" alt="" />` : '') + abs(d.html))}</content:encoded>
 </item>`
   )
   .join('\n')}
