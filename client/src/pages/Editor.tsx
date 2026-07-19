@@ -1133,7 +1133,7 @@ function SharePop({
   onClose: () => void
 }) {
   const [copied, setCopied] = useState<
-    'write' | 'review' | 'read' | 'as-md' | 'as-html' | 'sent' | null
+    'write' | 'review' | 'read' | 'as-md' | 'as-html' | null
   >(null)
   const copyTimer = useRef<ReturnType<typeof setTimeout>>()
   const writeUrl = `${location.origin}/d/${meta.id}`
@@ -1147,15 +1147,7 @@ function SharePop({
       .catch(() => {})
   }, [meta.id])
 
-  // the standing circle — ghosts have none (the endpoint refuses them)
-  const [readers, setReaders] = useState<{ id: string; username: string }[] | null>(null)
-  useEffect(() => {
-    api('/api/first-readers')
-      .then((r) => setReaders(r.readers))
-      .catch(() => setReaders([]))
-  }, [])
-
-  // the letterbox, for [ ✉ post ] — only the owner's popover asks
+  // the post office, for [ ✉ post ] — only the owner's popover asks
   const [boxCount, setBoxCount] = useState(0)
   const [posted, setPosted] = useState<number | 'prior' | null>(meta.posted_at ? 'prior' : null)
   const [posting, setPosting] = useState(false)
@@ -1179,17 +1171,6 @@ function SharePop({
       setPostErr(e.message)
     } finally {
       setPosting(false)
-    }
-  }
-
-  async function sendToReaders() {
-    if (!readers) return
-    track('share: sent to first readers', { readers: readers.length })
-    try {
-      await api(`/api/docs/${meta.id}/send`, { method: 'POST', body: '{}' })
-      flash('sent')
-    } catch {
-      /* the button stays — trying again is one click */
     }
   }
 
@@ -1256,23 +1237,6 @@ function SharePop({
               <button onClick={() => copy(reviewUrl, 'review')}>
                 {copied === 'review' ? '✓ copied' : '[ copy review link ]'}
               </button>
-              {readers && readers.length > 0 && (
-                <div style={{ marginTop: 10 }}>
-                  <button onClick={sendToReaders}>
-                    {copied === 'sent'
-                      ? '✓ on their desks'
-                      : `[ ✉ send to ${readers.length} first reader${readers.length === 1 ? '' : 's'} ]`}
-                  </button>
-                  <div className="hint">{readers.map((r) => r.username).join(' · ')}</div>
-                </div>
-              )}
-              {readers && readers.length === 0 && meta.mine && !me()?.anon && (
-                <div style={{ marginTop: 10 }}>
-                  <Link className="faint" to="/me">
-                    ✉ first readers — none yet
-                  </Link>
-                </div>
-              )}
             </div>
           </>
         )}

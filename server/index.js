@@ -189,10 +189,20 @@ app.post('/api/signup', rateLimit(8, 60_000), async (req, res) => {
 
 app.get('/api/me', requireUser, (req, res) => res.json(req.user))
 
+// a handle is also an address now — letters leave as handle@author.computer —
+// so the role names every mail system trusts must never belong to a user
+const RESERVED_HANDLES = new Set([
+  'post', 'admin', 'administrator', 'abuse', 'postmaster', 'hostmaster', 'webmaster',
+  'noreply', 'no-reply', 'support', 'security', 'billing', 'help', 'root', 'info',
+  'contact', 'mail', 'mailer-daemon', 'dmarc', 'author', 'ghost', 'anonymous',
+])
+
 app.post('/api/handle', requireFullUser, (req, res) => {
   const uname = String((req.body || {}).username || '').toLowerCase().trim()
   if (!/^[a-z0-9_-]{2,24}$/.test(uname))
     return res.status(400).json({ error: 'handle: 2–24 letters, numbers, - or _' })
+  if (RESERVED_HANDLES.has(uname))
+    return res.status(409).json({ error: 'that handle is spoken for' })
   if (uname === req.user.username) return res.json({ username: uname })
   if (db.prepare('SELECT id FROM user WHERE username = ?').get(uname))
     return res.status(409).json({ error: 'that handle already has a desk' })
@@ -425,87 +435,6 @@ app.post('/api/review/:token/open', requireUser, rateLimit(20, 60_000), (req, re
   }
   markSeen(doc.id, req.user.id)
   res.json(docMeta(doc, req.user.id))
-})
-
-// ---------- first readers ----------
-// the standing circle: the pens a writer trusts with early pages. kept in
-// settings, spent by the send button — a send walks the whole circle
-// through the review door at once, enrolled to speak, never to write.
-const FIRST_READERS_MAX = 24
-const listFirstReaders = (ownerId) =>
-  db
-    .prepare(
-      `SELECT u.id, u.username FROM first_readers f JOIN user u ON u.id = f.reader_id
-       WHERE f.owner_id = ? ORDER BY f.created_at`
-    )
-    .all(ownerId)
-
-app.get('/api/first-readers', requireFullUser, (req, res) => {
-  res.json({ readers: listFirstReaders(req.user.id) })
-})
-
-app.post('/api/first-readers', requireFullUser, (req, res) => {
-  const handle = String((req.body || {}).handle || '').toLowerCase().trim()
-  // handles only — a ghost's pen name is not an address
-  const u = db.prepare('SELECT id, username FROM user WHERE username = ?').get(handle)
-  if (!u) return res.status(404).json({ error: 'no desk by that handle' })
-  if (u.id === req.user.id)
-    return res.status(400).json({ error: 'you already read your own pages first' })
-  const n = db
-    .prepare('SELECT COUNT(*) AS c FROM first_readers WHERE owner_id = ?')
-    .get(req.user.id).c
-  if (n >= FIRST_READERS_MAX)
-    return res.status(400).json({ error: `the circle holds ${FIRST_READERS_MAX}` })
-  db.prepare(
-    'INSERT OR IGNORE INTO first_readers (owner_id, reader_id, created_at) VALUES (?, ?, ?)'
-  ).run(req.user.id, u.id, Date.now())
-  res.json({ readers: listFirstReaders(req.user.id) })
-})
-
-app.delete('/api/first-readers/:id', requireFullUser, (req, res) => {
-  db.prepare('DELETE FROM first_readers WHERE owner_id = ? AND reader_id = ?').run(
-    req.user.id,
-    req.params.id
-  )
-  res.json({ readers: listFirstReaders(req.user.id) })
-})
-
-// send a draft to the sender's circle: each reader is enrolled as a
-// commenter (an already-enrolled pen keeps its standing — a send never
-// demotes) and the doc lands on their desk wearing the review key. one
-// history line per delivery that changed something — re-sending to a
-// circle already holding the page is a quiet no-op, not a drumbeat.
-app.post('/api/docs/:id/send', requireFullUser, (req, res) => {
-  const doc = db
-    .prepare('SELECT id, owner_id, review_token FROM docs WHERE id = ?')
-    .get(req.params.id)
-  if (!doc) return res.status(404).json({ error: 'no such doc' })
-  if (!canEditDoc(doc, req.user.id)) return res.status(403).json({ error: 'not yours' })
-  const readers = listFirstReaders(req.user.id)
-  if (!readers.length) return res.status(400).json({ error: 'no first readers yet' })
-  // the circle enters through the review door, so the door must exist first
-  if (!doc.review_token) {
-    db.prepare('UPDATE docs SET review_token = ? WHERE id = ? AND review_token IS NULL').run(
-      crypto.randomBytes(10).toString('hex'),
-      doc.id
-    )
-  }
-  const enroll = db.prepare(
-    "INSERT OR IGNORE INTO collaborators (doc_id, user_id, role) VALUES (?, ?, 'commenter')"
-  )
-  let sent = 0
-  for (const r of readers) {
-    if (r.id === doc.owner_id) continue
-    sent += enroll.run(doc.id, r.id).changes
-  }
-  if (sent > 0)
-    addEvent(
-      doc.id,
-      { id: req.user.id, username: req.user.username },
-      'send',
-      `to ${sent} first reader${sent === 1 ? '' : 's'}`
-    )
-  res.json({ sent, circle: readers.length })
 })
 
 // ---------- the letterbox ----------

@@ -19,7 +19,7 @@ else
   echo "!! author_data volume not found, skipping snapshot"
 fi
 
-npx vite build
+npm run build
 fly deploy --ha=false -a "$APP"
 
 # prod must serve the bundle we just built (newest, in case the entry

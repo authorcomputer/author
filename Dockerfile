@@ -5,7 +5,7 @@ WORKDIR /app
 COPY package.json package-lock.json .npmrc ./
 RUN npm ci
 COPY . .
-RUN npx vite build && npm prune --omit=dev
+RUN npm run build && npm prune --omit=dev
 
 FROM node:22-slim
 WORKDIR /app

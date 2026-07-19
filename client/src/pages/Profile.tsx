@@ -80,7 +80,7 @@ async function importMarkdownFile(file: File): Promise<string> {
 }
 
 export default function Profile() {
-  const [tab, setTab] = useState<'settings' | 'import'>('settings')
+  const [tab, setTab] = useState<'settings' | 'post' | 'import'>('settings')
   return (
     <div className="home">
       <div className="home-head">
@@ -97,11 +97,14 @@ export default function Profile() {
         <button className={tab === 'settings' ? 'on' : ''} onClick={() => setTab('settings')}>
           [ settings ]
         </button>
+        <button className={tab === 'post' ? 'on' : ''} onClick={() => setTab('post')}>
+          [ ✉ post office ]
+        </button>
         <button className={tab === 'import' ? 'on' : ''} onClick={() => setTab('import')}>
           [ import ]
         </button>
       </div>
-      {tab === 'settings' ? <SettingsTab /> : <ImportTab />}
+      {tab === 'settings' ? <SettingsTab /> : tab === 'post' ? <PostOfficeTab /> : <ImportTab />}
     </div>
   )
 }
@@ -157,10 +160,6 @@ function SettingsTab() {
       </div>
 
       <HandleRow current={s.username} onRenamed={(u) => setS({ ...s, username: u })} />
-
-      <FirstReadersRow />
-
-      <LetterboxRow />
 
       <PasswordRow />
 
@@ -246,76 +245,6 @@ function HandleRow({ current, onRenamed }: { current: string; onRenamed: (u: str
   )
 }
 
-// the standing circle: handles the [ ✉ send ] button in a draft's share
-// popover delivers to, each enrolled through the review door
-function FirstReadersRow() {
-  const [readers, setReaders] = useState<{ id: string; username: string }[] | null>(null)
-  const [handle, setHandle] = useState('')
-  const [msg, setMsg] = useState('')
-
-  useEffect(() => {
-    api('/api/first-readers')
-      .then((r) => setReaders(r.readers))
-      .catch(() => {})
-  }, [])
-
-  async function add() {
-    try {
-      const r = await api('/api/first-readers', {
-        method: 'POST',
-        body: JSON.stringify({ handle }),
-      })
-      track('first readers: added', { count: r.readers.length })
-      setReaders(r.readers)
-      setHandle('')
-      setMsg('')
-    } catch (e: any) {
-      setMsg(e.message)
-    }
-  }
-
-  async function drop(id: string) {
-    const r = await api(`/api/first-readers/${id}`, { method: 'DELETE' })
-    track('first readers: removed', { count: r.readers.length })
-    setReaders(r.readers)
-  }
-
-  if (!readers) return null
-  return (
-    <div className="setting-row">
-      <div className="setting-h">✉ first readers</div>
-      {readers.map((r) => (
-        <div className="import-row" key={r.id}>
-          <span className="faint">
-            <Bubble />{' '}
-          </span>
-          <Link to={`/u/${r.username}`}>{r.username}</Link>{' '}
-          <button className="faint" title="remove" onClick={() => drop(r.id)}>
-            ✗
-          </button>
-        </div>
-      ))}
-      <div style={{ display: 'flex', gap: 12, marginTop: readers.length ? 10 : 0 }}>
-        <input
-          style={{ flex: 1, borderBottom: '1px solid var(--fainter)' }}
-          placeholder="their handle"
-          autoCapitalize="none"
-          value={handle}
-          onChange={(e) => {
-            setHandle(e.target.value)
-            setMsg('')
-          }}
-          onKeyDown={(e) => e.key === 'Enter' && handle.trim() && add()}
-        />
-        <button onClick={add} disabled={!handle.trim()}>
-          [ add ]
-        </button>
-      </div>
-      {msg && <div className="err">✗ {msg}</div>}
-    </div>
-  )
-}
-
 type Letterbox = {
   on: boolean
   subscribers: { id: string; email: string; confirmed: boolean }[]
@@ -323,10 +252,9 @@ type Letterbox = {
   capacity: number
 }
 
-// the slot on the door: open it and readers can leave their address on
-// your public pages; [ ✉ post ] in a published draft's share popover
-// mails the piece to every confirmed one
-function LetterboxRow() {
+// the post office, on its own page: what it does, whether it's open, who
+// left an address, and how much postage the month has left
+function PostOfficeTab() {
   const [box, setBox] = useState<Letterbox | null>(null)
 
   useEffect(() => {
@@ -348,14 +276,30 @@ function LetterboxRow() {
   }
 
   return (
-    <div className="setting-row">
-      <button onClick={toggle}>{box.on ? '[✓]' : '[ ]'} ✉ letterbox</button>
+    <div className="profile-body">
+      <div className="setting-row">
+        <div className="hint">
+          readers leave their email on your published pages and public profile. [ ✉ post ] in a
+          published draft’s share menu mails it to every confirmed address — sent as{' '}
+          {username()}@author.computer, each letter carrying its own way out.
+        </div>
+      </div>
+
+      <div className="setting-row">
+        <button onClick={toggle}>
+          {box.on ? '[✓] open for addresses' : '[ ] open for addresses'}
+        </button>
+        {!box.on && box.subscribers.length > 0 && (
+          <div className="hint">closed — the slot takes no new addresses and nothing posts</div>
+        )}
+      </div>
+
       {box.on && (
-        <>
-          <div className="hint">
+        <div className="setting-row">
+          <div className="setting-h">
             {confirmed.length}/{box.capacity} addresses
-            {waiting > 0 ? ` · ${waiting} unconfirmed` : ''} · postage {box.postage.used}/
-            {box.postage.allowance} this month
+            {waiting > 0 ? ` · ${waiting} waiting on a confirmation` : ''} · postage{' '}
+            {box.postage.used}/{box.postage.allowance} this month
           </div>
           {confirmed.map((s) => (
             <div className="import-row" key={s.id}>
@@ -366,7 +310,10 @@ function LetterboxRow() {
               </button>
             </div>
           ))}
-        </>
+          {box.subscribers.length === 0 && (
+            <div className="hint">( no addresses yet — the slot shows on your public pages )</div>
+          )}
+        </div>
       )}
     </div>
   )

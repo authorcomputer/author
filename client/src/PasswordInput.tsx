@@ -8,6 +8,7 @@ export default function PasswordInput({
   onChange,
   placeholder = 'password',
   autoFocus,
+  autoComplete = 'current-password',
   inputStyle,
   style,
 }: {
@@ -15,6 +16,7 @@ export default function PasswordInput({
   onChange: (v: string) => void
   placeholder?: string
   autoFocus?: boolean
+  autoComplete?: string
   inputStyle?: React.CSSProperties
   style?: React.CSSProperties
 }) {
@@ -28,6 +30,8 @@ export default function PasswordInput({
         value={value}
         autoFocus={autoFocus}
         autoCapitalize="none"
+        autoComplete={autoComplete}
+        spellCheck={false}
         onChange={(e) => onChange(e.target.value)}
       />
       {value && (
