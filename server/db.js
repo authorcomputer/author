@@ -199,6 +199,9 @@ if (addColumn('docs', 'published_at INTEGER')) {
 // most once, and the stamp remembers when
 addColumn('profiles', 'letterbox INTEGER DEFAULT 0')
 addColumn('docs', 'posted_at INTEGER')
+// when the address was last asked to confirm — the re-ask gate reads this,
+// so created_at stays what it says it is
+addColumn('subscribers', 'asked_at INTEGER')
 
 // a comment can carry a proposed replacement for its quoted passage
 addColumn('comments', "suggestion TEXT DEFAULT ''")

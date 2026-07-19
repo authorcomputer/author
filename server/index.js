@@ -127,12 +127,14 @@ function requireFullUser(req, res, next) {
   })
 }
 
-// small in-memory per-IP throttle for signup
+// small in-memory per-IP throttle. the key defaults to the request path —
+// a route whose path varies per target (subscribe carries a username) must
+// pass a fixed name, or rotating targets resets the meter
 const buckets = new Map()
-function rateLimit(limit, windowMs) {
+function rateLimit(limit, windowMs, name) {
   return (req, res, next) => {
     const ip = req.headers['fly-client-ip'] || req.ip || '?'
-    const key = `${req.path}|${ip}`
+    const key = `${name || req.path}|${ip}`
     const now = Date.now()
     const hits = (buckets.get(key) || []).filter((t) => now - t < windowMs)
     if (hits.length >= limit) return res.status(429).json({ error: 'slow down a moment' })
@@ -513,12 +515,15 @@ app.post('/api/docs/:id/send', requireFullUser, (req, res) => {
 // (members buy more than they can ever cost), and a global ceiling that
 // sits inside the email provider's free tier until it is raised by hand —
 // the platform can never owe money for postage no one paid for.
-const EMAILS_FREE_MONTHLY = Number(process.env.EMAILS_FREE_MONTHLY || 200)
-const EMAILS_MEMBER_MONTHLY = Number(process.env.EMAILS_MEMBER_MONTHLY || 5000)
-const EMAILS_GLOBAL_DAILY = Number(process.env.EMAILS_GLOBAL_DAILY || 90)
-const EMAILS_GLOBAL_MONTHLY = Number(process.env.EMAILS_GLOBAL_MONTHLY || 2800)
-const SUBSCRIBERS_FREE_MAX = Number(process.env.SUBSCRIBERS_FREE_MAX || 25)
-const SUBSCRIBERS_MEMBER_MAX = Number(process.env.SUBSCRIBERS_MEMBER_MAX || 1000)
+// a mistyped env var must not open a cap — anything non-numeric keeps the default
+const envNum = (v, dflt) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Number(v) : dflt)
+const EMAILS_FREE_MONTHLY = envNum(process.env.EMAILS_FREE_MONTHLY, 200)
+const EMAILS_MEMBER_MONTHLY = envNum(process.env.EMAILS_MEMBER_MONTHLY, 5000)
+const EMAILS_GLOBAL_DAILY = envNum(process.env.EMAILS_GLOBAL_DAILY, 90)
+const EMAILS_GLOBAL_MONTHLY = envNum(process.env.EMAILS_GLOBAL_MONTHLY, 2800)
+const EMAILS_PER_ADDRESS_DAILY = envNum(process.env.EMAILS_PER_ADDRESS_DAILY, 5)
+const SUBSCRIBERS_FREE_MAX = envNum(process.env.SUBSCRIBERS_FREE_MAX, 25)
+const SUBSCRIBERS_MEMBER_MAX = envNum(process.env.SUBSCRIBERS_MEMBER_MAX, 1000)
 
 const emailDay = () => new Date().toISOString().slice(0, 10)
 function bumpEmails(key, n) {
@@ -527,6 +532,14 @@ function bumpEmails(key, n) {
     `INSERT INTO email_usage (user_id, day, count) VALUES (?, ?, ?)
      ON CONFLICT(user_id, day) DO UPDATE SET count = count + excluded.count`
   ).run(key, emailDay(), n)
+}
+// give back a reservation that never left the building. floored at zero —
+// a refund that crosses midnight lands on the new day's empty row
+function refundEmails(key, n) {
+  if (n <= 0) return
+  db.prepare(
+    'UPDATE email_usage SET count = MAX(count - ?, 0) WHERE user_id = ? AND day = ?'
+  ).run(n, key, emailDay())
 }
 const monthEmailsOf = (key) =>
   db
@@ -582,7 +595,7 @@ app.delete('/api/letterbox/:subId', requireFullUser, (req, res) => {
 // is open, is full, or already holds the address. confirmation is asked
 // by email (double opt-in), re-asked at most every ten minutes, and only
 // while the global ceiling has room.
-app.post('/api/letterbox/:username/subscribe', rateLimit(6, 10 * 60_000), async (req, res) => {
+app.post('/api/letterbox/:username/subscribe', rateLimit(envNum(process.env.SUBSCRIBES_PER_IP, 6), 10 * 60_000, 'subscribe'), async (req, res) => {
   res.json({ ok: true }) // answered before the work — the reply carries no verdict
   try {
     const addr = String((req.body || {}).email || '').toLowerCase().trim()
@@ -595,28 +608,33 @@ app.post('/api/letterbox/:username/subscribe', rateLimit(6, 10 * 60_000), async 
       .prepare('SELECT * FROM subscribers WHERE author_id = ? AND email = ?')
       .get(u.id, addr)
     if (existing?.confirmed) return
-    if (existing && Date.now() - existing.created_at < 10 * 60_000) return
+    if (existing && Date.now() - (existing.asked_at || existing.created_at) < 10 * 60_000) return
+    // one address is asked only so often in a day, across every letterbox —
+    // this slot must not be a way to fill a stranger's inbox
+    if (dayEmailsOf(`to:${addr}`) >= EMAILS_PER_ADDRESS_DAILY) return
     const confirmed = db
       .prepare('SELECT COUNT(*) AS c FROM subscribers WHERE author_id = ? AND confirmed = 1')
       .get(u.id).c
-    const waiting = db
+    const total = db
       .prepare('SELECT COUNT(*) AS c FROM subscribers WHERE author_id = ?')
       .get(u.id).c
     const cap = letterboxMax(u.id)
-    if (!existing && (confirmed >= cap || waiting >= cap * 2)) return
+    if (!existing && (confirmed >= cap || total >= cap * 2)) return
     if (!globalRoom(1)) return
-    const token = crypto.randomBytes(16).toString('hex')
+    // a re-ask keeps its token — the earlier confirmation email must not
+    // quietly die in an inbox that received it minutes ago
+    const token = existing?.confirm_token || crypto.randomBytes(16).toString('hex')
     if (existing) {
-      db.prepare('UPDATE subscribers SET confirm_token = ?, created_at = ? WHERE id = ?').run(
+      db.prepare('UPDATE subscribers SET confirm_token = ?, asked_at = ? WHERE id = ?').run(
         token,
         Date.now(),
         existing.id
       )
     } else {
       db.prepare(
-        `INSERT INTO subscribers (id, author_id, email, confirmed, confirm_token, unsub_token, created_at)
-         VALUES (?, ?, ?, 0, ?, ?, ?)`
-      ).run(uid('sub'), u.id, addr, token, crypto.randomBytes(16).toString('hex'), Date.now())
+        `INSERT INTO subscribers (id, author_id, email, confirmed, confirm_token, unsub_token, created_at, asked_at)
+         VALUES (?, ?, ?, 0, ?, ?, ?, ?)`
+      ).run(uid('sub'), u.id, addr, token, crypto.randomBytes(16).toString('hex'), Date.now(), Date.now())
     }
     const origin = originOf(req)
     const link = `${origin}/letter/confirm/${token}`
@@ -632,6 +650,7 @@ app.post('/api/letterbox/:username/subscribe', rateLimit(6, 10 * 60_000), async 
       ),
     })
     bumpEmails('global', 1)
+    bumpEmails(`to:${addr}`, 1)
   } catch (e) {
     console.error('subscribe failed', e)
   }
@@ -654,15 +673,19 @@ function letterHtml(doc, origin, author, unsubUrl) {
 }
 
 // [ ✉ post ]: a published piece goes to every confirmed address, once.
-// the ledger settles on what actually left the building — a walk that
-// stops partway charges (and stamps) only the letters that made it out.
+// order is claim → reserve → send → settle: the stamp is taken atomically
+// before any letter leaves (a second click, or a second tab, finds the doc
+// already claimed), and postage is reserved up front so two concurrent
+// posts can't both pass the ceiling — what fails to leave is refunded and,
+// if nothing left at all, the stamp is handed back too. a partial walk
+// (provider fell over mid-batch) keeps its stamp: better a few readers
+// short once than everyone twice. the shortfall is reported, not hidden.
 app.post('/api/docs/:id/post', requireFullUser, async (req, res) => {
   try {
     const doc = db.prepare('SELECT * FROM docs WHERE id = ?').get(req.params.id)
     if (!doc) return res.status(404).json({ error: 'no such doc' })
     if (doc.owner_id !== req.user.id) return res.status(403).json({ error: 'not yours' })
     if (!doc.published || !doc.slug) return res.status(400).json({ error: 'publish it first' })
-    if (doc.posted_at) return res.status(400).json({ error: 'already posted' })
     if (!profileFor(req.user.id).letterbox)
       return res.status(400).json({ error: 'the letterbox is closed' })
     const subs = db
@@ -673,6 +696,14 @@ app.post('/api/docs/:id/post', requireFullUser, async (req, res) => {
       return res.status(429).json({ error: 'past this month’s postage' })
     if (!globalRoom(subs.length))
       return res.status(503).json({ error: 'the post office is at capacity — try tomorrow' })
+    // the claim: everything above ran without yielding, and this update is
+    // the one writer — whoever loses it gets told the piece already went
+    const claim = db
+      .prepare('UPDATE docs SET posted_at = ? WHERE id = ? AND posted_at IS NULL')
+      .run(Date.now(), doc.id)
+    if (!claim.changes) return res.status(400).json({ error: 'already posted' })
+    bumpEmails(req.user.id, subs.length)
+    bumpEmails('global', subs.length)
     const origin = originOf(req)
     const sent = await sendBatch(
       subs.map((s) => {
@@ -687,17 +718,19 @@ app.post('/api/docs/:id/post', requireFullUser, async (req, res) => {
         }
       })
     )
-    if (sent === 0) return res.status(502).json({ error: 'the post stuck — nothing was charged' })
-    bumpEmails(req.user.id, sent)
-    bumpEmails('global', sent)
-    db.prepare('UPDATE docs SET posted_at = ? WHERE id = ?').run(Date.now(), doc.id)
+    refundEmails(req.user.id, subs.length - sent)
+    refundEmails('global', subs.length - sent)
+    if (sent === 0) {
+      db.prepare('UPDATE docs SET posted_at = NULL WHERE id = ?').run(doc.id)
+      return res.status(502).json({ error: 'the post stuck — nothing was charged' })
+    }
     addEvent(
       doc.id,
       { id: req.user.id, username: req.user.username },
       'post',
       `to ${sent} address${sent === 1 ? '' : 'es'}`
     )
-    res.json({ posted: sent })
+    res.json({ posted: sent, of: subs.length })
   } catch (e) {
     console.error('post failed', e)
     res.status(502).json({ error: 'the post stuck — try again' })
@@ -1443,19 +1476,51 @@ app.get('/updates', (req, res) => {
 
 // the two doors a letter's own links open: confirming an address, and
 // letting it back out. tokens are the whole capability; the pages are
-// server-drawn slips of paper, not the app.
-const letterPage = (lines) =>
+// server-drawn slips of paper, not the app. a GET never mutates — mail
+// scanners prefetch every link in a delivered email, and a prefetch must
+// not confirm anyone in or usher anyone out. the click is a POST.
+const letterPage = (lines, form) =>
   `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>author*</title></head>
 <body style="font-family:ui-monospace,Menlo,monospace;background:#faf9f6;color:#1a1a1a;display:flex;min-height:90vh;align-items:center;justify-content:center;text-align:center;padding:24px">
 <div><div style="font-size:15px;margin-bottom:14px">${lines[0]}</div>
 <div style="color:#999;font-size:13px">${lines[1] || ''}</div>
+${form ? `<form method="post" action="${form.action}" style="margin-top:24px"><button style="font-family:inherit;font-size:14px;background:none;border:none;cursor:pointer;color:#1a1a1a">[ ${form.label} ]</button></form>` : ''}
 <div style="margin-top:26px;font-size:13px"><a href="/" style="color:#1a1a1a">author*</a></div></div></body></html>`
 
+const subByConfirm = (token) =>
+  db
+    .prepare(
+      'SELECT s.*, u.username FROM subscribers s JOIN user u ON u.id = s.author_id WHERE s.confirm_token = ?'
+    )
+    .get(token)
+const subByUnsub = (token) =>
+  db
+    .prepare(
+      'SELECT s.*, u.username FROM subscribers s JOIN user u ON u.id = s.author_id WHERE s.unsub_token = ?'
+    )
+    .get(token)
+const nothingHere = (res) => res.status(404).type('html').send(letterPage(['( nothing here )']))
+
 app.get('/letter/confirm/:token', (req, res) => {
-  const sub = db
-    .prepare('SELECT s.*, u.username FROM subscribers s JOIN user u ON u.id = s.author_id WHERE s.confirm_token = ?')
-    .get(req.params.token)
-  if (!sub) return res.status(404).type('html').send(letterPage(['( nothing here )']))
+  const sub = subByConfirm(req.params.token)
+  if (!sub) return nothingHere(res)
+  res.type('html').send(
+    letterPage([`✉ letters from ${esc(sub.username)}?`, `they'll come to ${esc(sub.email)}`], {
+      action: `/letter/confirm/${esc(sub.confirm_token)}`,
+      label: 'yes — send me their letters',
+    })
+  )
+})
+
+app.post('/letter/confirm/:token', (req, res) => {
+  const sub = subByConfirm(req.params.token)
+  if (!sub) return nothingHere(res)
+  // the box may have closed or filled since the note was dropped
+  const confirmedCount = db
+    .prepare('SELECT COUNT(*) AS c FROM subscribers WHERE author_id = ? AND confirmed = 1')
+    .get(sub.author_id).c
+  if (!profileFor(sub.author_id).letterbox || confirmedCount >= letterboxMax(sub.author_id))
+    return res.status(409).type('html').send(letterPage(['( the letterbox is closed )']))
   db.prepare(
     'UPDATE subscribers SET confirmed = 1, confirmed_at = ?, confirm_token = NULL WHERE id = ?'
   ).run(Date.now(), sub.id)
@@ -1464,12 +1529,21 @@ app.get('/letter/confirm/:token', (req, res) => {
   )
 })
 
-// one-click unsubscribe arrives as POST, a clicked link as GET — same door
-app.all('/letter/leave/:token', (req, res) => {
-  const sub = db
-    .prepare('SELECT s.*, u.username FROM subscribers s JOIN user u ON u.id = s.author_id WHERE s.unsub_token = ?')
-    .get(req.params.token)
-  if (!sub) return res.status(404).type('html').send(letterPage(['( nothing here )']))
+app.get('/letter/leave/:token', (req, res) => {
+  const sub = subByUnsub(req.params.token)
+  if (!sub) return nothingHere(res)
+  res.type('html').send(
+    letterPage([`✉ no more letters from ${esc(sub.username)}?`], {
+      action: `/letter/leave/${esc(sub.unsub_token)}`,
+      label: 'let my address out',
+    })
+  )
+})
+
+// the click on the page, and rfc 8058 one-click unsubscribe, both land here
+app.post('/letter/leave/:token', (req, res) => {
+  const sub = subByUnsub(req.params.token)
+  if (!sub) return nothingHere(res)
   db.prepare('DELETE FROM subscribers WHERE id = ?').run(sub.id)
   res.type('html').send(
     letterPage([`✉ your address slipped back out of ${esc(sub.username)}&rsquo;s letterbox`, 'no more letters'])

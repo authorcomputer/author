@@ -70,14 +70,17 @@ box = await jget('/api/letterbox', w1)
 ok(box.subscribers.length === 1 && !box.subscribers[0].confirmed, 'the owner sees the waiting address')
 
 const confirmUrl = linksFor(sub1)[0]
-const c1 = await fetch(confirmUrl)
-ok(c1.ok && (await c1.text()).includes('letterbox'), 'the confirm link answers with a page')
+const c0 = await fetch(confirmUrl)
+ok(c0.ok && (await c0.text()).includes('<form'), 'the confirm link is a question, not a deed')
+ok((await jget('/api/letterbox', w1)).subscribers[0].confirmed === false, 'a prefetch confirms no one')
+const c1 = await fetch(confirmUrl, { method: 'POST' })
+ok(c1.ok && (await c1.text()).includes('letterbox'), 'the click confirms')
 ok((await jget('/api/letterbox', w1)).subscribers[0].confirmed === true, 'the address is confirmed')
 ok((await fetch(confirmUrl)).status === 404, 'a spent confirm token opens nothing')
 
 await post(`/api/letterbox/${w1me.username}/subscribe`, { email: sub2 })
 await sleep(300)
-await fetch(linksFor(sub2)[0])
+await fetch(linksFor(sub2)[0], { method: 'POST' })
 await post(`/api/letterbox/${w1me.username}/subscribe`, { email: sub3 })
 await sleep(300)
 box = await jget('/api/letterbox', w1)
@@ -110,18 +113,28 @@ ok((await raw('POST', `/api/docs/${d3}/post`, {}, w1)).status === 429, 'past the
 const leaveUrl = (fs.readFileSync(LOG, 'utf8').match(new RegExp(`${BASE}/letter/leave/[a-f0-9]+`, 'g')) || [])[0]
 ok(!!leaveUrl, 'every letter carries a way out')
 await fetch(leaveUrl)
-ok((await jget('/api/letterbox', w1)).subscribers.filter((s) => s.confirmed).length === 1, 'an address slips back out')
-ok((await fetch(leaveUrl)).status === 404, 'a spent leave token opens nothing')
+ok((await jget('/api/letterbox', w1)).subscribers.filter((s) => s.confirmed).length === 2, 'a prefetch ushers no one out')
+await fetch(leaveUrl, { method: 'POST' })
+ok((await jget('/api/letterbox', w1)).subscribers.filter((s) => s.confirmed).length === 1, 'the click lets an address out')
+ok((await fetch(leaveUrl, { method: 'POST' })).status === 404, 'a spent leave token opens nothing')
+
+// ---- one address, many letterboxes (booted with EMAILS_PER_ADDRESS_DAILY=1) ----
+await jpost('/api/letterbox', { on: true }, w2)
+await post(`/api/letterbox/${w2me.username}/subscribe`, { email: sub1 })
+await sleep(300)
+ok(
+  linksFor(sub1).filter((l) => l.includes('/letter/confirm/')).length === 1,
+  'one address is asked only so often in a day, across every letterbox'
+)
 
 // ---- the global ceiling (booted with EMAILS_GLOBAL_DAILY=7) ----
 // spent so far: 2 confirms + 4 letters = 6; the 7th fits, the 8th must not
-await jpost('/api/letterbox', { on: true }, w2)
 const s21 = `s21-${run}@t.local`
 const s22 = `s22-${run}@t.local`
 await post(`/api/letterbox/${w2me.username}/subscribe`, { email: s21 })
 await sleep(300)
 ok(linksFor(s21).length === 1, 'the last of the day’s room still posts')
-await fetch(linksFor(s21)[0])
+await fetch(linksFor(s21)[0], { method: 'POST' })
 await post(`/api/letterbox/${w2me.username}/subscribe`, { email: s22 })
 await sleep(300)
 ok(linksFor(s22).length === 0, 'past the ceiling, not even a confirmation leaves')

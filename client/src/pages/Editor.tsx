@@ -1158,6 +1158,7 @@ function SharePop({
   // the letterbox, for [ ✉ post ] — only the owner's popover asks
   const [boxCount, setBoxCount] = useState(0)
   const [posted, setPosted] = useState<number | 'prior' | null>(meta.posted_at ? 'prior' : null)
+  const [posting, setPosting] = useState(false)
   const [postErr, setPostErr] = useState('')
   useEffect(() => {
     if (!meta.mine) return
@@ -1167,12 +1168,17 @@ function SharePop({
   }, [meta.mine])
 
   async function doPost() {
+    if (posting) return
+    setPosting(true)
     track('letterbox: posted', { addresses: boxCount })
     try {
       const r = await api(`/api/docs/${meta.id}/post`, { method: 'POST', body: '{}' })
       setPosted(r.posted)
+      if (r.posted < r.of) setPostErr(`${r.of - r.posted} of ${r.of} didn’t leave`)
     } catch (e: any) {
       setPostErr(e.message)
+    } finally {
+      setPosting(false)
     }
   }
 
@@ -1302,8 +1308,10 @@ function SharePop({
                       ✉ posted{typeof posted === 'number' ? ` to ${posted} address${posted === 1 ? '' : 'es'}` : ''}
                     </span>
                   ) : (
-                    <button onClick={doPost}>
-                      [ ✉ post to {boxCount} address{boxCount === 1 ? '' : 'es'} ]
+                    <button onClick={doPost} disabled={posting}>
+                      {posting
+                        ? '✉ posting…'
+                        : `[ ✉ post to ${boxCount} address${boxCount === 1 ? '' : 'es'} ]`}
                     </button>
                   )}
                   {postErr && <div className="err">✗ {postErr}</div>}
