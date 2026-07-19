@@ -76,7 +76,8 @@ ok((await jget('/api/letterbox', w1)).subscribers[0].confirmed === false, 'a pre
 const c1 = await fetch(confirmUrl, { method: 'POST' })
 ok(c1.ok && (await c1.text()).includes('letterbox'), 'the click confirms')
 ok((await jget('/api/letterbox', w1)).subscribers[0].confirmed === true, 'the address is confirmed')
-ok((await fetch(confirmUrl)).status === 404, 'a spent confirm token opens nothing')
+const c2 = await fetch(confirmUrl)
+ok(c2.ok && (await c2.text()).includes('already'), 'a second visit hears "already in", not a blank door')
 
 await post(`/api/letterbox/${w1me.username}/subscribe`, { email: sub2 })
 await sleep(300)

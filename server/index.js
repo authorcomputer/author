@@ -640,7 +640,8 @@ app.post('/api/letterbox/:username/subscribe', rateLimit(envNum(process.env.SUBS
     const link = `${origin}/letter/confirm/${token}`
     await sendEmail({
       to: addr,
-      fromName: `${u.username} · author*`,
+      fromName: u.username,
+      fromLocal: u.username,
       subject: `letters from ${u.username}`,
       link,
       html: letterShell(
@@ -710,7 +711,8 @@ app.post('/api/docs/:id/post', requireFullUser, async (req, res) => {
         const unsubUrl = `${origin}/letter/leave/${s.unsub_token}`
         return {
           to: s.email,
-          fromName: `${req.user.username} · author*`,
+          fromName: req.user.username,
+          fromLocal: req.user.username,
           subject: doc.title || 'untitled',
           link: `${origin}/p/${doc.slug}`,
           unsubUrl,
@@ -1501,9 +1503,20 @@ const subByUnsub = (token) =>
     .get(token)
 const nothingHere = (res) => res.status(404).type('html').send(letterPage(['( nothing here )']))
 
+// the token outlives the click — an emailed link gets opened twice, and
+// the second visit deserves "you're already in", not a blank door
+const alreadyIn = (res, sub) =>
+  res.type('html').send(
+    letterPage([
+      `✉ your address is already in ${esc(sub.username)}&rsquo;s letterbox`,
+      'their letters will find you',
+    ])
+  )
+
 app.get('/letter/confirm/:token', (req, res) => {
   const sub = subByConfirm(req.params.token)
   if (!sub) return nothingHere(res)
+  if (sub.confirmed) return alreadyIn(res, sub)
   res.type('html').send(
     letterPage([`✉ letters from ${esc(sub.username)}?`, `they'll come to ${esc(sub.email)}`], {
       action: `/letter/confirm/${esc(sub.confirm_token)}`,
@@ -1515,15 +1528,17 @@ app.get('/letter/confirm/:token', (req, res) => {
 app.post('/letter/confirm/:token', (req, res) => {
   const sub = subByConfirm(req.params.token)
   if (!sub) return nothingHere(res)
+  if (sub.confirmed) return alreadyIn(res, sub)
   // the box may have closed or filled since the note was dropped
   const confirmedCount = db
     .prepare('SELECT COUNT(*) AS c FROM subscribers WHERE author_id = ? AND confirmed = 1')
     .get(sub.author_id).c
   if (!profileFor(sub.author_id).letterbox || confirmedCount >= letterboxMax(sub.author_id))
     return res.status(409).type('html').send(letterPage(['( the letterbox is closed )']))
-  db.prepare(
-    'UPDATE subscribers SET confirmed = 1, confirmed_at = ?, confirm_token = NULL WHERE id = ?'
-  ).run(Date.now(), sub.id)
+  db.prepare('UPDATE subscribers SET confirmed = 1, confirmed_at = ? WHERE id = ?').run(
+    Date.now(),
+    sub.id
+  )
   res.type('html').send(
     letterPage([`✉ your address is in ${esc(sub.username)}&rsquo;s letterbox`, 'their letters will find you'])
   )

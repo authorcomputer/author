@@ -5,13 +5,20 @@
 // keys live in the environment only — this repo is public.
 
 const KEY = process.env.RESEND_API_KEY
-const FROM_DOMAIN = process.env.EMAIL_FROM || 'post@author.computer'
+const FROM_ADDR = process.env.EMAIL_FROM || 'post@author.computer'
+const FROM_DOMAIN = FROM_ADDR.split('@')[1] || 'author.computer'
+const FROM_LOCAL = FROM_ADDR.split('@')[0] || 'post'
 
 export const emailConfigured = () => !!KEY
 
-// a display name rides in front of the fixed, verified address — the
-// address proves the domain, the name says whose letter it is
-const fromLine = (name) => `${String(name || 'author*').replace(/["<>]/g, '')} <${FROM_DOMAIN}>`
+// a letter wears its writer, not the platform: "ari <ari@author.computer>".
+// the handle becomes the local part (handles are [a-z0-9_-], which is a
+// valid local part); anything that isn't a clean handle falls back to the
+// configured address. the domain alone says where it was posted from.
+const fromLine = (name, local) => {
+  const l = /^[a-z0-9_-]{1,64}$/.test(String(local || '')) ? local : FROM_LOCAL
+  return `${String(name || 'author*').replace(/["<>]/g, '')} <${l}@${FROM_DOMAIN}>`
+}
 
 async function resend(path, body) {
   const res = await fetch(`https://api.resend.com${path}`, {
@@ -25,7 +32,7 @@ async function resend(path, body) {
 
 // one email. `link` is the letter's primary url — dry runs log it so the
 // flow stays walkable (and testable) without a key
-export async function sendEmail({ to, fromName, subject, html, link, unsubUrl }) {
+export async function sendEmail({ to, fromName, fromLocal, subject, html, link, unsubUrl }) {
   if (!KEY) {
     console.log(
       `email (dry): to=${to} subject=${JSON.stringify(subject)} link=${link || ''} unsub=${unsubUrl || ''}`
@@ -33,7 +40,7 @@ export async function sendEmail({ to, fromName, subject, html, link, unsubUrl })
     return { dry: true }
   }
   return resend('/emails', {
-    from: fromLine(fromName),
+    from: fromLine(fromName, fromLocal),
     to: [to],
     subject,
     html,
@@ -80,7 +87,7 @@ function sendChunk(chunk) {
   return resend(
     '/emails/batch',
     chunk.map((l) => ({
-        from: fromLine(l.fromName),
+        from: fromLine(l.fromName, l.fromLocal),
         to: [l.to],
         subject: l.subject,
         html: l.html,
