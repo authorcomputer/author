@@ -198,19 +198,22 @@ input, textarea {
   .desk-peek { display: none; }
 }
 
-/* the lamp: the corner-nav's opposite corner, one glyph, every page */
+/* the lamp: the corner-nav's opposite corner, wearing the same chip so it
+   reads as a control, not a stray glyph */
 .lamp {
   position: fixed;
   left: 18px;
-  bottom: 14px;
+  bottom: 16px;
   z-index: 20;
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1;
-  color: var(--fainter);
-  padding: 12px;
-  margin: -12px;
+  color: var(--faint);
+  background: rgba(253, 252, 249, 0.94);
+  border: 1px solid var(--fainter);
+  padding: 7px 11px;
 }
-.lamp:hover { color: var(--accent); }
+.lamp:hover { color: var(--accent); border-color: var(--accent); }
+[data-mode='dark'] .lamp { background: rgba(25, 23, 19, 0.94); }
 
 /* always-reachable, never-prominent */
 .corner-nav {
