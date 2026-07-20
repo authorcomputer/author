@@ -189,7 +189,11 @@ app.post('/api/signup', rateLimit(8, 60_000), async (req, res) => {
   }
 })
 
-app.get('/api/me', requireUser, (req, res) => res.json(req.user))
+// the admin flag rides /api/me only for the admin themself — everyone
+// else's payload doesn't admit the back room exists
+app.get('/api/me', requireUser, (req, res) =>
+  res.json({ ...req.user, ...(ADMIN_USER_ID && req.user.id === ADMIN_USER_ID ? { admin: true } : {}) })
+)
 
 // a handle is also an address now — letters leave as handle@author.computer —
 // so the role names every mail system trusts must never belong to a user

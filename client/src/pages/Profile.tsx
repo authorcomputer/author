@@ -14,6 +14,7 @@ import Bubble from '../Bubble'
 import { CommentMark } from '../comment-mark'
 import Logo from '../Logo'
 import PasswordInput from '../PasswordInput'
+import { BackRoomBody } from './Admin'
 
 type Settings = {
   username: string
@@ -80,7 +81,14 @@ async function importMarkdownFile(file: File): Promise<string> {
 }
 
 export default function Profile() {
-  const [tab, setTab] = useState<'settings' | 'post' | 'import'>('settings')
+  const [tab, setTab] = useState<'settings' | 'post' | 'import' | 'admin'>('settings')
+  // the back-room tab shows only for the one desk the flag rides with
+  const [admin, setAdmin] = useState(false)
+  useEffect(() => {
+    api('/api/me')
+      .then((m) => setAdmin(!!m.admin))
+      .catch(() => {})
+  }, [])
   return (
     <div className="home">
       <div className="home-head">
@@ -103,8 +111,23 @@ export default function Profile() {
         <button className={tab === 'import' ? 'on' : ''} onClick={() => setTab('import')}>
           [ import ]
         </button>
+        {admin && (
+          <button className={tab === 'admin' ? 'on' : ''} onClick={() => setTab('admin')}>
+            [ back room ]
+          </button>
+        )}
       </div>
-      {tab === 'settings' ? <SettingsTab /> : tab === 'post' ? <PostOfficeTab /> : <ImportTab />}
+      {tab === 'settings' ? (
+        <SettingsTab />
+      ) : tab === 'post' ? (
+        <PostOfficeTab />
+      ) : tab === 'admin' ? (
+        <div className="profile-body">
+          <BackRoomBody />
+        </div>
+      ) : (
+        <ImportTab />
+      )}
     </div>
   )
 }
