@@ -12,10 +12,12 @@ const dark = () => document.documentElement.dataset.mode === 'dark'
 // cream gold over the paper and lands where the old flat #fbf0d9 band sat;
 // dark mode screens the gutter gold over dark paper at low opacity, which
 // works out to the old #3a2f15 wash — same hues, now with ink in them
+// update() merges over the live config, so both branches must name every
+// field the other one sets — an omitted key would survive the lamp flip
 const commentOpts = (editable: boolean): HighlightOptions => ({
   ...(dark()
     ? { color: '#d8a848', vivid: 'screen' as const, opacity: 0.3 }
-    : { color: '#f7e6c3' }),
+    : { color: '#f7e6c3', vivid: false as const, opacity: 1 }),
   // an inline span, not a block — clamp to its words, not the whole line
   snap: 'word',
   // the writing view redraws on every keystroke; the flat css band keeps
@@ -74,7 +76,7 @@ export function attachCommentInk(editor: Editor): () => void {
 const selectionOpts = (): HighlightOptions => ({
   ...(dark()
     ? { color: '#d8a848', vivid: 'screen' as const, opacity: 0.3 }
-    : { color: '#f3d9c9' }),
+    : { color: '#f3d9c9', vivid: false as const, opacity: 1 }),
   // wetter ink when the drag slows down — live selection only
   speed: { enabled: true },
 })
