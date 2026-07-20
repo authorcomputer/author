@@ -18,12 +18,12 @@ export const UPDATES: UpdateDay[] = [
       {
         kind: 'bullet',
         head: 'quick drafts',
-        text: 'you can now start a fresh draft by going to author.computer/new — no sign-in needed.',
+        text: 'author.computer/new now opens a fresh draft — no sign-in needed.',
       },
       {
         kind: 'bullet',
         head: 'mcp',
-        text: 'you can now connect claude (or any mcp client) to author to read your drafts and comments and start new pages. go to settings to create a key.',
+        text: 'author now gives you the ability to connect claude (or any mcp client) to read your drafts and comments and start new pages. go to settings to create a key.',
       },
       {
         kind: 'bullet',
@@ -33,12 +33,12 @@ export const UPDATES: UpdateDay[] = [
       {
         kind: 'bullet',
         head: 'rss',
-        text: 'you can now follow any public profile in your feed reader. the feed link is on the profile page.',
+        text: 'author now gives you the ability to follow any public profile in your feed reader. the feed link is on the profile page.',
       },
       {
         kind: 'bullet',
         head: 'dark mode',
-        text: 'you can now switch between light and dark with the ☾ button in the bottom-left corner.',
+        text: 'author is now available in dark mode. switch with the ☾ button in the bottom-left corner.',
       },
     ],
   },
