@@ -163,6 +163,8 @@ function SettingsTab() {
 
       <PasswordRow />
 
+      <MachineKeysRow />
+
       <div className="setting-row">
         <div className="setting-h">social links</div>
         <textarea
@@ -241,6 +243,103 @@ function HandleRow({ current, onRenamed }: { current: string; onRenamed: (u: str
         </button>
       </div>
       {state === 'error' && <div className="err">✗ {msg}</div>}
+    </div>
+  )
+}
+
+type MachineKey = { id: string; label: string; created_at: number; last_used: number | null }
+
+// keys for machines: claude (or any mcp client) presents one as a bearer
+// and sits at the desk — reading drafts and margins, starting new pages.
+// the key itself rides one response and is never shown again.
+function MachineKeysRow() {
+  const [keys, setKeys] = useState<MachineKey[] | null>(null)
+  const [label, setLabel] = useState('')
+  const [fresh, setFresh] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  useEffect(() => {
+    api('/api/tokens')
+      .then((r) => setKeys(r.tokens))
+      .catch(() => {})
+  }, [])
+  if (!keys) return null
+
+  const cmd = fresh
+    ? `claude mcp add --transport http author ${location.origin}/mcp --header "Authorization: Bearer ${fresh}"`
+    : null
+
+  async function mint() {
+    try {
+      const r = await api('/api/tokens', { method: 'POST', body: JSON.stringify({ label }) })
+      track('mcp: key minted')
+      setKeys(r.tokens)
+      setFresh(r.token)
+      setLabel('')
+      setMsg('')
+    } catch (e: any) {
+      setMsg(e.message)
+    }
+  }
+
+  async function revoke(id: string) {
+    const r = await api(`/api/tokens/${id}`, { method: 'DELETE' })
+    track('mcp: key revoked')
+    setKeys(r.tokens)
+    setFresh(null)
+  }
+
+  return (
+    <div className="setting-row">
+      <div className="setting-h">mcp</div>
+      <div className="hint">
+        a key lets claude — or any mcp client — sit at your desk: read your drafts and their
+        margins, start new ones. the door is {location.origin}/mcp
+      </div>
+      {keys.map((k) => (
+        <div className="import-row" key={k.id}>
+          <span className="faint">⚙ </span>
+          {k.label || 'unlabeled'}
+          <span className="faint">
+            {' · '}
+            {k.last_used ? `last used ${new Date(k.last_used).toLocaleDateString()}` : 'never used'}
+          </span>{' '}
+          <button className="faint" title="revoke" onClick={() => revoke(k.id)}>
+            ✗
+          </button>
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 12, marginTop: keys.length ? 10 : 0 }}>
+        <input
+          style={{ flex: 1, borderBottom: '1px solid var(--fainter)' }}
+          placeholder="which machine?"
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && mint()}
+        />
+        <button onClick={mint}>[ mint a key ]</button>
+      </div>
+      {msg && <div className="err">✗ {msg}</div>}
+      {fresh && cmd && (
+        <div style={{ marginTop: 10 }}>
+          <div className="share-link" style={{ userSelect: 'all' }}>
+            {cmd}
+          </div>
+          <div className="ai-actions">
+            <button
+              onClick={() => {
+                navigator.clipboard?.writeText(cmd).catch(() => {})
+                setCopied(true)
+                setTimeout(() => setCopied(false), 1600)
+              }}
+            >
+              {copied ? '✓ copied' : '[ copy the claude command ]'}
+            </button>
+            <span className="hint">shown once — the key never appears again</span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

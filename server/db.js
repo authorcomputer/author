@@ -133,6 +133,16 @@ CREATE TABLE IF NOT EXISTS notes (
   updated_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_notes_owner ON notes(owner_id, updated_at);
+CREATE TABLE IF NOT EXISTS api_tokens (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL,
+  label TEXT DEFAULT '',
+  created_at INTEGER NOT NULL,
+  last_used INTEGER
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_api_tokens_hash ON api_tokens(token_hash);
+CREATE INDEX IF NOT EXISTS idx_api_tokens_user ON api_tokens(user_id);
 `)
 
 // lightweight migrations for pre-existing databases. returns whether the

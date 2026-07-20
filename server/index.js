@@ -14,6 +14,8 @@ import { setupCollab, flushRooms, insertVersion, dropRoom, hasRoom } from './col
 import { putImage, deleteImage, pushMissing, imagesReplicated } from './images.js'
 import { aiFeedback, aiCommand, aiChecks } from './ai.js'
 import { sendEmail, sendBatch } from './email.js'
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
+import { buildMcp, tokenUser, mintToken, listTokens, revokeToken, countTokens, tokensMax } from './mcp.js'
 
 const app = express()
 
@@ -436,6 +438,57 @@ app.post('/api/review/:token/open', requireUser, rateLimit(20, 60_000), (req, re
   markSeen(doc.id, req.user.id)
   res.json(docMeta(doc, req.user.id))
 })
+
+// ---------- machine keys + the mcp door ----------
+// a key names its writer to machines: claude (or any mcp client) presents
+// it as a bearer and sits at the desk read-mostly. minted here, shown
+// once, revocable always.
+app.get('/api/tokens', requireFullUser, (req, res) =>
+  res.json({ tokens: listTokens(req.user.id) })
+)
+
+app.post('/api/tokens', requireFullUser, (req, res) => {
+  if (countTokens(req.user.id) >= tokensMax())
+    return res.status(400).json({ error: `${tokensMax()} keys at most — revoke one first` })
+  const { id, token } = mintToken(req.user.id, (req.body || {}).label)
+  // the token rides this one response and is never readable again
+  res.json({ id, token, tokens: listTokens(req.user.id) })
+})
+
+app.delete('/api/tokens/:id', requireFullUser, (req, res) => {
+  revokeToken(req.user.id, req.params.id)
+  res.json({ tokens: listTokens(req.user.id) })
+})
+
+// stateless streamable-http: every POST is its own conversation, so the
+// door needs no session shelf. sits outside /api on purpose — machines
+// carry no Origin header, and the bearer key is the whole authority.
+app.post('/mcp', rateLimit(240, 60_000, 'mcp'), async (req, res) => {
+  const user = tokenUser(req)
+  if (!user)
+    return res
+      .status(401)
+      .json({ jsonrpc: '2.0', error: { code: -32001, message: 'a key from settings opens this door' }, id: null })
+  try {
+    const server = buildMcp(user)
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+    })
+    res.on('close', () => {
+      transport.close()
+      server.close()
+    })
+    await server.connect(transport)
+    await transport.handleRequest(req, res, req.body)
+  } catch (e) {
+    console.error('mcp failed', e)
+    if (!res.headersSent) res.status(500).json({ error: 'the machine door stuck' })
+  }
+})
+app.all('/mcp', (req, res) =>
+  res.status(405).json({ error: 'POST only — the door is stateless' })
+)
 
 // ---------- notes ----------
 // quick slips in the desk's corner: plain text, one writer, no rooms, no

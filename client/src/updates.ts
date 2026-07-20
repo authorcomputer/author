@@ -22,6 +22,11 @@ export const UPDATES: UpdateDay[] = [
       },
       {
         kind: 'bullet',
+        head: 'mcp',
+        text: 'claude (or any mcp client) can sit at your desk — read drafts and comments, start new ones. mint a key under settings → mcp; the door is author.computer/mcp.',
+      },
+      {
+        kind: 'bullet',
         head: 'notes',
         text: 'quick slips in the desk’s corner — [ + note ] or author.computer/note. click one to write in place; [ → a page ] turns it into a draft when it grows up.',
       },
