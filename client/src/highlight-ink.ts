@@ -10,13 +10,13 @@ const dark = () => document.documentElement.dataset.mode === 'dark'
 
 // the app's own tones, not the library's palettes. light mode multiplies the
 // cream gold over the paper and lands where the old flat #fbf0d9 band sat;
-// dark mode screens the gutter gold over dark paper at low opacity, which
-// works out to the old #3a2f15 wash — same hues, now with ink in them
+// dark mode screens burnt orange over dark paper — solved so peak ink lands
+// on the old #3a2f15 wash (the gutter gold screened too yellow-green there)
 // update() merges over the live config, so both branches must name every
 // field the other one sets — an omitted key would survive the lamp flip
 const commentOpts = (editable: boolean): HighlightOptions => ({
   ...(dark()
-    ? { color: '#d8a848', vivid: 'screen' as const, opacity: 0.3 }
+    ? { color: '#7a5807', vivid: 'screen' as const, opacity: 0.35 }
     : { color: '#f7e6c3', vivid: false as const, opacity: 1 }),
   // an inline span, not a block — clamp to its words, not the whole line
   snap: 'word',
@@ -74,10 +74,11 @@ export function attachCommentInk(editor: Editor): () => void {
 }
 
 // the ::selection peach, poured as ink. it draws over the native selection
-// wash in the same hue, so the drag deepens the way a second swipe would
+// wash in the same hue, so the drag deepens the way a second swipe would.
+// dark screens burnt orange, solved to land on the old #4a3421 wash
 const selectionOpts = (): HighlightOptions => ({
   ...(dark()
-    ? { color: '#d8a848', vivid: 'screen' as const, opacity: 0.3 }
+    ? { color: '#b56a32', vivid: 'screen' as const, opacity: 0.35 }
     : { color: '#f3d9c9', vivid: false as const, opacity: 1 }),
   // wetter ink when the drag slows down — live selection only
   speed: { enabled: true },
