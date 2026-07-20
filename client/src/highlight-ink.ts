@@ -33,7 +33,22 @@ const commentOpts = (editable: boolean): HighlightOptions => ({
 export function attachCommentInk(editor: Editor): () => void {
   const marks = new Map<Element, MarkHandle>()
   const spots = new Map<Element, string>()
+  const kids = new Map<Element, Node[]>()
   let raf = 0
+
+  // the ink handle holds live DOM ranges over the span's text nodes from
+  // mount time. typing mutates a text node in place and the ranges hold,
+  // but a paragraph split/join swaps the nodes out and the ranges collapse
+  // to nothing — same element, dead anchors. node identity is the tell
+  const textNodesOf = (el: Element): Node[] => {
+    const out: Node[] = []
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+    let n
+    while ((n = walker.nextNode())) out.push(n)
+    return out
+  }
+  const sameNodes = (a: Node[] | undefined, b: Node[]) =>
+    !!a && a.length === b.length && a.every((n, i) => n === b[i])
 
   const sync = () => {
     raf = 0
@@ -48,8 +63,14 @@ export function attachCommentInk(editor: Editor): () => void {
       seen.add(el)
       const r = el.getBoundingClientRect()
       const spot = `${r.top - origin.top},${r.left - origin.left},${r.width},${r.height}`
+      const nodes = textNodesOf(el)
       const handle = marks.get(el)
       if (!handle) {
+        marks.set(el, highlight(el, commentOpts(editor.isEditable), host))
+      } else if (!sameNodes(kids.get(el), nodes)) {
+        // swapped text nodes: the old handle's anchors are dead — only a
+        // fresh mount captures ranges over the nodes that exist now
+        handle.remove()
         marks.set(el, highlight(el, commentOpts(editor.isEditable), host))
       } else if (spots.get(el) !== spot) {
         // an upstream edit slid this span without resizing anything, so the
@@ -62,12 +83,14 @@ export function attachCommentInk(editor: Editor): () => void {
         handle.update({ snap: 'word' })
       }
       spots.set(el, spot)
+      kids.set(el, nodes)
     }
     for (const [el, handle] of marks) {
       if (!seen.has(el)) {
         handle.remove()
         marks.delete(el)
         spots.delete(el)
+        kids.delete(el)
       }
     }
   }
