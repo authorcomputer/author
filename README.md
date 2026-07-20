@@ -14,6 +14,7 @@ Live at **[author.computer](https://author.computer)**.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ghost writing · live cursors · ⌘K rewrites · the proof
   comments · versions · publishing · profiles · .md import
+  lamplight · the letterbox · rss · a door for machines
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ```
 
@@ -24,6 +25,7 @@ Live at **[author.computer](https://author.computer)**.
   collaboration, and one model request on the house. creating an account
   (just an email and a password) carries everything you wrote with you —
   five model requests a month are free, membership lifts the limit.
+  `/new` is the shortest way in: it always opens a fresh draft.
 - **live collaboration** — Yjs CRDTs over WebSockets; share a writing link
   and whoever opens it lands in the draft with you, named cursors and all
 - **an editor on call** — *ask* streams feedback on the draft, the *proof*
@@ -34,11 +36,26 @@ Live at **[author.computer](https://author.computer)**.
   underline, strike, code, headings, quotes, links), or type markdown and
   watch it convert; the usual ⌘B/⌘I/⌘U shortcuts all work
 - **pages** — header images (any format — the browser recompresses),
-  comments in the margin, named versions with one-click restore,
+  comments in the margin worn as real highlighter ink
+  ([highlighte.rs](https://highlighte.rs)), named versions with one-click
+  restore, a history of writing sittings each one click from its diff,
   publishing to a quiet read-only page at `/p/<slug>`
+- **the letterbox** — open the slot and readers of your published pages
+  can leave an email address; `[ ✉ post ]` mails a piece to every
+  confirmed address, once, with one-click unsubscribe. postage is metered
+  per writer and the post office has a ceiling it won't spend past
 - **profiles** — an optional public page at `/u/<handle>` with your social
-  links, a six-month writing contribution chart, and whichever published
-  pieces you choose to list (each page has its own toggle)
+  links, a six-month writing contribution chart, whichever published
+  pieces you choose to list (each page has its own toggle), and an rss
+  feed at `/u/<handle>/feed.xml`
+- **lamplight** — a ☾ in every page's corner turns the paper warm-dark
+  for anyone, ghost or passerby; the OS preference speaks first and the
+  choice survives reload
+- **a door for machines** — an MCP server at `/mcp`: mint a key in
+  settings and Claude (or any MCP client) can sit at your desk,
+  read-mostly — list and read drafts, read the margins, start new pages,
+  never a pen in a live room. keys are shown once, hashed at rest,
+  revocable always
 - **import** — bring your writing with you: every `.md` file becomes its
   own draft, titles from `# headings`, links and formatting intact
 
@@ -63,8 +80,14 @@ Two dev accounts are seeded on first run (**ink** / **quill**, password
 - backups: with `BUCKET_NAME` + `AWS_*` secrets set (on Fly: `fly storage
   create`), litestream continuously replicates the database to S3-compatible
   storage and restores it automatically onto an empty volume; without them
-  the entrypoint warns that replication is off. images are **not** in the
-  replica — they live only on the volume
+  the entrypoint warns that replication is off. images ride to the same
+  bucket beside the words, best-effort, and a restored volume pulls them
+  back down
+- the post office needs `RESEND_API_KEY` (and optionally `EMAIL_FROM`) to
+  send real letters; without a key every send is a dry run that logs.
+  letter volume and letterbox sizes have their own dials —
+  `EMAILS_FREE_MONTHLY`, `EMAILS_MEMBER_MONTHLY`, `EMAILS_GLOBAL_DAILY`,
+  `SUBSCRIBERS_FREE_MAX`, `SUBSCRIBERS_MEMBER_MAX`
 - ship with `npm run deploy` — snapshots the volume, builds, deploys, and
   verifies prod serves the new bundle
 - model spend is tiered: ghosts get one request, free accounts get
@@ -82,16 +105,18 @@ Two dev accounts are seeded on first run (**ink** / **quill**, password
 | auth    | [Better Auth](https://better-auth.com) — cookie sessions, anonymous ghosts, username + email login |
 | server  | Express + `ws` + better-sqlite3 (single file DB in `data/`)        |
 | editor brain | Anthropic API (`claude-opus-4-8`), server-side only, never in the browser |
+| post    | [Resend](https://resend.com) — confirmation letters + posted pieces; every send is a logged dry run without a key |
+| margin ink | [@highlighters/core](https://highlighte.rs) — comment marks and live selections as chisel-tip strokes |
+| machines | [MCP](https://modelcontextprotocol.io) over streamable HTTP at `/mcp` (`server/mcp.js`) |
 | analytics | [Seline](https://seline.com) — cookie-free page views + product events; editor URLs are masked client-side |
 
 ## contributing
 
 Contributions welcome — issues, PRs, wild ideas. Useful things to know:
 
-- `scripts/collab-test.mjs <cookieA> <cookieB> <docId>` smoke-tests
-  two-client live sync; `scripts/import-test.mjs <cookie>` exercises the
-  markdown import pipeline; both run against any server via
-  `AUTHOR_BASE` / `AUTHOR_WS_URL`
+- a shelf of suites lives in `scripts/*-test.mjs` — collab sync, imports,
+  the letterbox, mcp, rss, image backups, versions, diffs, and more — all
+  runnable against any server via `AUTHOR_BASE` / `AUTHOR_WS_URL`
 - security posture: bcrypt passwords, origin-checked mutations and
   websockets, sanitized public HTML, magic-byte-validated uploads,
   rate-limited credential endpoints — read the git history for the
