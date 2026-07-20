@@ -1,8 +1,11 @@
+import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { me } from '../api'
 import Logo from '../Logo'
+import { attachSelectionInk } from '../highlight-ink'
 
 export default function Privacy() {
+  useEffect(() => attachSelectionInk(), [])
   return (
     <>
       <div className="pub-head">
@@ -18,7 +21,7 @@ export default function Privacy() {
       </div>
       <div className="pub-wrap">
         <h1 className="pub-title">privacy</h1>
-        <div className="faint">plain language, the whole picture. last updated july 1, 2026.</div>
+        <div className="faint">plain language, the whole picture. last updated july 20, 2026.</div>
         <div className="ascii-rule" style={{ margin: '8px 0 28px' }}>
           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         </div>
@@ -42,6 +45,13 @@ export default function Privacy() {
             enforce the free allowance) and which days you wrote (for your contribution
             chart — shown publicly only if your profile is public).
           </p>
+          <p>
+            <strong>Your readers' addresses:</strong> if you open your letterbox,
+            readers can leave an email address to receive your published pieces as
+            letters. Each address is confirmed by the reader before it counts, is used
+            only to send that one writer's letters, and is deleted the moment it
+            unsubscribes — one click, at the bottom of every letter.
+          </p>
           <h2>the model</h2>
           <p>
             When you invoke <em>ask</em>, <em>proof</em>, or ⌘K, the
@@ -58,6 +68,29 @@ export default function Privacy() {
             </a>
             .
           </p>
+          <h2>the post office</h2>
+          <p>
+            Letters — subscription confirmations and pieces you post — are delivered
+            through{' '}
+            <a
+              href="https://resend.com/legal/privacy-policy"
+              target="_blank"
+              rel="noreferrer"
+              style={{ borderBottom: '1px dotted' }}
+            >
+              Resend
+            </a>
+            , an email delivery service: the reader's address and the letter itself
+            pass through them to be sent, and never otherwise.
+          </p>
+          <h2>machine keys</h2>
+          <p>
+            You can mint an API key in settings that lets a machine — Claude, or any
+            MCP client — sit at your desk: list and read your drafts and their
+            comments, and start new pages. Keys are stored hashed (we can't read them
+            either), shown to you once, and revocable in settings at any time. Until
+            you mint one, no machine door exists for your account.
+          </p>
           <h2>analytics</h2>
           <p>
             We use Seline, a cookie-free analytics service: page views and product
@@ -73,7 +106,9 @@ export default function Privacy() {
           <h2>where it lives</h2>
           <p>
             On Fly.io infrastructure in the United States, encrypted at rest, with
-            daily snapshots kept for five days.
+            daily snapshots kept for five days. The database and your images are also
+            continuously replicated to S3-compatible object storage (Tigris, on Fly),
+            so a lost disk doesn't mean lost writing.
           </p>
           <h2>deleting things</h2>
           <p>
