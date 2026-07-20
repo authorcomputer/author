@@ -123,6 +123,16 @@ CREATE TABLE IF NOT EXISTS email_usage (
   count INTEGER DEFAULT 0,
   PRIMARY KEY (user_id, day)
 );
+CREATE TABLE IF NOT EXISTS notes (
+  id TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  text TEXT DEFAULT '',
+  title TEXT DEFAULT '',
+  group_label TEXT DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notes_owner ON notes(owner_id, updated_at);
 `)
 
 // lightweight migrations for pre-existing databases. returns whether the

@@ -437,6 +437,57 @@ app.post('/api/review/:token/open', requireUser, rateLimit(20, 60_000), (req, re
   res.json(docMeta(doc, req.user.id))
 })
 
+// ---------- notes ----------
+// quick slips in the desk's corner: plain text, one writer, no rooms, no
+// versions, no sharing — a note that grows up is promoted to a page by the
+// client and leaves this table. keeping is for desks, so ghosts are nudged.
+const NOTES_MAX = 200
+app.get('/api/notes', requireFullUser, (req, res) => {
+  res.json(
+    db
+      .prepare(
+        'SELECT id, text, title, group_label, updated_at FROM notes WHERE owner_id = ? ORDER BY updated_at DESC'
+      )
+      .all(req.user.id)
+  )
+})
+
+app.post('/api/notes', requireFullUser, (req, res) => {
+  const n = db.prepare('SELECT COUNT(*) AS c FROM notes WHERE owner_id = ?').get(req.user.id).c
+  if (n >= NOTES_MAX) return res.status(400).json({ error: 'the corner is full — toss a few' })
+  const id = uid('note')
+  const now = Date.now()
+  db.prepare('INSERT INTO notes (id, owner_id, text, created_at, updated_at) VALUES (?, ?, ?, ?, ?)').run(
+    id,
+    req.user.id,
+    String((req.body || {}).text || '').slice(0, 20000),
+    now,
+    now
+  )
+  res.json({ id })
+})
+
+app.post('/api/notes/:id', requireFullUser, (req, res) => {
+  const n = db.prepare('SELECT id, owner_id FROM notes WHERE id = ?').get(req.params.id)
+  // a stranger's guess and a missing note answer alike
+  if (!n || n.owner_id !== req.user.id) return res.status(404).json({ error: 'no such note' })
+  const b = req.body || {}
+  if (typeof b.text === 'string')
+    db.prepare('UPDATE notes SET text = ?, updated_at = ? WHERE id = ?').run(
+      b.text.slice(0, 20000),
+      Date.now(),
+      n.id
+    )
+  if (typeof b.title === 'string')
+    db.prepare('UPDATE notes SET title = ? WHERE id = ?').run(b.title.slice(0, 120), n.id)
+  res.json({ ok: true })
+})
+
+app.delete('/api/notes/:id', requireFullUser, (req, res) => {
+  db.prepare('DELETE FROM notes WHERE id = ? AND owner_id = ?').run(req.params.id, req.user.id)
+  res.json({ ok: true })
+})
+
 // ---------- the letterbox ----------
 // a slot on the door: readers drop an address through it, and when the
 // writer chooses [ ✉ post ], a published piece goes out as a letter. the
@@ -1641,6 +1692,7 @@ function sweepGhosts() {
       db.prepare('DELETE FROM collaborators WHERE user_id = ?').run(id)
       db.prepare('DELETE FROM read_cursors WHERE user_id = ?').run(id)
       db.prepare('DELETE FROM activity WHERE user_id = ?').run(id)
+      db.prepare('DELETE FROM notes WHERE owner_id = ?').run(id)
       db.prepare('DELETE FROM ai_usage WHERE user_id = ?').run(id)
       db.prepare('DELETE FROM account WHERE userId = ?').run(id)
       db.prepare('DELETE FROM session WHERE userId = ?').run(id)
