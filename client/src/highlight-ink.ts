@@ -32,6 +32,7 @@ const commentOpts = (editable: boolean): HighlightOptions => ({
 // transaction: new spans get ink, orphaned handles are dropped
 export function attachCommentInk(editor: Editor): () => void {
   const marks = new Map<Element, MarkHandle>()
+  const spots = new Map<Element, string>()
   let raf = 0
 
   const sync = () => {
@@ -39,15 +40,34 @@ export function attachCommentInk(editor: Editor): () => void {
     if (editor.isDestroyed) return
     // the overlay must scroll with the text, so it mounts inside .ed-scroll
     const host = editor.view.dom.closest<HTMLElement>('.ed-scroll')
+    // positions are read against the editor body, not the viewport, so a
+    // scrolled page between transactions doesn't read as movement
+    const origin = editor.view.dom.getBoundingClientRect()
     const seen = new Set<Element>()
     for (const el of editor.view.dom.querySelectorAll('span.comment-mark')) {
       seen.add(el)
-      if (!marks.has(el)) marks.set(el, highlight(el, commentOpts(editor.isEditable), host))
+      const r = el.getBoundingClientRect()
+      const spot = `${r.top - origin.top},${r.left - origin.left},${r.width},${r.height}`
+      const handle = marks.get(el)
+      if (!handle) {
+        marks.set(el, highlight(el, commentOpts(editor.isEditable), host))
+      } else if (spots.get(el) !== spot) {
+        // an upstream edit slid this span without resizing anything, so the
+        // library's reflow observer stays quiet and the ink is stranded at
+        // its draw-time coordinates. geometry is only re-measured when snap
+        // changes — flush the cache through it, then restore. same frame,
+        // so only the corrected stroke ever paints, and retarget keeps the
+        // draw-on animation from replaying
+        handle.update({ snap: 'none' })
+        handle.update({ snap: 'word' })
+      }
+      spots.set(el, spot)
     }
     for (const [el, handle] of marks) {
       if (!seen.has(el)) {
         handle.remove()
         marks.delete(el)
+        spots.delete(el)
       }
     }
   }
