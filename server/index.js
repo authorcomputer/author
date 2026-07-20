@@ -20,11 +20,23 @@ import { buildMcp, tokenUser, mintToken, listTokens, revokeToken, countTokens, t
 const app = express()
 
 // security headers — CSP is belt-and-suspenders over the server-side
-// sanitization; websocket origins are listed explicitly for older Safari
+// sanitization; websocket origins are listed explicitly for older Safari.
+// the shell carries inline pre-paint scripts (the lamp reading its own
+// memory before anything renders) — those are blessed by exact hash, so
+// the policy stays shut to every other inline script
 const WSS_ORIGINS = TRUSTED_ORIGINS.map((o) => o.replace(/^http/, 'ws')).join(' ')
+let INLINE_HASHES = ''
+try {
+  const shell = fs.readFileSync(path.join(process.cwd(), 'dist', 'index.html'), 'utf8')
+  INLINE_HASHES = [...shell.matchAll(/<script>([\s\S]*?)<\/script>/g)]
+    .map((m) => `'sha256-${crypto.createHash('sha256').update(m[1]).digest('base64')}'`)
+    .join(' ')
+} catch {
+  /* no build yet — dev without dist */
+}
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' https://cdn.seline.com",
+  `script-src 'self' ${INLINE_HASHES} https://cdn.seline.com`.replace(/\s+/g, ' '),
   "style-src 'self' 'unsafe-inline'", // react inline style attributes
   "img-src 'self' data: blob:",
   `connect-src 'self' https://api.seline.com ${WSS_ORIGINS}`,
