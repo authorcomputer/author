@@ -354,8 +354,9 @@ input, textarea {
   pointer-events: none;
 }
 
+/* the resting wash is real highlighter ink now (highlight-ink.ts draws it
+   as an overlay) — the span keeps only the dotted rule and the hover cue */
 .comment-mark {
-  background: #fbf0d9;
   border-bottom: 1px dotted #d8a848;
   cursor: pointer;
 }
@@ -1183,7 +1184,6 @@ a:has(> .logo) {
 [data-mode='dark'] .header-controls { background: rgba(25, 23, 19, 0.92); }
 
 /* the comment gold, embered down */
-[data-mode='dark'] .comment-mark { background: #3a2f15; }
 [data-mode='dark'] .comment-mark:hover { background: #493b1a; }
 [data-mode='dark'] .ed-top .comment-count { color: #d8a848; }
 [data-mode='dark'] .byline .kind { color: #d8a848; }

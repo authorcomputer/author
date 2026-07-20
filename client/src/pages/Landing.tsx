@@ -4,6 +4,7 @@ import Logo from '../Logo'
 import { api, colorFor, me, refreshMe } from '../api'
 import { track } from '../analytics'
 import { authClient } from '../auth-client'
+import { attachSelectionInk } from '../highlight-ink'
 
 const REPO_URL = 'https://github.com/authorcomputer/author'
 const INK = colorFor('ink')
@@ -197,6 +198,9 @@ function MockScene() {
 export default function Landing() {
   const nav = useNavigate()
   const [busy, setBusy] = useState(false)
+
+  // selecting text here pours wet highlighter ink under the cursor
+  useEffect(() => attachSelectionInk(), [])
 
   // the ghost door: start writing with no account at all
   async function startWriting() {

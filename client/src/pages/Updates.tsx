@@ -1,9 +1,14 @@
+import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { me } from '../api'
 import Logo from '../Logo'
 import { UPDATES } from '../updates'
+import { attachSelectionInk } from '../highlight-ink'
 
 export default function Updates() {
+  // selecting text here pours wet highlighter ink under the cursor
+  useEffect(() => attachSelectionInk(), [])
+
   return (
     <>
       <div className="pub-head">

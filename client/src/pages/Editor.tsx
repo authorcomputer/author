@@ -29,6 +29,7 @@ import Scribble from '../Scribble'
 import { Checkmarks, setMarks, clearMarks, MarkItem } from '../checkmarks'
 import { CoWritten, coWrittenKey } from '../co-written'
 import { CommentGutter } from '../comment-gutter'
+import { attachCommentInk } from '../highlight-ink'
 import { findRange, findWholeRange, commentRange } from '../ranges'
 import { blockTexts, diffBlocks, type DiffRow } from '../diff'
 import { isOwnInk, PLUMBING } from '../own-ink'
@@ -362,6 +363,12 @@ function EditorInner({ id, entry }: { id: string; entry?: Meta }) {
       },
     },
   })
+
+  // highlighter ink over the comment marks — an overlay, never the document
+  useEffect(() => {
+    if (!editor) return
+    return attachCommentInk(editor)
+  }, [editor])
 
   // lifecycle: meta, presence, teardown
   useEffect(() => {
