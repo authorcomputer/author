@@ -17,13 +17,13 @@ export const UPDATES: UpdateDay[] = [
     blocks: [
       {
         kind: 'bullet',
-        head: 'author.computer/new',
-        text: 'opens a fresh draft — signed in or not.',
+        head: 'quick drafts',
+        text: 'you can now start a fresh draft by going to author.computer/new — no sign-in needed.',
       },
       {
         kind: 'bullet',
         head: 'mcp',
-        text: 'claude (or any mcp client) can sit at your desk — read drafts and comments, start new ones. mint a key under settings → mcp; the door is author.computer/mcp.',
+        text: 'you can now connect claude (or any mcp client) to author to read your drafts and comments and start new pages. go to settings to create a key.',
       },
       {
         kind: 'bullet',
@@ -33,12 +33,12 @@ export const UPDATES: UpdateDay[] = [
       {
         kind: 'bullet',
         head: 'rss',
-        text: 'public profiles have a feed at /u/handle/feed.xml — the pieces you list, readable in any feed reader.',
+        text: 'you can now follow any public profile in your feed reader. the feed link is on the profile page.',
       },
       {
         kind: 'bullet',
         head: 'dark mode',
-        text: 'the ☾ in the bottom-left corner switches it. first visit follows your system setting; your choice sticks in this browser. works signed out too, including on published pages.',
+        text: 'you can now switch between light and dark with the ☾ button in the bottom-left corner.',
       },
     ],
   },
