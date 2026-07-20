@@ -14,7 +14,7 @@ Live at **[author.computer](https://author.computer)**.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
   ghost writing · live cursors · ⌘K rewrites · the proof
   comments · versions · publishing · profiles · .md import
-  lamplight · the letterbox · rss · a door for machines
+  dark mode · the letterbox · rss · an mcp server
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ```
 
@@ -48,14 +48,13 @@ Live at **[author.computer](https://author.computer)**.
   links, a six-month writing contribution chart, whichever published
   pieces you choose to list (each page has its own toggle), and an rss
   feed at `/u/<handle>/feed.xml`
-- **lamplight** — a ☾ in every page's corner turns the paper warm-dark
-  for anyone, ghost or passerby; the OS preference speaks first and the
-  choice survives reload
-- **a door for machines** — an MCP server at `/mcp`: mint a key in
-  settings and Claude (or any MCP client) can sit at your desk,
-  read-mostly — list and read drafts, read the margins, start new pages,
-  never a pen in a live room. keys are shown once, hashed at rest,
-  revocable always
+- **dark mode** — a ☾ in every page's corner turns the paper warm-dark
+  for anyone, ghost or passerby; it follows the OS preference until you
+  choose, and the choice survives reload
+- **an mcp server** — mint an API key in settings and Claude (or any MCP
+  client) can connect at `/mcp`, read-mostly: list and read your drafts,
+  read their comments, create new drafts — never a live editing session.
+  keys are shown once, hashed at rest, revocable always
 - **import** — bring your writing with you: every `.md` file becomes its
   own draft, titles from `# headings`, links and formatting intact
 
@@ -107,7 +106,7 @@ Two dev accounts are seeded on first run (**ink** / **quill**, password
 | editor brain | Anthropic API (`claude-opus-4-8`), server-side only, never in the browser |
 | post    | [Resend](https://resend.com) — confirmation letters + posted pieces; every send is a logged dry run without a key |
 | margin ink | [@highlighters/core](https://highlighte.rs) — comment marks and live selections as chisel-tip strokes |
-| machines | [MCP](https://modelcontextprotocol.io) over streamable HTTP at `/mcp` (`server/mcp.js`) |
+| mcp     | [MCP](https://modelcontextprotocol.io) over streamable HTTP at `/mcp` (`server/mcp.js`) |
 | analytics | [Seline](https://seline.com) — cookie-free page views + product events; editor URLs are masked client-side |
 
 ## contributing
