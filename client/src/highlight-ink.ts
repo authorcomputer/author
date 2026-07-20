@@ -20,6 +20,8 @@ const commentOpts = (editable: boolean): HighlightOptions => ({
     : { color: '#f7e6c3', vivid: false as const, opacity: 1 }),
   // an inline span, not a block — clamp to its words, not the whole line
   snap: 'word',
+  // a touch straighter than the library's 35° chisel
+  tip: { angle: 28 },
   // the writing view redraws on every keystroke; the flat css band keeps
   // that cheap. the read-only review view can afford the full svg ink
   renderer: editable ? 'css' : 'auto',
@@ -79,6 +81,8 @@ const selectionOpts = (): HighlightOptions => ({
     : { color: '#f3d9c9', vivid: false as const, opacity: 1 }),
   // wetter ink when the drag slows down — live selection only
   speed: { enabled: true },
+  // same eased chisel slant as the comment ink
+  tip: { angle: 28 },
 })
 
 // wet ink under the cursor as a reader drags a selection — for the pages
