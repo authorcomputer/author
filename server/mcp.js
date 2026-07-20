@@ -150,7 +150,7 @@ const TOOLS = [
 const text = (s) => ({ content: [{ type: 'text', text: typeof s === 'string' ? s : JSON.stringify(s, null, 2) }] })
 const refuse = (s) => ({ content: [{ type: 'text', text: s }], isError: true })
 
-export function buildMcp(user) {
+export function buildMcp(user, origin = 'https://author.computer') {
   const server = new Server({ name: 'author', version: '0.1.0' }, { capabilities: { tools: {} } })
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }))
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
@@ -172,7 +172,7 @@ export function buildMcp(user) {
           role: roleOf({ id: r.id, owner_id: r.owner_id }, user.id),
           updated_at: new Date(r.updated_at).toISOString(),
           created_at: new Date(r.created_at).toISOString(),
-          ...(r.published && r.slug ? { published_url: `https://author.computer/p/${r.slug}` } : {}),
+          ...(r.published && r.slug ? { published_url: `${origin}/p/${r.slug}` } : {}),
         }))
       )
     }
@@ -202,9 +202,11 @@ export function buildMcp(user) {
     if (name === 'create_draft') {
       if (typeof args.text !== 'string') return refuse('text is required — the body, plain')
       if (args.text.length > 200_000) return refuse('that page is too long for one breath')
-      const title = String(args.title || '').trim() || 'untitled'
+      // sliced before it reaches the ydoc meta too — the blob must never
+      // carry a longer title than the column admits
+      const title = String(args.title || '').trim().slice(0, 300) || 'untitled'
       const id = draftFromText(user.id, title, args.text)
-      return text({ id, title, editor_url: `https://author.computer/d/${id}` })
+      return text({ id, title, editor_url: `${origin}/d/${id}` })
     }
 
     return refuse(`no tool named ${name}`)

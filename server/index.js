@@ -469,8 +469,15 @@ app.post('/mcp', rateLimit(240, 60_000, 'mcp'), async (req, res) => {
     return res
       .status(401)
       .json({ jsonrpc: '2.0', error: { code: -32001, message: 'a key from settings opens this door' }, id: null })
+  // one meter tick per POST, so one POST may not smuggle a crowd
+  if (Array.isArray(req.body) && req.body.length > 20)
+    return res.status(400).json({
+      jsonrpc: '2.0',
+      error: { code: -32600, message: 'twenty calls per envelope at most' },
+      id: null,
+    })
   try {
-    const server = buildMcp(user)
+    const server = buildMcp(user, originOf(req))
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
