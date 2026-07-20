@@ -13,7 +13,7 @@ export type UpdateDay = { date: string; title: string; blocks: UpdateBlock[] }
 export const UPDATES: UpdateDay[] = [
   {
     date: 'july 19, 2026',
-    title: 'the post office, rss, dark mode',
+    title: 'newsletters, rss, dark mode',
     blocks: [
       {
         kind: 'bullet',
@@ -27,8 +27,8 @@ export const UPDATES: UpdateDay[] = [
       },
       {
         kind: 'bullet',
-        head: 'the post office',
-        text: 'its own tab in your profile. open it and readers can leave their email on your published pages; [ ✉ post ] sends a published piece to every confirmed address, from you@author.computer. free accounts hold 25 addresses with 200 letters a month, members 1,000 and 5,000.',
+        head: 'newsletters',
+        text: 'you now have the ability to send your writing directly to subscriber\'s inboxes on author. go to your profile to learn more.',
       },
       {
         kind: 'bullet',
