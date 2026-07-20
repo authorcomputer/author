@@ -23,7 +23,7 @@ export const UPDATES: UpdateDay[] = [
       {
         kind: 'bullet',
         head: 'mcp',
-        text: 'author now gives you the ability to connect claude (or any mcp client) to read your drafts and comments and start new pages. go to settings to create a key.',
+        text: 'connect claude (or any mcp client) to read your drafts and comments and start new pages. go to settings to create a key.',
       },
       {
         kind: 'bullet',
@@ -33,7 +33,7 @@ export const UPDATES: UpdateDay[] = [
       {
         kind: 'bullet',
         head: 'rss',
-        text: 'author now gives you the ability to follow any public profile in your feed reader. the feed link is on the profile page.',
+        text: 'every public profile now has a feed, so your readers can follow you from any feed reader. the link is on the profile page.',
       },
       {
         kind: 'bullet',
