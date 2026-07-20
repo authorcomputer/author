@@ -95,14 +95,6 @@ export default function App() {
         <Route path="/" element={<RootGate />} />
         <Route path="/new" element={<NewDoc />} />
         <Route
-          path="/note"
-          element={
-            <RequireAccount>
-              <Navigate to="/?note=new" replace />
-            </RequireAccount>
-          }
-        />
-        <Route
           path="/admin"
           element={
             <RequireAccount>

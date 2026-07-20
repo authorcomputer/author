@@ -27,11 +27,6 @@ export const UPDATES: UpdateDay[] = [
       },
       {
         kind: 'bullet',
-        head: 'notes',
-        text: 'quick slips in the desk’s corner — [ + note ] or author.computer/note. click one to write in place; [ → a page ] turns it into a draft when it grows up.',
-      },
-      {
-        kind: 'bullet',
         head: 'the post office',
         text: 'its own tab in your profile. open it and readers can leave their email on your published pages; [ ✉ post ] sends a published piece to every confirmed address, from you@author.computer. free accounts hold 25 addresses with 200 letters a month, members 1,000 and 5,000.',
       },

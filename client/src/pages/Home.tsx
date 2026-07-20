@@ -4,7 +4,6 @@ import { api, username, signOut } from '../api'
 import Logo from '../Logo'
 import Bubble from '../Bubble'
 import Chart from '../Chart'
-import NoteCorner from '../NoteCorner'
 import { track } from '../analytics'
 
 type DocRow = {
@@ -186,7 +185,6 @@ export default function Home() {
           <div className="peek-body">{peek.doc.preview}</div>
         </div>
       )}
-      <NoteCorner />
       <div className="corner-nav">
         <Link className="faint" to="/updates" title="what changed, as it changed">
           updates
