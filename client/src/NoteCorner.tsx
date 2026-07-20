@@ -20,11 +20,15 @@ export default function NoteCorner() {
   const [params, setParams] = useSearchParams()
   const opened = useRef(false)
 
+  // stale responses lose: only the newest request may set the list
+  const gen = useRef(0)
   async function load() {
+    const g = ++gen.current
     try {
-      setNotes(await api('/api/notes'))
+      const r = await api('/api/notes')
+      if (g === gen.current) setNotes(r)
     } catch {
-      setNotes([])
+      if (g === gen.current) setNotes([])
     }
   }
   useEffect(() => {
@@ -93,17 +97,24 @@ export default function NoteCorner() {
 
 function NotePop({ note, onClose, onGone }: { note: Note; onClose: () => void; onGone: () => void }) {
   const [text, setText] = useState(note.text)
+  const [busy, setBusy] = useState(false)
   const nav = useNavigate()
   const timer = useRef<ReturnType<typeof setTimeout>>()
   const latest = useRef(note.text)
   const saved = useRef(note.text)
 
+  // "sent" is not "saved": the mark moves forward optimistically so racing
+  // saves don't repeat themselves, but a failed send rolls it back — the
+  // next flush tries again instead of skipping words the server never heard
   const save = async (t: string) => {
     if (t === saved.current) return
+    const prev = saved.current
     saved.current = t
-    await api(`/api/notes/${note.id}`, { method: 'POST', body: JSON.stringify({ text: t }) }).catch(
-      () => {}
-    )
+    try {
+      await api(`/api/notes/${note.id}`, { method: 'POST', body: JSON.stringify({ text: t }) })
+    } catch {
+      if (saved.current === t) saved.current = prev
+    }
   }
 
   function onEdit(t: string) {
@@ -113,16 +124,36 @@ function NotePop({ note, onClose, onGone }: { note: Note; onClose: () => void; o
     timer.current = setTimeout(() => save(latest.current), 600)
   }
 
-  // the pen lifts, the slip keeps what it heard
-  useEffect(
-    () => () => {
+  // the pen lifts, the slip keeps what it heard — and a tab that vanishes
+  // mid-thought gets one last word in through the beacon door
+  useEffect(() => {
+    const flush = () => {
+      if (document.visibilityState !== 'hidden') return
+      if (latest.current === saved.current) return
+      saved.current = latest.current
+      navigator.sendBeacon?.(
+        `/api/notes/${note.id}`,
+        new Blob([JSON.stringify({ text: latest.current })], { type: 'application/json' })
+      )
+    }
+    document.addEventListener('visibilitychange', flush)
+    return () => {
+      document.removeEventListener('visibilitychange', flush)
       clearTimeout(timer.current)
       save(latest.current)
-    },
-    []
-  )
+    }
+  }, [])
+
+  // closing waits for the flush, so the corner re-reads a list that
+  // already knows the last keystrokes
+  async function close() {
+    clearTimeout(timer.current)
+    await save(latest.current)
+    onClose()
+  }
 
   async function toss() {
+    if (busy) return
     if (!confirm('Toss this note? There is no undo.')) return
     track('note: tossed')
     clearTimeout(timer.current)
@@ -131,6 +162,8 @@ function NotePop({ note, onClose, onGone }: { note: Note; onClose: () => void; o
   }
 
   async function promote() {
+    if (busy) return
+    setBusy(true)
     track('note: promoted to page')
     clearTimeout(timer.current)
     await save(latest.current)
@@ -138,28 +171,33 @@ function NotePop({ note, onClose, onGone }: { note: Note; onClose: () => void; o
     const title = note.title || first.trim().slice(0, 80) || 'untitled'
     try {
       const id = await docFromText(title, latest.current)
-      await api(`/api/notes/${note.id}`, { method: 'DELETE' }).catch(() => {})
+      // the slip must leave the corner — a second try if the first toss slips
+      await api(`/api/notes/${note.id}`, { method: 'DELETE' }).catch(() =>
+        api(`/api/notes/${note.id}`, { method: 'DELETE' }).catch(() => {})
+      )
       nav(`/d/${id}`)
     } catch {
       /* the note stays — trying again is one click */
+      setBusy(false)
     }
   }
 
   return (
     <>
-      <div className="share-backdrop" onClick={onClose} />
+      <div className="share-backdrop" onClick={close} />
       <div className="note-pop">
         <textarea
           autoFocus
           placeholder="jot it down…"
           value={text}
+          readOnly={busy}
           onChange={(e) => onEdit(e.target.value)}
         />
         <div className="row-actions">
-          <button onClick={promote} title="the note becomes a draft and leaves the corner">
-            [ → a page ]
+          <button onClick={promote} disabled={busy} title="the note becomes a draft and leaves the corner">
+            {busy ? '→ turning…' : '[ → a page ]'}
           </button>
-          <button className="faint" onClick={toss} title="toss">
+          <button className="faint" onClick={toss} disabled={busy} title="toss">
             ✗
           </button>
         </div>
