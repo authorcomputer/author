@@ -66,6 +66,9 @@ input, textarea {
 }
 
 ::selection { background: #f3d9c9; }
+/* where the live selection ink paints (highlight-ink.ts), the flat wash
+   stands down — both at once reads as a doubled highlight */
+html.ink-live ::selection { background: transparent; }
 
 .faint { color: var(--faint); }
 .accent { color: var(--accent); }
@@ -354,13 +357,14 @@ input, textarea {
   pointer-events: none;
 }
 
-/* the resting wash is real highlighter ink now (highlight-ink.ts draws it
-   as an overlay) — the span keeps only the dotted rule and the hover cue */
+/* the wash is real highlighter ink now (highlight-ink.ts draws it as an
+   overlay) — a flat background here would double it, so the span keeps
+   only the dotted rule, which firms up on hover as the cue */
 .comment-mark {
   border-bottom: 1px dotted #d8a848;
   cursor: pointer;
 }
-.comment-mark:hover { background: #f7e6c3; }
+.comment-mark:hover { border-bottom-style: solid; }
 
 /* the comment bubble: drawn, not typed, so it weighs the same everywhere.
    sized to sit in running text like a character would */
@@ -1184,7 +1188,6 @@ a:has(> .logo) {
 [data-mode='dark'] .header-controls { background: rgba(25, 23, 19, 0.92); }
 
 /* the comment gold, embered down */
-[data-mode='dark'] .comment-mark:hover { background: #493b1a; }
 [data-mode='dark'] .ed-top .comment-count { color: #d8a848; }
 [data-mode='dark'] .byline .kind { color: #d8a848; }
 

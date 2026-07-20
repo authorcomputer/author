@@ -86,10 +86,17 @@ const selectionOpts = (): HighlightOptions => ({
 // native selection ui (the library hands back an inert handle there)
 export function attachSelectionInk(): () => void {
   const live = highlightSelection(selectionOpts())
+  // the ink replaces the flat ::selection wash — painting both doubles the
+  // band. ink-live suppresses the wash, but only for fine pointers: on
+  // touch the library defers to native selection, which must stay visible
+  if (!window.matchMedia('(pointer: coarse)').matches) {
+    document.documentElement.classList.add('ink-live')
+  }
   const lamp = new MutationObserver(() => live.update(selectionOpts()))
   lamp.observe(document.documentElement, { attributes: true, attributeFilter: ['data-mode'] })
   return () => {
     lamp.disconnect()
+    document.documentElement.classList.remove('ink-live')
     live.remove()
   }
 }
