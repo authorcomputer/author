@@ -1090,7 +1090,7 @@ function FormatBubble({ editor }: { editor: TiptapEditor }) {
         <span className="fmt-sep">·</span>
         {item('link', editor.isActive('link'), setLink, 'link', 'add or edit link')}
         {item(<><Bubble /> comment</>, editor.isActive('comment'), () => window.dispatchEvent(new CustomEvent('author:comment')), 'comment', 'comment ⌥⌘M')}
-        {item('✎ ai', false, () => window.dispatchEvent(new CustomEvent('author:open-cmdk')), 'ai', 'rewrite with ⌘K')}
+        {item('✎ edit', false, () => window.dispatchEvent(new CustomEvent('author:open-cmdk')), 'edit', 'rewrite with ⌘K')}
       </div>
     </BubbleMenu>
   )
