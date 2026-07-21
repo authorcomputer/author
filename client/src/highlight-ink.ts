@@ -55,9 +55,19 @@ export function attachCommentInk(editor: Editor): () => void {
     if (editor.isDestroyed) return
     // the overlay must scroll with the text, so it mounts inside .ed-scroll
     const host = editor.view.dom.closest<HTMLElement>('.ed-scroll')
-    // positions are read against the editor body, not the viewport, so a
-    // scrolled page between transactions doesn't read as movement
-    const origin = editor.view.dom.getBoundingClientRect()
+    // every handle shares one overlay container, and removing any handle
+    // tears the container down if it looks empty — which it always does,
+    // because the bands live in blend-layer siblings. the survivors then
+    // measure against a detached node and their ink vanishes. a keeper
+    // child makes the container never look empty, so it never comes down
+    const shared = host?.querySelector(':scope > [data-highlighters-overlay]')
+    if (shared && !shared.firstChild) shared.appendChild(document.createElement('i'))
+    // positions are read in the coordinate system the bands actually live
+    // in — the overlay container. it scrolls with the text (no false moves
+    // on scroll) and it catches the editor block itself shifting inside the
+    // scroller, which the editor's own rect can't see. before the first
+    // handle exists there's no container yet; the editor body stands in
+    const origin = (shared ?? editor.view.dom).getBoundingClientRect()
     const seen = new Set<Element>()
     for (const el of editor.view.dom.querySelectorAll('span.comment-mark')) {
       seen.add(el)
@@ -93,13 +103,6 @@ export function attachCommentInk(editor: Editor): () => void {
         kids.delete(el)
       }
     }
-    // every handle shares one overlay container, and removing any handle
-    // tears the container down if it looks empty — which it always does,
-    // because the bands live in blend-layer siblings. the survivors then
-    // measure against a detached node and their ink vanishes. a keeper
-    // child makes the container never look empty, so it never comes down
-    const shared = host?.querySelector(':scope > [data-highlighters-overlay]')
-    if (shared && !shared.firstChild) shared.appendChild(document.createElement('i'))
   }
   const queue = () => {
     if (!raf) raf = requestAnimationFrame(sync)
@@ -107,6 +110,14 @@ export function attachCommentInk(editor: Editor): () => void {
 
   editor.on('transaction', queue)
   queue()
+
+  // not every shift is an edit: the ui above the editor growing (a header
+  // image landing) moves the text without a transaction. the page resizing
+  // is the tell for those — sync is cheap when nothing actually moved
+  const ro = new ResizeObserver(queue)
+  const page = editor.view.dom.closest('.ed-page')
+  if (page) ro.observe(page)
+  ro.observe(editor.view.dom)
 
   // the lamp flips data-mode without a rerender — recolor the ink in place
   const lamp = new MutationObserver(() => {
@@ -117,6 +128,7 @@ export function attachCommentInk(editor: Editor): () => void {
   return () => {
     editor.off('transaction', queue)
     if (raf) cancelAnimationFrame(raf)
+    ro.disconnect()
     lamp.disconnect()
     for (const handle of marks.values()) handle.remove()
     marks.clear()
