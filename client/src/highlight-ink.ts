@@ -93,6 +93,13 @@ export function attachCommentInk(editor: Editor): () => void {
         kids.delete(el)
       }
     }
+    // every handle shares one overlay container, and removing any handle
+    // tears the container down if it looks empty — which it always does,
+    // because the bands live in blend-layer siblings. the survivors then
+    // measure against a detached node and their ink vanishes. a keeper
+    // child makes the container never look empty, so it never comes down
+    const shared = host?.querySelector(':scope > [data-highlighters-overlay]')
+    if (shared && !shared.firstChild) shared.appendChild(document.createElement('i'))
   }
   const queue = () => {
     if (!raf) raf = requestAnimationFrame(sync)
